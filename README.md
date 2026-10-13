@@ -24,3 +24,4 @@
 - Anahtarları asla koda veya sohbete yazma, sadece GitHub Secrets ve Vercel env içinde dursun.
 - Panel yalnızca `ADMIN_EMAIL` ile giriş yapan kullanıcıya açıktır.
 - `service_role` anahtarı sadece sunucu tarafında kullanılır, tarayıcıya gitmez.
+"# API" 
