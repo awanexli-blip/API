@@ -1,0 +1,9 @@
+{
+  "name": "trendyol-worker",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "fast-xml-parser": "^4.5.0"
+  }
+}

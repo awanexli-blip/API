@@ -1,0 +1,46 @@
+name: Trendyol sync
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"   # her 4 saatte bir (UTC)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "preview | update | create | auto"
+        default: "auto"
+
+concurrency:
+  group: trendyol-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --prefix worker
+      - name: Sync
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          TRIGGER: ${{ github.event_name == 'schedule' && 'schedule' || 'manual' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          XML_URL: ${{ secrets.XML_URL }}
+          TRENDYOL_SELLER_ID: ${{ secrets.TRENDYOL_SELLER_ID }}
+          TRENDYOL_API_KEY: ${{ secrets.TRENDYOL_API_KEY }}
+          TRENDYOL_API_SECRET: ${{ secrets.TRENDYOL_API_SECRET }}
+          TRENDYOL_CARGO_COMPANY_ID: ${{ secrets.TRENDYOL_CARGO_COMPANY_ID }}
+          TRENDYOL_SHIPMENT_ADDRESS_ID: ${{ secrets.TRENDYOL_SHIPMENT_ADDRESS_ID }}
+          TRENDYOL_RETURN_ADDRESS_ID: ${{ secrets.TRENDYOL_RETURN_ADDRESS_ID }}
+        run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-csv
+          path: preview.csv
+          if-no-files-found: ignore
+          retention-days: 7
