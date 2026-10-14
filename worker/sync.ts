@@ -114,7 +114,9 @@ async function main() {
   const existing = await existingBarcodes();
 
   // BAĞLANTI KURALI: mağazadaki ürünlerin barkodu "ÖS13-" + XML productCode (ASCII dışı karakterler atılmış).
-  const BARCODE_PREFIX = "ÖS13-";
+  // Mevcut ürünler "ÖS13-" ile açılmış; yeni ürünler ASCII-uyumlu "OS13-" ile açılır, eşleştirme ikisini de dener.
+  const BARCODE_PREFIXES = ["ÖS13-", "OS13-"];
+  const NEW_PREFIX = "OS13-";
   const san = (v: string) => v.replace(/[^A-Za-z0-9._\-]/g, "");
   const normTitle = (v: string) => v.toLocaleLowerCase("tr").replace(/[^0-9a-zçğıöşü]+/g, " ").trim().slice(0, 50);
   const tgBy = new Map<string, any>(tgItems.map((i) => [i.barcode, i]));
@@ -147,7 +149,7 @@ async function main() {
     const cost = num(r.price) * (rate || 0);
     const cat = catMap.get(category);
     const productCode = String(r.productCode ?? "").trim();
-    const prefixed = productCode ? BARCODE_PREFIX + san(productCode) : "";
+    const prefixed = productCode ? (BARCODE_PREFIXES.map((pf) => pf + san(productCode)).find((k) => existing.has(k)) ?? "") : "";
     const tgBarcode: string | null = existing.has(barcode) ? barcode : prefixed && existing.has(prefixed) ? prefixed : null;
     const ov = ovMap.get(barcode) ?? (tgBarcode ? ovMap.get(tgBarcode) : undefined);
     const isExisting = !!tgBarcode;
@@ -199,8 +201,8 @@ async function main() {
     if (!cat?.category_id) { unmapped.set(category, (unmapped.get(category) ?? 0) + 1); skip("kategori eşleşmemiş"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: kategori eşleşmemiş`); continue; }
     if (!images.length) { skip("resim yok"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: resim yok`); continue; }
     if (hidden || qty < minStock) { skip("stok yok / gizli"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: stok yok`); continue; }
-    toCreate.push({ barcode, name, detail: String(r.detail ?? ""), brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat, price, qty });
-    csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};YENI`);
+    toCreate.push({ barcode: NEW_PREFIX + san(productCode || barcode), name, detail: String(r.detail ?? ""), brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat, price, qty });
+    csv.push(`${NEW_PREFIX + san(productCode || barcode)};${q(name)};${q(category)};${r.price};${price};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};YENI`);
   }
 
   // BOM'lu UTF-8: Excel'de Türkçe karakterler bozulmasın
@@ -271,12 +273,15 @@ async function main() {
     const shipmentAddressId = Number(env("TRENDYOL_SHIPMENT_ADDRESS_ID"));
     const returningAddressId = Number(env("TRENDYOL_RETURN_ADDRESS_ID"));
     const payloads: any[] = [];
+    const usedBarcodes = new Set<string>();
     for (const p of toCreate) {
+      if (usedBarcodes.has(p.barcode)) { skip("aynı barkoda dönüşen ürün kodu"); continue; }
+      usedBarcodes.add(p.barcode);
       const bId = await brandId(p.brand);
       if (!bId) { skip("marka bulunamadı"); continue; }
       payloads.push({
-        barcode: p.barcode, title: p.name.slice(0, 100), productMainId: p.productCode, brandId: bId,
-        categoryId: Number(p.cat.category_id), quantity: Math.min(Math.floor(p.qty), 20000), stockCode: p.productCode,
+        barcode: p.barcode, title: p.name.slice(0, 100), productMainId: p.barcode, brandId: bId,
+        categoryId: Number(p.cat.category_id), quantity: Math.min(Math.floor(p.qty), 20000), stockCode: p.barcode,
         dimensionalWeight: p.desi, description: p.detail.slice(0, 30000), currencyType: "TRY",
         listPrice: p.price, salePrice: p.price, vatRate: Number(p.cat.vat_rate ?? s.vat_rate),
         cargoCompanyId, shipmentAddressId, returningAddressId,
