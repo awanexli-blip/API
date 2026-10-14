@@ -51,15 +51,20 @@ async function loadXml(): Promise<any[]> {
   return rows;
 }
 
+const tgItems: any[] = [];
 async function existingBarcodes(): Promise<Set<string>> {
   const set = new Set<string>();
   let page = 0, totalPages = 1;
   while (page < totalPages) {
     const r = await tg(`/product/sellers/${SELLER_ID}/products?page=${page}&size=1000`);
     totalPages = r.totalPages ?? 1;
-    for (const p of r.content ?? []) if (p.barcode) set.add(String(p.barcode));
+    for (const p of r.content ?? []) {
+      if (!p.barcode) continue;
+      set.add(String(p.barcode));
+      tgItems.push({ barcode: String(p.barcode), stockCode: p.stockCode ? String(p.stockCode) : "", productMainId: p.productMainId ? String(p.productMainId) : "", title: String(p.title ?? "").slice(0, 120), salePrice: Number(p.salePrice), quantity: Number(p.quantity) });
+    }
     page++;
-    await sleep(150);
+    await sleep(300);
   }
   return set;
 }
@@ -71,7 +76,7 @@ async function brandId(name: string): Promise<number | null> {
   let id: number | null = null;
   try { id = (await tg(`/product/brands/by-name?name=${encodeURIComponent(name)}`))?.brands?.[0]?.id ?? null; } catch { /* marka yok */ }
   brandCache.set(name, id);
-  await sleep(100);
+  await sleep(300);
   return id;
 }
 
@@ -100,7 +105,23 @@ async function main() {
   const ovMap = new Map<string, any>((ovs ?? []).map((o: any) => [o.barcode, o]));
 
   const raw = await loadXml();
+  {
+    const c = (v: any) => String(v ?? "").replace(/;/g, ",").replace(/\r?\n/g, " ");
+    const dump = ["barcode;productCode;brand;category;quantity;price;currency;name"];
+    for (const r of raw) dump.push([r.barcode, r.productCode, r.brand, r.category, r.quantity, r.price, r.currency, String(r.name ?? "").slice(0, 120)].map(c).join(";"));
+    writeFileSync("xml_dump.csv", "\uFEFF" + dump.join("\n"), "utf8");
+  }
   const existing = await existingBarcodes();
+
+  // BAĞLANTI KURALI: mağazadaki ürünlerin barkodu "ÖS13-" + XML productCode (ASCII dışı karakterler atılmış).
+  const BARCODE_PREFIX = "ÖS13-";
+  const san = (v: string) => v.replace(/[^A-Za-z0-9._\-]/g, "");
+  const normTitle = (v: string) => v.toLocaleLowerCase("tr").replace(/[^0-9a-zçğıöşü]+/g, " ").trim().slice(0, 50);
+  const tgBy = new Map<string, any>(tgItems.map((i) => [i.barcode, i]));
+  const tgTitles = new Set<string>(tgItems.map((i) => normTitle(i.title)).filter(Boolean));
+  const linked = new Set<string>();
+  // Mevcut ürünlerde fiyat politikası: keep = fiyata dokunma, floor = sadece formülün altındaysa yükselt, formula = formüle eşitle
+  const policy: string = s.update_prices === false ? "keep" : String(s.existing_price_policy ?? "floor");
   console.log(`XML: ${raw.length} ürün | Trendyol'da: ${existing.size}`);
 
   const num = (v: any) => Number(String(v ?? "0").replace(",", "."));
@@ -125,8 +146,11 @@ async function main() {
     const rate = fx[currency];
     const cost = num(r.price) * (rate || 0);
     const cat = catMap.get(category);
-    const ov = ovMap.get(barcode);
-    const isExisting = existing.has(barcode);
+    const productCode = String(r.productCode ?? "").trim();
+    const prefixed = productCode ? BARCODE_PREFIX + san(productCode) : "";
+    const tgBarcode: string | null = existing.has(barcode) ? barcode : prefixed && existing.has(prefixed) ? prefixed : null;
+    const ov = ovMap.get(barcode) ?? (tgBarcode ? ovMap.get(tgBarcode) : undefined);
+    const isExisting = !!tgBarcode;
 
     if (!rate) { skip(`kur yok: ${currency}`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};;;;;ATLANDI: kur yok`); continue; }
     const calc = calcPrice(cost, cfg as any, cat?.commission_rate != null ? Number(cat.commission_rate) : cfg.commissionRate);
@@ -148,12 +172,30 @@ async function main() {
     const images: string[] = Array.from({ length: 12 }, (_, i) => r[`image${i + 1}`]).filter(Boolean).map(String);
 
     if (isExisting) {
-      toUpdate.push({ barcode, price, quantity: hidden || qty < minStock ? 0 : Math.min(Math.floor(qty), 20000) });
-      csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};MEVCUT`);
+      const tgb = tgBarcode as string;
+      if (linked.has(tgb)) { skip("XML'de tekrar eden ürün kodu"); continue; }
+      linked.add(tgb);
+      const curPrice = Number(tgBy.get(tgb)?.salePrice);
+      const known = Number.isFinite(curPrice);
+      if (known && curPrice <= 0 && !ov?.price_override) {
+        skip("Trendyol'da kapalı/fiyatsız ürün");
+        csv.push(`${tgb};${q(name)};${q(category)};${r.price};;;;;ATLANDI: Trendyol'da kapalı/fiyatsız`);
+        continue;
+      }
+      let sendPrice: number | null = price;
+      if (!ov?.price_override) {
+        if (policy === "keep" || (policy === "floor" && !known)) sendPrice = null;
+        else if (policy === "floor") sendPrice = Math.max(curPrice, price);
+      }
+      const change = sendPrice == null ? "fiyat korunur" : !known ? "yeni fiyat" : sendPrice > curPrice + 0.005 ? "artacak" : sendPrice < curPrice - 0.005 ? "düşecek" : "aynı";
+      toUpdate.push({ barcode: tgb, price: sendPrice, quantity: hidden || qty < minStock ? 0 : Math.min(Math.floor(qty), 20000) });
+      csv.push(`${tgb};${q(name)};${q(category)};${r.price};${sendPrice ?? (known ? curPrice : "")};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};MEVCUT (${change}; formül ${price})`);
       continue;
     }
 
-    // Yeni ürün: kategori eşleşmesi, resim ve stok şart
+    // Yeni ürün: önce aynı başlıklı ürün mağazada var mı (çoklama riski)
+    if (tgTitles.has(normTitle(name))) { skip("Trendyol'da aynı başlık var (çoklama riski)"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: aynı başlık Trendyol'da var`); continue; }
+    // kategori eşleşmesi, resim ve stok şart
     if (!cat?.category_id) { unmapped.set(category, (unmapped.get(category) ?? 0) + 1); skip("kategori eşleşmemiş"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: kategori eşleşmemiş`); continue; }
     if (!images.length) { skip("resim yok"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: resim yok`); continue; }
     if (hidden || qty < minStock) { skip("stok yok / gizli"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: stok yok`); continue; }
@@ -164,12 +206,27 @@ async function main() {
   // BOM'lu UTF-8: Excel'de Türkçe karakterler bozulmasın
   writeFileSync("preview.csv", "\uFEFF" + csv.join("\n"), "utf8");
 
-  const matched = [...existing].filter((b) => xmlBarcodes.has(b)).length;
+  const matched = linked.size;
   const summary: any = {
-    xml: raw.length, trendyol: existing.size, matched,
+    xml: raw.length, trendyol: existing.size, matched, policy,
     update: toUpdate.length, create: toCreate.length, skipped,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };
+
+  // Eşleşme teşhisi: Trendyol ürünleri XML ile hangi alan üzerinden eşleşiyor?
+  const xmlPc = new Set(raw.map((r) => String(r.productCode ?? "").trim()).filter(Boolean));
+  const stat = (f: (i: any) => string, S: Set<string>) => tgItems.filter((i) => f(i) && S.has(f(i))).length;
+  summary.matchStats = {
+    barcode_to_barcode: matched,
+    stockCode_to_barcode: stat((i) => i.stockCode, xmlBarcodes),
+    stockCode_to_productCode: stat((i) => i.stockCode, xmlPc),
+    productMainId_to_productCode: stat((i) => i.productMainId, xmlPc),
+    productMainId_to_barcode: stat((i) => i.productMainId, xmlBarcodes),
+    suffix_to_productCode: stat((i) => (i.stockCode.split(/[._]/).pop() ?? ""), xmlPc),
+    suffix_to_barcode: stat((i) => (i.stockCode.split(/[._]/).pop() ?? ""), xmlBarcodes),
+  };
+  summary.sampleTrendyol = tgItems.slice(0, 3);
+  summary.sampleXml = raw.slice(0, 3).map((r) => ({ barcode: r.barcode, productCode: r.productCode, name: String(r.name ?? "").slice(0, 60) }));
 
   // Eşleşmeyen kategoriler panelde görünsün
   await db.from("unmapped_categories").delete().neq("xml_category", "");
@@ -179,7 +236,7 @@ async function main() {
   if (doUpdate) {
     for (const batch of chunk(toUpdate, 500)) {
       try {
-        const items = batch.map((p) => s.update_prices
+        const items = batch.map((p) => p.price != null
           ? { barcode: p.barcode, quantity: p.quantity, salePrice: p.price, listPrice: p.price }
           : { barcode: p.barcode, quantity: p.quantity });
         const r = await tg(`/inventory/sellers/${SELLER_ID}/products/price-and-inventory`, { method: "POST", body: JSON.stringify({ items }) });
@@ -191,7 +248,7 @@ async function main() {
     // XML'den kalkan ürünler: yalnızca eşleşme güvenilirse stoğu sıfırla
     if (s.zero_missing) {
       if (existing.size && matched / existing.size >= 0.5) {
-        const gone = [...existing].filter((b) => !xmlBarcodes.has(b));
+        const gone = [...existing].filter((b) => !linked.has(b));
         for (const batch of chunk(gone, 500)) {
           try {
             await tg(`/inventory/sellers/${SELLER_ID}/products/price-and-inventory`, { method: "POST", body: JSON.stringify({ items: batch.map((barcode) => ({ barcode, quantity: 0 })) }) });
@@ -205,7 +262,11 @@ async function main() {
     }
   }
 
-  if (doCreate && toCreate.length) {
+  const weakMatch = existing.size > 1000 && matched / existing.size < 0.5;
+  if (doCreate && weakMatch) {
+    summary.createBlocked = "Trendyol ürünlerinin yarısından azı XML ile barkodla eşleşti. Aynı ürünleri ikinci kez açmamak için yeni ürün açma durduruldu.";
+  }
+  if (doCreate && !weakMatch && toCreate.length) {
     const cargoCompanyId = Number(env("TRENDYOL_CARGO_COMPANY_ID"));
     const shipmentAddressId = Number(env("TRENDYOL_SHIPMENT_ADDRESS_ID"));
     const returningAddressId = Number(env("TRENDYOL_RETURN_ADDRESS_ID"));

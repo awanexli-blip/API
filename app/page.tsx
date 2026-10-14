@@ -265,6 +265,7 @@ function Settings({ api, notify }: Props) {
       body[x.key] = x.kind === "pct" ? v / 100 : v;
     }
     for (const [k] of BOOLS) body[k] = f![k];
+    body.existing_price_policy = f!.existing_price_policy;
     try { setF(toForm(await api("/api/settings", { method: "PUT", body: JSON.stringify(body) }))); notify("good", "Ayarlar kaydedildi. Bir sonraki senkronizasyonda geçerli olur."); }
     catch (e: any) { notify("err", e.message); }
   }
@@ -281,6 +282,14 @@ function Settings({ api, notify }: Props) {
             </label>
           ))}
         </div>
+        <h3>Mevcut ürünlerin fiyatı</h3>
+        <label className="f" style={{ maxWidth: 520 }}>Trendyol'da zaten olan ürünlerde fiyat nasıl güncellensin?
+          <select value={f.existing_price_policy ?? "floor"} onChange={(e) => setF({ ...f, existing_price_policy: e.target.value })}>
+            <option value="floor">Sadece formülün altındaysa yükselt, mevcut fiyatı asla düşürme (önerilen)</option>
+            <option value="keep">Fiyata dokunma, sadece stok güncelle</option>
+            <option value="formula">Her ürünü formül fiyatına eşitle (fiyatlar düşebilir)</option>
+          </select>
+        </label>
         <h3>Davranış</h3>
         <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
           {BOOLS.map(([k, label]) => (

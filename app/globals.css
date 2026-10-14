@@ -47,6 +47,7 @@ label.f small { font-size: 12px; }
 input[type="text"], input[type="email"], input[type="password"], input[type="number"], textarea {
   font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; width: 100%;
 }
+select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; width: 100%; }
 textarea { min-height: 70px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; color: var(--ink); }
 .check input { margin-top: 4px; }

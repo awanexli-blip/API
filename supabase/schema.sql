@@ -18,6 +18,7 @@ create table if not exists settings (
   auto_create boolean not null default false,
   update_prices boolean not null default true,
   zero_missing boolean not null default false,
+  existing_price_policy text not null default 'floor',
   updated_at timestamptz not null default now()
 );
 insert into settings (id) values (1) on conflict do nothing;
@@ -59,3 +60,6 @@ alter table category_map enable row level security;
 alter table product_overrides enable row level security;
 alter table unmapped_categories enable row level security;
 alter table sync_runs enable row level security;
+
+-- Daha önce bu dosyayı çalıştırdıysan sadece şunu çalıştır:
+alter table settings add column if not exists existing_price_policy text not null default 'floor';

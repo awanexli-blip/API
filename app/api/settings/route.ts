@@ -19,6 +19,7 @@ const NUM: Record<string, [number, number, boolean]> = {
   fx_eur: [0, 1000, false],
 };
 const BOOL = ["auto_sync", "auto_create", "update_prices", "zero_missing"];
+const POLICIES = ["keep", "floor", "formula"];
 
 export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
@@ -38,6 +39,10 @@ export async function PUT(req: NextRequest) {
     patch[k] = v;
   }
   for (const k of BOOL) if (k in body) patch[k] = !!body[k];
+  if ("existing_price_policy" in body) {
+    if (!POLICIES.includes(body.existing_price_policy)) return bad("Geçersiz fiyat politikası");
+    patch.existing_price_policy = body.existing_price_policy;
+  }
 
   // komisyon + hedef kâr %100'ü geçerse fiyat formülü çalışmaz
   const { data: cur } = await admin().from("settings").select("commission_rate,target_profit_rate").eq("id", 1).single();
