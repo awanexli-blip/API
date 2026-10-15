@@ -33,7 +33,10 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 
 | Yol | Görev |
 |---|---|
-| `worker/sync.ts` | Asıl iş: XML çek, Trendyol ürünlerini çek, eşleştir, fiyat hesapla, güncelle/oluştur, CSV yaz, Supabase'e sonuç yaz |
+| `worker/sync.ts` | Pazaryerinden bağımsız orkestratör: XML çek, ilanları çek, eşleştir, fiyat hesapla, güncelle/oluştur, CSV yaz, Supabase'e sonuç yaz. Kullanım: `sync.ts <mod> [pazaryeri]` |
+| `worker/marketplaces/` | `types.ts` (Marketplace arayüzü), `index.ts` (kayıt defteri), `trendyol.ts` (API, barkod kuralı, komisyon kaynağı, ürün açma). Yeni pazaryeri = yeni adaptör dosyası + kayıt defterine ekleme |
+| `worker/core/` | Ortak yardımcılar (`util.ts`), XML okuma (`xml.ts`) |
+| `docs/ROADMAP.md` | Çoklu pazaryeri yol haritası ve aşama durumu |
 | `worker/pricing.ts` | `calcPrice()` fiyat formülü. Panel de simülasyon için aynı dosyayı import eder (`@/worker/pricing`) |
 | `worker/commissions_by_barcode.json` | Trendyol'daki 18.027 ürünün kendi komisyon oranı (barkod -> oran) |
 | `worker/commissions_by_category.json` | XML kategorisi -> kategorideki en yüksek komisyon (yeni ürünler için güvenli taraf) |
@@ -66,7 +69,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - Mağazadaki ürünlerin barkodu = `"ÖS13-" + XML productCode`, ASCII dışı karakterler atılmış (`replace(/[^A-Za-z0-9._\-]/g, "")`). Örn. `SFKXUCZZZBENZİNLİZİPPOOOOO-2-1` -> `ÖS13-SFKXUCZZZBENZNLZPPOOOOO-2-1`.
 - XML'deki `barcode` alanı (`BX5XM...`) mağazadakilerle eşleşmez. Sadece 3 üründe aynıdır.
 - **Yeni ürünler `OS13-` + productCode (ASCII, Ö'süz)** ile açılır, kullanıcı Ö harfinin başka sistemlerde sorun çıkarmasından çekindi. Eşleştirme hem `ÖS13-` hem `OS13-` dener. Trendyol barkodu sonradan değiştirtmez, bu yüzden eski ürünler `ÖS13-` kalır.
-- Yeni ürünlerde marka: mağazadaki ürünlerin %93'ü **"Eco Lounge"** markasıyla açılmış (XML'deki marka "BayilikXML.com", Trendyol'da yok). Kullanıcı yeni ürünlerde de aynı markayı kabul etti. **Not:** worker şu an markayı XML'deki `brand` alanından arıyor, `Eco Lounge`'a çevirme henüz yapılmadı (bkz. sıradaki işler).
+- Yeni ürünlerde marka: mağazadaki ürünlerin %93'ü **"Eco Lounge"** markasıyla açılmış (XML'deki marka "BayilikXML.com", Trendyol'da yok). Kullanıcı yeni ürünlerde de aynı markayı kabul etti. Worker yeni ürünlerde markayı `TRENDYOL_BRAND_NAME` ortam değişkeninden alır (varsayılan `Eco Lounge`), XML markası kullanılmaz.
 
 ## 4. Veri bulguları (14 Ekim 2026 dosyalarından)
 
@@ -99,7 +102,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 2. **Yeni önizleme:** panelden / Actions'tan `preview` çalıştır. Çıktıdaki `commissionSource.urun` yaklaşık 19.000 olmalı. `preview.csv` içindeki fiyat artışlarını kontrol et (özellikle >%20 artanlar).
 3. **İlk gerçek güncelleme:** önizleme onaylanırsa `update` çalıştır, panelde `failedBatches` 0 olmalı, Trendyol panelinden birkaç ürünü elle doğrula. Sonra `auto_sync` aç.
 4. **Yeni ürünler (~7.380):**
-   - Markayı `Eco Lounge` olarak sabitle (`sync.ts` içindeki marka araması, XML markası yerine). `brandId` bir kez alınıp önbelleğe alınabilir.
+   - ~~Marka `Eco Lounge` sabitleme~~ yapıldı (`marketplaces/trendyol.ts`, `brandId` önbellekli).
    - Her yeni ürün için Trendyol `categoryId`: aynı XML kategorisindeki mevcut ürünlerin API'deki `pimCategoryId` değerlerinden, başlık benzerliği (en benzer mevcut ürün) ile seçmeyi öner. XML kategorisi tek başına yetmez. API'de `pimCategoryId`, `brandId`, `categoryName` alanlarının dönüp dönmediğini canlıda doğrula (hafızadan, kesin değil).
    - Kategoriye göre zorunlu özellikler (renk, beden vb., `attributes`) hata verebilir. Önce **50 ürünle deneme**, hataları gör, sonra hepsini aç. `auto_create` varsayılan kapalı kalsın.
    - Yeni ürün barkodu `OS13-` + productCode. Mevcut korumalar: aynı başlık mağazada varsa atla, eşleşme zayıfsa (<%50) `create` kendiliğinden durur.

@@ -10,6 +10,8 @@ const loadJson = (f: string): Record<string, number> => {
 // Mevcut ürünler "ÖS13-" ile açılmış; yeni ürünler ASCII-uyumlu "OS13-" ile açılır, eşleştirme ikisini de dener.
 const BARCODE_PREFIXES = ["ÖS13-", "OS13-"];
 const NEW_PREFIX = "OS13-";
+// Mağazadaki ürünlerin %93'ü bu markayla açılmış; XML markası (BayilikXML.com) Trendyol'da yok.
+const BRAND_NAME = process.env.TRENDYOL_BRAND_NAME || "Eco Lounge";
 
 export function createTrendyol(): Marketplace {
   const SELLER_ID = env("TRENDYOL_SELLER_ID");
@@ -124,8 +126,8 @@ export function createTrendyol(): Marketplace {
       for (const p of items) {
         if (used.has(p.id)) { ctx.skip("aynı barkoda dönüşen ürün kodu"); continue; }
         used.add(p.id);
-        const bId = await brandId(p.brand);
-        if (!bId) { ctx.skip("marka bulunamadı"); continue; }
+        const bId = await brandId(BRAND_NAME);
+        if (!bId) { ctx.skip(`marka bulunamadı: ${BRAND_NAME}`); continue; }
         payloads.push({
           barcode: p.id, title: p.name.slice(0, 100), productMainId: p.id, brandId: bId,
           categoryId: Number(p.cat.category_id), quantity: Math.min(Math.floor(p.qty), 20000), stockCode: p.id,
