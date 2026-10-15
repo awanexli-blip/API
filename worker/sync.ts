@@ -6,7 +6,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { XMLParser } from "fast-xml-parser";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import { calcPrice } from "./pricing.ts";
 
 const env = (k: string) => {
@@ -14,6 +14,13 @@ const env = (k: string) => {
   if (!v) throw new Error(`Eksik ortam değişkeni: ${k}`);
   return v;
 };
+
+const loadJson = (f: string): Record<string, number> => {
+  try { return JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8")); } catch { return {}; }
+};
+// Trendyol'un ürün/kategori bazlı gerçek komisyonları (Trendyol'dan indirilen "Ürünleriniz" dosyasından üretildi)
+const commByBarcode = loadJson("./commissions_by_barcode.json");
+const commByCategory = loadJson("./commissions_by_category.json");
 
 const mode = process.argv[2] ?? "preview";
 const trigger = process.env.TRIGGER ?? "manual";
@@ -136,6 +143,7 @@ async function main() {
   const toCreate: any[] = [];
   const xmlBarcodes = new Set<string>();
   const unmapped = new Map<string, number>();
+  const commCount: Record<string, number> = {};
 
   for (const r of raw) {
     const barcode = String(r.barcode ?? "").trim();
@@ -155,13 +163,20 @@ async function main() {
     const isExisting = !!tgBarcode;
 
     if (!rate) { skip(`kur yok: ${currency}`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};;;;;ATLANDI: kur yok`); continue; }
-    const calc = calcPrice(cost, cfg as any, cat?.commission_rate != null ? Number(cat.commission_rate) : cfg.commissionRate);
+    // Komisyon önceliği: ürünün kendi oranı > panelde girilen kategori oranı > kategori içindeki en yüksek oran > varsayılan
+    let commSource = "varsayilan";
+    let comm = cfg.commissionRate;
+    if (tgBarcode && commByBarcode[tgBarcode] != null) { comm = commByBarcode[tgBarcode]; commSource = "urun"; }
+    else if (cat?.commission_rate != null) { comm = Number(cat.commission_rate); commSource = "panel"; }
+    else if (commByCategory[category] != null) { comm = commByCategory[category]; commSource = "kategori"; }
+    commCount[commSource] = (commCount[commSource] ?? 0) + 1;
+    const calc = calcPrice(cost, cfg as any, comm);
 
     let price: number, sellerPays = false, net = 0, rateOut = 0;
     if (ov?.price_override) {
       price = Number(ov.price_override);
       const ship = price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0;
-      net = price * (1 - cfg.commissionRate) - cost - cfg.fixedCost - ship;
+      net = price * (1 - comm) - cost - cfg.fixedCost - ship;
       rateOut = net / price; sellerPays = ship > 0;
     } else if (!calc.ok) {
       skip(calc.reason ?? "fiyat hesaplanamadı");
@@ -210,7 +225,7 @@ async function main() {
 
   const matched = linked.size;
   const summary: any = {
-    xml: raw.length, trendyol: existing.size, matched, policy,
+    xml: raw.length, trendyol: existing.size, matched, policy, commissionSource: commCount,
     update: toUpdate.length, create: toCreate.length, skipped,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };
