@@ -8,9 +8,12 @@ on:
       mode:
         description: "preview | update | create | auto"
         default: "auto"
+      marketplace:
+        description: "trendyol (yeni pazaryerleri eklendikçe genişler)"
+        default: "trendyol"
 
 concurrency:
-  group: trendyol-sync
+  group: marketplace-sync
   cancel-in-progress: false
 
 jobs:
@@ -36,13 +39,13 @@ jobs:
           TRENDYOL_CARGO_COMPANY_ID: ${{ secrets.TRENDYOL_CARGO_COMPANY_ID }}
           TRENDYOL_SHIPMENT_ADDRESS_ID: ${{ secrets.TRENDYOL_SHIPMENT_ADDRESS_ID }}
           TRENDYOL_RETURN_ADDRESS_ID: ${{ secrets.TRENDYOL_RETURN_ADDRESS_ID }}
-        run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}"
+        run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ github.event.inputs.marketplace || 'trendyol' }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: preview-csv
           path: |
-            preview.csv
+            preview*.csv
             xml_dump.csv
           if-no-files-found: ignore
           retention-days: 7
