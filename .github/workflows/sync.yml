@@ -2,7 +2,7 @@ name: Trendyol sync
 
 on:
   schedule:
-    - cron: "7 * * * *"     # her saat (UTC, :07 — GitHub saat başında yoğun), tüm pazaryerleri
+    - cron: "7,22,37,52 * * * *"   # 15 dakikada bir (saat başı GitHub yoğun olduğu için :07'den), tüm pazaryerleri
   workflow_dispatch:
     inputs:
       mode:
@@ -54,7 +54,7 @@ jobs:
           TRENDYOL_BRAND_NAME: ${{ vars.TRENDYOL_BRAND_NAME }}
           TRENDYOL_SHIPMENT_ADDRESS_ID: ${{ secrets.TRENDYOL_SHIPMENT_ADDRESS_ID }}
           TRENDYOL_RETURN_ADDRESS_ID: ${{ secrets.TRENDYOL_RETURN_ADDRESS_ID }}
-          CREATE_LIMIT: ${{ github.event.inputs.limit || '0' }}
+          CREATE_LIMIT: ${{ github.event.inputs.limit || '100' }}   # zamanlı çalışmada en fazla 100 yeni ürün
           HB_MERCHANT_ID: ${{ secrets.HB_MERCHANT_ID }}
           HB_USERNAME: ${{ secrets.HB_USERNAME }}
           HB_PASSWORD: ${{ secrets.HB_PASSWORD }}

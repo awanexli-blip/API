@@ -245,7 +245,8 @@ async function main() {
     // XML'den kalkan ürünler: yalnızca eşleşme güvenilirse stoğu sıfırla
     if (s.zero_missing) {
       if (existing.size && matched / existing.size >= 0.5) {
-        const gone = [...existing].filter((b) => !linked.has(b));
+        // Yalnızca satıştaki ilanlar: kapalı/onay bekleyen ilana stok gönderilemez (Trendyol hata verir)
+        const gone = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && !(l.quantity === 0)).map((l) => l.id);
         const z = await mp.zeroStock(gone);
         summary.zeroed += z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds);
       } else {

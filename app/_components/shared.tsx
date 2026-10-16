@@ -37,10 +37,11 @@ export function useApi(token: string): Api {
   );
 }
 
-// Sonraki zamanlanmış çalışma: workflow cron "7 * * * *" (UTC, her saat :07)
+// Sonraki zamanlanmış çalışma: workflow cron "7,22,37,52 * * * *" (UTC, 15 dakikada bir)
 export function nextScheduledRun(now = new Date()): Date {
   const d = new Date(now);
-  d.setUTCMinutes(7, 0, 0);
-  if (d <= now) d.setUTCHours(d.getUTCHours() + 1);
+  d.setUTCSeconds(0, 0);
+  const next = [7, 22, 37, 52].find((m) => m > now.getUTCMinutes());
+  if (next == null) { d.setUTCHours(d.getUTCHours() + 1); d.setUTCMinutes(7); } else d.setUTCMinutes(next);
   return d;
 }
