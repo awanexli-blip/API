@@ -41,8 +41,9 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `worker/pricing.ts` | `calcPrice()` fiyat formülü. Panel de simülasyon için aynı dosyayı import eder (`@/worker/pricing`) |
 | `worker/commissions_by_barcode.json` | Trendyol'daki 18.027 ürünün kendi komisyon oranı (barkod -> oran) |
 | `worker/commissions_by_category.json` | XML kategorisi -> kategorideki en yüksek komisyon (yeni ürünler için güvenli taraf) |
-| `app/page.tsx` | Tüm panel arayüzü (tek dosya) |
-| `app/api/{settings,categories,overrides,runs,run}/route.ts` | Panel API'leri, hepsi `guard()` ile korumalı |
+| `app/page.tsx` | Panel kabuğu: giriş, pazaryeri sekmeleri |
+| `app/_components/` | `Overview`, `Settings`, `Categories`, `Overrides` (Trendyol alt sekmeleri), `Upcoming` (bağlanmamış pazaryerleri), `shared` (api, zaman aşımı) |
+| `app/api/{settings,categories,overrides,runs,run,health}/route.ts` | Panel API'leri, hepsi `guard()` ile korumalı |
 | `lib/server.ts`, `lib/supabase-browser.ts` | Supabase istemcileri ve yetki kontrolü |
 | `supabase/schema.sql` | Tablolar (ayrıca `existing_price_policy` kolonu) |
 
@@ -64,6 +65,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - `floor`: sadece formül fiyatı mevcuttan yüksekse yükselt, mevcut fiyatı asla düşürme.
 - `keep`: fiyata dokunma, sadece stok güncelle.
 - `formula`: her ürünü formül fiyatına eşitle (fiyatlar düşer).
+- `smart` (16.10, önerilen): formülün altındakini yükselt, üstündekini her çalışmada en fazla %10 düşür; 300 TL eşiğinin hemen üstündeki (300–~410) ürünleri doğrudan 299,90'a indir (hem ucuz hem kârlı).
 - Nedeni: ürünleri yükleyen kişinin fiyatları zaten hedef kârın üstünde. `formula` modu 14 bin ürünün fiyatını gereksiz düşürürdü.
 
 **Barkod/eşleştirme kuralı (kritik):**

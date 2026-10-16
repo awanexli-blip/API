@@ -38,7 +38,7 @@ Geriye uyumlu migration (`add column if not exists`, varsayılan `'trendyol'`).
 - [ ] `sync_runs.marketplace` kolonu.
 - [ ] Worker: ayarları pazaryerine göre birleştir, `category_map`/`overrides` filtrele.
 
-## P3 — Panel: pazaryeri sekmeleri (Vercel)
+## P3 — Panel: pazaryeri sekmeleri (Vercel) — iskelet bitti (16.10): üst sekmeler, Trendyol alt sekmeleri, yakında sekmeleri, sistem durumu
 
 Üst seviye sekmeler: **Trendyol · Hepsiburada · N11 · Amazon TR** (+ ortak "Genel": kur, XML, fiyat formülü varsayılanları). Her pazaryeri sekmesinde:
 

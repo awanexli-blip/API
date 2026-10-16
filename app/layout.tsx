@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Trendyol Kontrol Paneli",
+  title: "Pazaryeri Paneli",
   robots: { index: false, follow: false },
 };
 
