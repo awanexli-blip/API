@@ -1,0 +1,785 @@
+{
+"source": "Hepsiburada kategori bazlı komisyon (EK.4, kullanıcı PDF 16.10.2026). Tüm komisyonlar listeleme fiyatı üzerinden +KDV.",
+"rows": [
+{
+"text": "Altın Altın Yatırım Gram Altın, Tam Altın, Yarım Altın, Çeyrek Altın, Hesaba Altın, 22 Ayar Bilezik",
+"rate": 0.06,
+"vade": "Teslimat+7 İş Günü"
+},
+{
+"text": "Aksesuar Altın / Takı / Mücevher Halhal&Ayak Aksesuarları, Bijuteri Bileklik, Çelik Bileklik, Gümüş Bileklik, Choker, Bijuteri Kolye, Çelik Kolye, Gümüş Küpe, Gümüş Kolye",
+"rate": 0.1864,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Aksesuar Saat/Gözlük Güneş Gözlüğü, Kol Saatleri, Duvar Saatleri, Saat Aksesuarları",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Aksesuar Aksesuar Atkı, Atkı & Bere & Eldiven Set, Bere, Boyunluk, Eldiven, Kemer, SaçAksesuarı, Kravat & Pantolon Askısı, Kol Düğmesi, Şapka",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Çanta Valiz Bavul Valiz, Bavul, Seyahat Çantası",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Çanta Çanta Spor Çanta, Sırt Çantası, Abiye Çanta, Günlük Çanta, Plaj Çantası,Dağcılık ve Kamp Çantası",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Ayakkabı Ayakkabı Erkek Ayakkabı, Kadın Ayakkabı, Babet, Terlik, Bot, Çizme",
+"rate": 0.1949,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Giyim Giyim Bluz, Etek, Ceket, Pantolon, Gömlek, Tişört, Çocuk Giyim, Mont,Kaban Alt Giyim, Üst Giyim, İç Giyim, Çoraplar",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Giyim Bebek Giyim Patik, Ayakkabı, Bebek Pijama, Bebek Pantolon, Takımlar",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Parfüm Parfümler Kadın Parfüm, Erkek Parfüm, Parfüm Seti",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Outdoor- Deniz Outdoor-Deniz Ekipmanları Kamp Kampçılık, Fener, Askeri Giyim ve Malzemeler, Kış Sporları, Doğa Sporları (Dalış, Tırmanış), Şişme Su Ürünleri, Kara AvMalzemeleri, Sea Scooter, Deniz Ekipmanları",
+"rate": 0.14,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Outdoor- Deniz Outdoor-Deniz Ekipmanları Balık Av Malzemeleri",
+"rate": 0.16,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Outdoor- Deniz Outdoor-DenizEkipmanları Tekne Ürünleri, GPS, Teleskop ve Dürbün",
+"rate": 0.12,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Spor & Outdoor Giyim & Ayakkabı Spor Ayakkabı (Günlük, Koşu, Spor Branşlar), Outdoor Ayakkabı, Outdoor Giyim, Spor Giyim (Tişört, Tayt, Sweatshirt, Şort, Eşofman, Üst Giyim, Alt Giyim), Bisiklet Giyim, Spor Branşları Giyim, Taraftar Giyim, Spor Çanta",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Spor & Outdoor Outdoor-DenizEkipmanları Tekne, Tekne Motoru, Zodyak Bot, Balık Bulucu",
+"rate": 0.0847,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Spor & Outdoor Spor Aletleri Koşu Bandı, Kondisyon Bisikleti",
+"rate": 0.1,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Spor & Outdoor Fitness ve Kondisyon Ekipmanları Vücut Geliştirme Aletleri, Vücut Geliştirme Ekipmanları, İnversiyon Aletleri, Masaj Koltuğu, Kürek, Fitness ve Kondisyon Ekipmanları,Pilates Topu, Dambıl",
+"rate": 0.13,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Spor & Outdoor Bisikletler ve Paten Bisiklet, Elektrikli Bisiklet ,Elektrikli Scooter",
+"rate": 0.1,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Spor Branşları Spor Branşları Futbol, Basketbol, Tenis, Yüzme, Atletizm, Binicilik, Voleybol,Kaykay/Paten ve Diğer Spor Branşları Malzeme ve Ekipmanları",
+"rate": 0.13,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Taraftar Ürünleri Taraftar Ürünleri Taraftar Ürünleri, Mug, Takı & Aksesuar, Hediyelik",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Cep Telefonu Cep Telefonu Android Telefonlar, Iphone, Cep Telefonları",
+"rate": 0.07,
+"vade": "Teslimat+14 İş Günü"
+},
+{
+"text": "Cep Telefonu Cep Telefonu Yenilenmiş-İkinci El Telefon , Diğer (tuşlu ) Telefonlar",
+"rate": 0.085,
+"vade": "Teslimat+14 İş Günü"
+},
+{
+"text": "Bilgisayar Tablet Tabletler, Ipad, Galaxy Tablet",
+"rate": 0.07,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Taşınabilir Bilgisayar Taşınabilir Bilgisayar, Monitör PC (All-in-One), Mini PC",
+"rate": 0.07,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Bilgisayar Bileşenleri &Çevre Birimleri Taşınabilir SSD, SSD",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Bilgisayar Bileşenleri Ana Kart , Ekran kartı, Ram , İşlemciler, Bilgisayar Kasaları",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Bilgisayar Bileşenleri Barkod Etiketi, Ribon, Yazıcı Şeritleri",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Bilgisayar Bileşenleri Ek Güvence Paketleri TV, Dijital Yayın Paketleri",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Bilgisayar Bileşenleri Masaüstü Bilgisayar, Serverlar",
+"rate": 0.07,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Bilgisayar Bileşenleri Dokunmatik Pos PC",
+"rate": 0.17,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Projeksiyon &Aksesuarları Projeksiyon Aksesuarları",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Projeksiyon &Aksesuarları Projeksiyon Cihazı",
+"rate": 0.11,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Yazıcılar ve Aksesuarları Yazıcılar",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Yazıcılar ve Aksesuarları Drum, Kartuş, Toner, Yazıcı Yedek Parça & Aksesuarları",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Ağ/Modem, Akıllı Ev Modemler, Network Aksesuarları, Wireless Adaptör",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Çevre Birimleri Bluetooth Ürünler, Hard Diskler, Klavye & Mouse ve Setler,Taşınabilir Disk, Usb Bellek",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Çevre Birimleri Adaptörler, Dvd/Hdd Kasaları, Usb / Firewire Ürünleri, Mouse Pad,Taşınabilir Disk Aksesuarları",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Bilgisayar Yazılım Yazılım, Online Lisans, Antivirüs, Microsoft Yazılımlar, OfficeYazılımları, Ticari Yazılımlar",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Foto-Kamera Aynasız SLR FotoğrafMakineleri Aynasız SLR Fotoğraf Makineleri",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Foto-Kamera Fotoğraf ve Kamera Aksesuarları Lensler, Fotoğraf Çerçeveleri, Fotoğraf Filmi & Kağıtları, Fotoğraf ve Kamera Aksesuarları, Objektifler, Filtreler, Pil ve Şarj Cihazları, SLR Lensleri, Tripod, Taşıma Çantaları, Su altı Kılıfları, Foto-Kamera (Diğer)",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Foto-Kamera Drone & DroneAksesuarları Drone",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Foto-Kamera Drone Aksesuarları Drone Yedek Parçaları, Aksesuarları",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Foto-Kamera Fotoğraf Makineleri &Video Kameralar SLR Dijital Fotoğraf Makinesi, Dijital Fotoğraf Makinesi, FilmliFotoğraf Makineleri, Video Kameralar, Aksiyon Kameralar",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Aksesuarları & Ses ve Navigasyon Sistemleri Transmitter",
+"rate": 0.14,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Aksesuarları & Ses ve Navigasyon Sistemleri Cd-Mp3 Çalar, Oto Hoparlör, Oto Ses Görüntü Sistemleri, Usb-Sd Çevirici Modül, Pandizot",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Aksesuarları & Ses ve Navigasyon Sistemleri Teyp Çerçeveleri, Navigasyon Harita",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Aksesuar Karavan & Aksesuarları",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Aksesuar Trafik Setleri ve Ürünleri",
+"rate": 0.19,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç İçi Ekipman &Aksesuarlar Cam ve Güneşlik Ürünleri",
+"rate": 0.2,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç İçi Ekipman &Aksesuarlar Seyahat Ürünleri",
+"rate": 0.17,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç İçi Ekipman &Aksesuarlar Mobil Elektrik",
+"rate": 0.16,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç İçi Ekipman &Aksesuarlar Anahtarlıklar , Araç İçi Aksesuarlar, Direksiyon Ürünleri, Kolçaklar,Korna ve Sirenler, Torpido Aksesuarları",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç Dış Aksesuarlar & Temizlik Ürünleri & Oto Aksesuar Araç Dış Aksesuar , Tuning, Alarm , Park Sensörü , Arma, Ayna Aksesuarları, Anatomik Spoiler, Body Kitler, Egzos uçları, Fosfor Şeritler, Krom Aksesuarlar, Oto Rüzgarlıkları, Oto Servis Makineleri",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç Dış Aksesuarlar & Temizlik Ürünleri & Oto Aksesuar Brandalar",
+"rate": 0.17,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç Dış Aksesuarlar & Temizlik Ürünleri & Oto Aksesuar Araç Uygulama Paketleri, Oto El Aletleri, Çift Taraflı Bantlar, Lastik Zincirleri, Jantlar & Jant Kapakları",
+"rate": 0.16,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Araç Dış Aksesuarlar &Temizlik Ürünleri Araca Özel Boyalar, Araç Bakım Temizlik Ürünleri",
+"rate": 0.14,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Motosiklet Lastik Motosiklet Lastikleri",
+"rate": 0.09,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Lastik Oto Lastik",
+"rate": 0.09,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Yedek parça Ateşleme Sistemi,Yürüyen Aksam, Kaporta, Filtre, Elektrik Aksam, Debriyaj, Mekanik Aksam, Motor Aksamı, Ayna, İş Makinesi & Traktör Yedek Parçaları",
+"rate": 0.2,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Oto Aksesuar Akü Akü ve Aksesuarları",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Motosiklet Aksesuarları Motosiklet Çantaları, Motosiklet Giyim, Motosiklet Aksesuar veKoruma",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Motosiklet Aksesuarları Motosiklet Modelleri",
+"rate": 0.06,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Yakıt ve Yağ Katkıları Hidrolik Yağ, Şanzıman Yağı, Yağ Katkıları, Motor Yağı",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oto Aksesuar Traktör Lastikleri Traktör Lastikleri",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "SDA Süpürge & Ütüler Dikey Süpürge, Sulu Süpürge, Buhar Kazanlı Ütü, Buharlı Ütü,",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "SDA Süpürgeler Toz Torbalı Süpürge, Toz Torbasız Süpürge, Robot Süpürge",
+"rate": 0.11,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "SDA Süpürgeler Buharlı Temizlik Makineleri, Halı Yıkama Makineleri",
+"rate": 0.13,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "SDA Aksesuar, Yedek Parça Süpürge Aksesuarları, Elektrikli Mutfak Aleti Yedek Parça & Aksesuarları, Dikiş Makinesi Aksesuarları, Kahve Makinesi Aksesuarları , Epilatör Başlıkları ve Yedek Parçalar , Hava Temizleme Cihazı Aksesuarları, Traş Makinesi Aksesuarları",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "SDA Mutfak Gereçleri & Pişirme-Hazırlama Blender, Çay Makineleri, Tost Makinesi, Kahve Makineleri , Dikiş Makineleri, Su Isıtıcıları, Fritözler, Meyve Sıkıcılar, Mini-Midi Fırınlar, Mikser, Doğrayıcı / Rondo, Elektikli Izgara-Barbekü, Mutfak Robotları, Ekmek Kızartma, Ekmek Yapma Makinesi, Kahve Öğütücü, Kıyma Makineleri, Elektrikli Tencere/Tavalar, Hava Temizleme & Nemlendirme Cihazları, Elektrikli Çeyiz Seti, Mısır Patlatma Makinesi, Mutfak Şefi, Waffle Makineleri, Yoğurt Makinesi, Yumurta Pişirme, Buharlı Pişirici",
+"rate": 0.13,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "SDA Mutfak Gereçleri &Pişirme-Hazırlama Endüstriyel Mutfak Ürün ve Gereçleri, Mutfak Tartıları",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "SDA Elektrikli Kişisel BakımAletleri Saç Sakal Düzeltme Makineleri, Tıraş Makineleri, Epilatörler, SaçKurutma Makineleri, Saç Şekillendiriciler",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "MDA- Beyaz Eşya Bulaşık, Çamaşır, Kurutma Makinesi ve Buzdolabı Bulaşık Makinesi, Buzdolabı, Çamaşır Makinesi, Derin Dondurucu, Çamaşır Kurutma Makinesi, Kurutmalı Çamaşır Makinesi, Klima , Kombi",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "MDA- Beyaz Eşya Ev Isıtma & Soğutma Sistemleri Hava Perdeleri, Portatif Soğutucular, Sobalar & Isıtıcılar, Şofbenler, Termoboyler, Termosifonlar, Su Sebili, Isıtma Soğutma (Diğer)",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "MDA- Beyaz Eşya Ankastre & Pişirme Grubu Ankastre Setler, Aspiratör, Davlumbaz, Fırınlar, Mikrodalga Fırın, Ocaklar, Beyaz Eşya Paketleri",
+"rate": 0.12,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "MDA- Beyaz Eşya Beyaz Eşya Yedek Parça & Aksesuar Beyaz Eşya Yedek Parça & Aksesuar, Ek Güvence Paketleri, Vantilatör, Isıtma - Soğutma yedek parça",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "MDA- Beyaz Eşya Beyaz Eşya Yedek Parça & Aksesuar Ek Güvence Paketleri",
+"rate": 0.085,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "TV LCD Televizyon LCD Televizyon, LED Televizyon, Smart TV",
+"rate": 0.0834,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Anne Bebek Ürünleri Anne / Bebek Bakım Bebek Bezi,Mayo Bebek Bezi,Islak Mendil",
+"rate": 0.13,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Anne Bebek Ürünleri Anne / Bebek Bebek Beslenme Gereçleri, Bebek Arabası, Oto Koltuğu Ana Kucağı, Mama Sandalyesi, Bebek Güvenlik, Bebek Bakım ve Sağlık, Bebek Odası, Beşik, Emzirme ve Anne Sağlık, Bebek Aktivite, Bebek Taşıma, Bebek Hediyelik, Bebek Banyo Tuvalet",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Anne Bebek Ürünleri Anne / Bebek Bakım Bebek Kremi ve Yağı, Bebek Güneş Kremi, Bebek Şampuanı, Bebek Bakım Seti",
+"rate": 0.18,
+"vade": "Mustela, Sudocrem, Bepanthol 13,00% Teslimat+24 iş Günü"
+},
+{
+"text": "Anne Bebek Ürünleri Anne / Bebek Beslenme Biberon Maması, Kavanoz Mama, Devam Sütü, Kaşık Maması",
+"rate": 0.06,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Anne Bebek Ürünleri Anne / Bebek Beslenme Organik Meyve Suları, Bebek Meyve Suyu, Özel Mamalar",
+"rate": 0.11,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Cilt Bakımı Cilt Bakım Cilt Bakım Seti & Ürünleri ,Güneş Koruma ve Sonrası",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Cilt Bakımı Cilt Bakım / Saç Bakım Hindistan Cevizi Yağı",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Saç Bakım Saç Bakım Saç bakımı, Peruk, Çıtçıt ve Postiş, Saç Boyası, Şampuan",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Makyaj Makyaj Ürünleri Oje, Ruj, Eyeliner, Rimel, Fondöten, Pudra, Allık, Highlighter, Far veFar Paletleri, Makyaj Temizleme Ürünleri, Maskara",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Petshop Petshop Beslenme Kedi Maması, Köpek Maması, Kedi Kumları",
+"rate": 0.14,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Petshop Petshop Beslenme Yem, Bisküvi, Kraker, Ödül, Vitamin",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Petshop Petshop Aksesuar Kedi Bakım Ürünleri, Kedi Tuvalet Kabı ve Aksesuarları, Tırmalama Tahtası, Balık Yemleri, Tuzlu Su Akvaryum Malzemeleri, Akvaryum Filtreleri, Hamster Ürünleri, Tavşan Ürünleri, Kaplumbağa Ürünleri, Kuş Yemleri, Diğer Petshop Ürünleri,",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Sağlık Kişisel Bakım Ürünleri Ağız Bakım Ürünleri Diş Fırçaları, Diş İpleri, Gargara, Diş Macunu, Yedek Başlıklar",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Sağlık Kişisel Bakım Ürünleri Ağız Bakım Ürünleri Şarj Edebilir Diş Fırçası/Pilli Diş Fırçası",
+"rate": 0.145,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Sağlık Kişisel Bakım Ürünleri Sağlık / Kişisel Bakım Ürünleri Sağlık Ürünleri, Besin Takviyeleri, Duş ve Banyo Ürünleri, Deodorant, Medikal Ürünler, Kadın Pedleri & Hijyen Ürünleri, Sporcu Besinleri, El ve Cilt Dezenfektan, Maske, Kolonya",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Sağlık Kişisel Bakım Ürünleri Sağlık / Kişisel Bakım Ürünleri Hasta Bezi",
+"rate": 0.13,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Sağlık Kişisel Bakım Ürünleri Sağlık / Kişisel Bakım Ürünleri Aile Planlaması Ürünleri, Yetişkin Ürünler +18",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Sağlık Kişisel Bakım Ürünleri Güzellik Salonu & Kuaför Ürünleri Güzellik Salonu & Kuaför Ürünleri, Ayak & Tırnak Bakımı, Tıraş, Ağda ve Epilasyon, Erkek Tıraş Ürünleri",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Ev Bakım ve Temizlik Deterjanlar, Temizlik Malzemeleri, Kağıt Ürünleri ve Mutfak Sarf Malzemeleri Toz/Sıvı Deterjanlar, Yüzey Temizleyiciler, Çamaşır ve Bulaşık Deterjanları & Kapsülleri, Yumuşatıcılar, Leke Çıkarıcılar, Mop ve Temizlik Setleri, Tuvalet Kağıdı, Kağıt Havlu, Peçete, Kullan At Ürünler, Yüzey ve Ortam Dezenfektanları",
+"rate": 0.15,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Temel Tüketim ve Gıda İçecek ve Gıda Ürünleri Çay, Kahve, Gazlı ve Gazsız İçecekler, İçecek Şuruplar, Sıvı Yağlar, Kuruyemiş, Baharat, Aktar Ürünleri, Kahvaltılık, Atıştırmalıklar, Şarküteri, Yemek Sosları, Hazır Yemek ve Konserve , Gıda Ürünleri",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Bahçe Bungalov Ev Bungalov Ev, Ahşap Çocuk Oyun Evi",
+"rate": 0.09,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Bahçe Bahçe Dekorasyon veBakım Bahçe Dekorasyonu, Bahçe Kovucular, Havuz Ürünleri",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Bahçe Bahçe Dekorasyon veBakım Çiçek Bakım & Bitki Yetiştirme",
+"rate": 0.2,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Bahçe Bahçe Mobilyası Bahçe Masası, Bahçe Sandalyesi, Bahçe Salıncağı, Bahçe OturmaGrubu, Puf, Minder, Şezlong, Hamak",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Bahçe Mangal / Barbekü Mangal / Barbekü, Mangal Aksesuarları, Piknik Seti",
+"rate": 0.15,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Bahçe Bahçe Makineleri Elektrikli El Aletleri , Bahçe Makineleri",
+"rate": 0.14,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Banyo & Ev Gereçleri Batarya, Musluk, Duş Sistemleri, Vitrifiyeler, Duşa Kabin",
+"rate": 0.15,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Banyo & Ev Gereçleri Boya ve Aksesuarları",
+"rate": 0.16,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Banyo & Ev Gereçleri Banyo Dolap , Banyo Aksesuar",
+"rate": 0.16,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Hırdavat Endüstriyel Temizlik Ürünleri, Mekanik El Aletleri, Seramik, Fayans & Karo, Laminant Parke, Ham Madde, Menteşe, Yıldırımdan Korunma Sistemleri, Parke, Seramik Malzemeleri, Mobilya Hırdavatı",
+"rate": 0.2,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Hırdavat Merdivenler , İş güvenliği Ürünleri , Genel Hırdavat & NalburiyeÜrünleri , İnşaat Malzemeleri",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Aydınlatma Ürünleri Aydınlatma Ürünleri, Plafoyerler, Abarjurlar, Avizeler, Sarkıt Avizeler, Aplikler, Lambaderler, Masa Lambaları, Gece Lambaları, Dekoratif Aydınlatmalar, Yılbaşı Aydınlatmaları, Çocuk Odası Aydınlatmaları",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Elektrik ve Aydınlatmaürünleri Ampül, Anahtar, Priz, Grup Priz, Elektrik Ürünleri",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Yapı Market Jeneratör Benzinli ve Dizel Jeneratörler",
+"rate": 0.14,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Ev Tekstili Yatak Odası Tekstili Yataklar, Perdeler, Nevresim Takımları, Yastıklar, Yorganlar, Yatak Örtüleri, Pike Takımları, Alez, Battaniyeler, Koltuk Örtüleri, Uyku Setleri, Çarşaf ve Yastık Kılıfı, Dekoratif Kırlentler",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Ev Tekstili Halı & Kilim Halı, Kilim, Yer Paspasları, Yolluklar",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Ev Tekstili Banyo Tekstili Bornoz Setleri, Banyo Klozet Takımları, Havlular",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Ev Tekstili Mutfak Tekstil Mutfak Tekstili, Masa Örtüleri, Fırın Eldivenleri, Runner",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Mobilya Dekorasyon Dekorasyon, Tekstil Saklama Ürünleri",
+"rate": 0.22,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Mobilya Ofis Dekorasyon Ofis Masası, Ofis Sandalyesi, Bekleme Koltukları, Ofis Çöp Kovası,Dosya Dolapları",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Mobilya Ev Mobilya Mobilya, Sandalyeler, Koltuklar, Tabureler",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Mobilya Yatak Odası Takımları Yatak Odası Takımları, Genç Odası Takımları",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Züccaciye Sofra & Mutfak Gereçleri Sofra Mutfak Gereçleri, Tencereler, Tavalar, Düdüklü Tencelere, Ev Gereçleri, Yemek Takımı, Cam Ürünleri, Porselenler, Çatal / Katış / Bıçak Takımları, Çaydanlık & Cezveler, Servis Tabakları, Pratik Ev Gereçleri",
+"rate": 0.18,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Oyuncak Oyuncak Ahşap Oyuncaklar, Aktivite Setleri, Akülü Araçlar, Bahçe Oyuncakları, Bebek Oyuncakları, Bebekler, Bilim Oyuncakları, Bisiklet ve Scooterlar, Çocuk Kutu Oyunları, Evcilik Oyuncağı, Figür Oyuncaklar, Hayal Kahramanları, Helikopter ve Uçaklar, Kostümler, Kumandasız Arabalar, Laptoplar, Müzik Aletleri, Oyun Çadırı, Oyun Hamurları, Oyun Setleri, Oyuncak, Parçalı Setler, Pedallı Araçlar, Puzzle, Spor Oyuncakları, Su ve Balon Tabancaları, Uzaktan Kumandalı Araba, Yapbozlar (Puzzle), Scooter",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Kırtasiye ve Ofis Ofis Makineleri Ofis Makineleri",
+"rate": 0.1271,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Kırtasiye ve Ofis Fotokopi Kağıtları Fotokopi Kağıtları, A3 Kağıtlar, A4 Kağıtlar, A5 Kağıtlar",
+"rate": 0.07,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Kırtasiye ve Ofis Ofis Makineleri Para Kasası",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Kırtasiye ve Ofis Piller ve Şarj Cihazları Piller ve Şarj Cihazları",
+"rate": 0.1356,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Kırtasiye ve Ofis Kırtasiye ve Ofis Ürünleri ve Sanatsal Malzeme Kırtasiye Ürünleri ve Sanatsal Malzemeler",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Kırtasiye ve Ofis Kırtasiye ve Ofis Ürünleri ve Sanatsal Malzeme Ajandalar",
+"rate": 0.17,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Film Film Film, Poster",
+"rate": 0.085,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Kitap Kitap Edebiyat, Akademik Kitaplar, Hobi Kitapları, Çocuk Kitapları, E-Kitap Okuyucu, Dergi , İthal kitaplar, Eğitim, Film Figür / Aksesuarları , Kitap Okuma Aksesuarları",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Müzik Müzik Alet ve Ekipmanları Amfi, Bateri, Davul, Kayıt Teknolojileri, Pikap, Telli Çalgılar, Yaylı Çalgılar , Plak, Kabin-Hoparlör-Monitör, Tuşlu Çalgılar",
+"rate": 0.12,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Müzik Müzik Alet ve Ekipmanları Nefesli Çalgılar, Mikrofon,Kulaklık, Vurmalı Çalgılar - Perküsyon, Müzik Ekipmanları - Aksesuarları",
+"rate": 0.14,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Müzik Müzik Alet veEkipmanları Albüm, Işık Sistemleri, Poster",
+"rate": 0.15,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Dijital Ürünler Dijital Ürünler 1 Dijital Dergi , E-Kitap, Etkinlik, Aktivite, Fırsat Menüleri, Online Lisans, Sinema Bileti, Spor Hizmet, Online Eğitimler, Oyun Pinleri, Dijital Oyunlar, Digital Yayınlar",
+"rate": 0.0805,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Dijital Ürünler Dijital Ürünler 2 Film, Dizi, Yayın Paketleri, Gezi & Tatil Turları, Kuru Temizleme, SesliKitap, Ön Ödemeli Kartlar",
+"rate": 0.0847,
+"vade": "Teslimat+24 İş Günü"
+},
+{
+"text": "Cep Telefonu aksesuarları Cep Telefonu Aksesuarları 1 Grafik Tabletler, Kulak İçi Kulaklık, Kulak Üstü Kulaklık, Taşınabilir Hoparlörler",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Cep Telefonu aksesuarları Cep Telefonu Aksesuarları 2 Araç İçi Telefon Tutacakları, Bluetooth Araç Kitleri, Bluetooth Kulaklık Aksesuarları, Telefon Kulaklıkları, Akıllı Saat ve Bileklik Aksesuarları, Kulaklık Aksesuarları, Taşınabilir Şarj Cihazları, Akıllı Gözlükler Sanal Gerçeklik Gözlüğü, Araç Şarj Cihazları",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Cep Telefonu aksesuarları Cep Telefonu Aksesuarları 3 Data&Şarj Kabloları, Notebook Aksesuarları",
+"rate": 0.2,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Cep Telefonu aksesuarları Cep Telefonu Aksesuarları 4 Notebook Çantası, Tablet Aksesuarları",
+"rate": 0.2,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Cep Telefonu aksesuarları Cep Telefonu Aksesuarları 5 Batarya, Cep Telefonu Yedek Parçaları, Selfie Çubuğu, Telefon Kılıflar, Telefon Oyun Aksesuarları",
+"rate": 0.25,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Cep Telefonu aksesuarları Telsiz Masaüstü Telefonlar Dect Telsiz Telefon ve Aksesuarları, GPS Takip Cihazları, Lisanssız Telsizler, Operatör Başlıkları, Sabit Telefon ve Aksesuarları, Telefon Santrali ve Aksesuarları",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Cep Telefonu aksesuarları Akıllı Saat-Bileklik & Bluetooth Kulaklıklar Akıllı Bileklik, Akıllı Saatler, Bluetooth Kulaklıklar",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Oyun Konsolu Xbox Konsol, Psp / Vita Konsol , Playstation 4 Konsol , Playstation 5Konsol, Nintendo Konsol",
+"rate": 0.06,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Oyun Konsolu Playstation 2 Konsol , Playstation 3 Konsol , İkinci El Konsol",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Oyun Konsolu Diğer Oyun Konsolları",
+"rate": 0.085,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Konsol Oyunları PS5 Oyunları, PS4 Oyunları, Xbox One Oyunları, Nintendo Oyunları,Bilgisayar Oyunları, PSP Oyunları",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Konsol Oyunları PS2 Oyunları, PS3 Oyunları, Psp Vita Oyunları, Xbox 360 Oyunları",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Konsol Aksesuarları PS4 Aksesuarlar, PS5 Aksesuarlar, Playstation 4 VR, Xbox Aksesuarları, Nintendo Aksesuarları, PC Oyun Aksesuar, Simülasyon Aksesuarları",
+"rate": 0.1,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Konsol Aksesuarları PS3 Aksesuarlar, PSP / Vita Aksesuarları, PS2 Aksesuarlar",
+"rate": 0.15,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Oyun Konsol Oyun Ödeme Kartları Dijital Oyun Kartları, Oyun Ödeme Kartları, Dijital BilgisayarOyunları, Dijital Konsol Oyunları",
+"rate": 0.085,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "NonTV Televizyon veElektronik Aksesuarları Alarm Sistemleri Aksesuarları, Ses ve Görüntü Kabloları, Güç Kabloları, Uydu Alıcıları, Güvenlik Cihazları, TV Ekran Koruyucular,Hoparlör Ayakları & Askıları, Mikrofon, Network Kabloları",
+"rate": 0.1667,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "NonTV Televizyon veElektronik Aksesuarları Uydu Alıcısı Aksesuarları, Ekran Temizleme Ürünleri,Temizlik Ürünleri",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "NonTV Televizyon veElektronik Aksesuarları Alarm Saatli Radyolar,Çizici (Plotter),Kablo & Soketler,Kablolar,Kablosuz Ses & Görüntü Aktarıcılarlar,Konnektör,Mikrofonlar,Receiver,Ses Sistemleri,Splitter,Switch Box Ve Çoklayıcılar,Tv Askı Aparatları,TV Ekran Koruyucular,TV Montaj,TV Yedek Parçaları,Uydu Alıcıları,Uzaktan Kumandalar",
+"rate": 0.1667,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "NonTV Dijital ve GüvencePaketleri Ek Güvence Paketleri TV, Dijital Video İşleme Yayın Paketleri",
+"rate": 0.2,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "NonTV Ev Güvenlik Ürünleri Güvenlik Kamerası, Dedektör, Webcam, Akıllı Priz , Akıllı Kumanda, Akıllı Ev Sistemleri, Kamera Sistemi, IP Network Kameralar, Dome Kameralar, IP kameraları, Gece Görüşlü Kamerlar, Sahte Caydırıcı Kamera",
+"rate": 0.14,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "NonTV Ev Sinema ve Ses Sistemleri Sinema Sistemi, Soundbar, Subwoofer (Ev Tipi), Stereo Amfiler, Media Player, Ses Kayıt Cihazları, Bluetooth Hoparlör, Ses Bombası Hoparlörler, Müzik Seti, Pikap, Portatif Sistemler, Taşınabilir Amfili Hoparlörler, Speaker,Görüntü Çoklayıcı",
+"rate": 0.1667,
+"vade": "Teslimat+24 iş Günü"
+},
+{
+"text": "Hobi-Oyun Hobi, Oyun Eğlence Ürünleri Akıl Oyunları, Diecast Modeller, Figür Modelleri, Hobby, İlginç Ürünler, Kostüm ve Aksesuarları, Kutu Oyunları, Maket, Maket Aksesuarları, Metal Model Arabalar, Mıknatıslar, Oyun Takımı Aksesuarları, Oyun Takımları, Puzzlelar ve Aksesuarları, Rc Araç Yedek Parçaları, Rc Araç Ekipmanları, Uzaktan Kumandalı Arabalar, Uzaktan Kumandalı Elektrikli Uçaklar, Uzaktan Kumandalı Helikopterler, Uzaktan Kumandalı Tekneler",
+"rate": 0.18,
+"vade": "Teslimat+24 iş Günü"
+}
+]
+}

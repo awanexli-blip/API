@@ -18,17 +18,46 @@ const mode = process.argv[2] ?? "preview";
 const marketplaceId = process.argv[3] ?? process.env.MARKETPLACE ?? "trendyol";
 const trigger = process.env.TRIGGER ?? "manual";
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
-const mp = getMarketplace(marketplaceId);
 // Trendyol dosya adı eskisi gibi kalır (panel/CLAUDE.md buna atıfta bulunuyor)
-const previewFile = mp.id === "trendyol" ? "preview.csv" : `preview_${mp.id}.csv`;
+const previewFile = marketplaceId === "trendyol" ? "preview.csv" : `preview_${marketplaceId}.csv`;
+// Migration 002 (marketplace kolonları) çalıştırıldı mı? Çalıştırılmadıysa Trendyol eskisi gibi filtresiz okur/yazar.
+let mpColumns = true;
+
+// Pazaryerine ait satırlar (category_map, product_overrides)
+async function mpRows(table: string): Promise<any[]> {
+  const r = await db.from(table).select("*").eq("marketplace", marketplaceId);
+  if (!r.error) return r.data ?? [];
+  if (marketplaceId !== "trendyol") throw new Error(`${table} okunamadı. Supabase migration 002 çalıştırıldı mı? (${r.error.message})`);
+  mpColumns = false;
+  return (await db.from(table).select("*")).data ?? [];
+}
+
+// Ortak ayarlar (settings) + pazaryerine özel ayarlar (marketplace_settings, dolu alanlar ezer)
+async function loadSettings(): Promise<any> {
+  const { data: base, error } = await db.from("settings").select("*").eq("id", 1).single();
+  if (error || !base) throw new Error("Ayarlar okunamadı: " + error?.message);
+  if (marketplaceId === "trendyol") return base;
+  const { data: ms, error: me } = await db.from("marketplace_settings").select("*").eq("marketplace", marketplaceId).maybeSingle();
+  if (me) {
+    if (trigger === "schedule") return { ...base, enabled: false }; // migration öncesi zamanlı çalışma sessizce atlanır
+    throw new Error(`marketplace_settings okunamadı. Supabase migration 002 çalıştırıldı mı? (${me.message})`);
+  }
+  if (!ms) return { ...base, enabled: false };
+  const merged: any = { ...base };
+  for (const [k, v] of Object.entries(ms)) if (v != null) merged[k] = v;
+  return merged;
+}
 
 async function main() {
-  const { data: s, error: se } = await db.from("settings").select("*").eq("id", 1).single();
-  if (se || !s) throw new Error("Ayarlar okunamadı: " + se?.message);
-
+  const s = await loadSettings();
+  if (s.enabled === false) return { skippedRun: `${marketplaceId} panelde kapalı` };
   if (mode === "auto" && trigger === "schedule" && !s.auto_sync) {
     return { skippedRun: "otomatik senkronizasyon kapalı" };
   }
+  // Kimlik bilgileri tanımlı değilse zamanlanmış çalışma sessizce atlanır, elle çalıştırmada hata verir
+  let mp;
+  try { mp = getMarketplace(marketplaceId); }
+  catch (e: any) { if (trigger === "schedule") return { skippedRun: e.message }; throw e; }
   const doUpdate = mode === "update" || mode === "auto";
   const doCreate = mode === "create" || (mode === "auto" && s.auto_create);
 
@@ -37,16 +66,18 @@ async function main() {
     shippingCost: Number(s.shipping_cost), freeShippingThreshold: Number(s.free_shipping_threshold),
     minMarkup: Number(s.min_markup), fixedCost: Number(s.fixed_cost),
     minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price),
+    commissionPlusVat: s.commission_plus_vat === true, shippingVatIncluded: s.shipping_vat_included !== false,
   };
+  // Kargo: sabit tutar veya desi tarifesi (pazaryeri adaptörü sağlar)
+  const byDesi = s.shipping_mode === "desi" && !!mp.shippingCost;
+  const defaultDesi = Number(s.default_desi ?? 2);
   const defaultVat = Number(s.vat_rate ?? 20) / 100;
   const vatCount: Record<string, number> = {};
   const fx: Record<string, number> = { TL: 1, TRY: 1, USD: Number(s.fx_usd), EUR: Number(s.fx_eur) };
   const minStock = Number(s.min_stock);
 
-  const { data: cats } = await db.from("category_map").select("*");
-  const catMap = new Map<string, any>((cats ?? []).map((c: any) => [c.xml_category, c]));
-  const { data: ovs } = await db.from("product_overrides").select("*");
-  const ovMap = new Map<string, any>((ovs ?? []).map((o: any) => [o.barcode, o]));
+  const catMap = new Map<string, any>((await mpRows("category_map")).map((c: any) => [c.xml_category, c]));
+  const ovMap = new Map<string, any>((await mpRows("product_overrides")).map((o: any) => [o.barcode, o]));
 
   const raw = await loadXml();
   {
@@ -96,7 +127,8 @@ async function main() {
     const lsVat = listingId ? Number(lsBy.get(listingId)?.vatRate) : NaN;
     const vatRate = lsVat > 0 ? lsVat / 100 : cat?.vat_rate != null ? Number(cat.vat_rate) / 100 : defaultVat;
     vatCount[String(Math.round(vatRate * 100))] = (vatCount[String(Math.round(vatRate * 100))] ?? 0) + 1;
-    const pcfg: PricingConfig = { ...cfg, vatRate };
+    const desi = Math.max(1, Math.ceil(num(r.desi) || defaultDesi));
+    const pcfg: PricingConfig = { ...cfg, vatRate, ...(byDesi ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };
     const calc = calcPrice(cost, pcfg, comm);
 
     let price: number, sellerPays = false, net = 0, rateOut = 0;
@@ -167,8 +199,9 @@ async function main() {
   summary.sampleXml = raw.slice(0, 3).map((r) => ({ barcode: r.barcode, productCode: r.productCode, name: String(r.name ?? "").slice(0, 60) }));
 
   // Eşleşmeyen kategoriler panelde görünsün
-  await db.from("unmapped_categories").delete().neq("xml_category", "");
-  const um = [...unmapped].map(([xml_category, product_count]) => ({ xml_category, product_count }));
+  if (mpColumns) await db.from("unmapped_categories").delete().eq("marketplace", marketplaceId);
+  else await db.from("unmapped_categories").delete().neq("xml_category", "");
+  const um = [...unmapped].map(([xml_category, product_count]) => (mpColumns ? { marketplace: marketplaceId, xml_category, product_count } : { xml_category, product_count }));
   for (const part of chunk(um, 500)) await db.from("unmapped_categories").insert(part);
 
   if (doUpdate) {
@@ -204,7 +237,8 @@ async function main() {
 }
 
 (async () => {
-  const { data: run } = await db.from("sync_runs").insert({ mode, trigger, status: "running" }).select("id").single();
+  let { data: run, error } = await db.from("sync_runs").insert({ mode, trigger, status: "running", marketplace: marketplaceId }).select("id").single();
+  if (error) ({ data: run } = await db.from("sync_runs").insert({ mode, trigger, status: "running" }).select("id").single()); // migration 002 öncesi
   const id = run?.id as number;
   try {
     const summary: any = await main();

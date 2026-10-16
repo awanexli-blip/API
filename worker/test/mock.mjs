@@ -54,7 +54,15 @@ const catMap = [
   { xml_category: "Cat3", category_id: 3, commission_rate: null, vat_rate: 10, attributes: [{ attributeId: 47, customAttributeValue: "Siyah" }] },
 ];
 
-const log = { trendyolWrites: [], trendyolReads: [], summary: null, run: null };
+const log = { trendyolWrites: [], trendyolReads: [], hbWrites: [], summary: null, run: null };
+const hbSettings = { marketplace: "hepsiburada", enabled: true, auto_sync: false, auto_create: true, zero_missing: process.env.MOCK_ZERO === "1", existing_price_policy: "smart", commission_rate: 0.18, free_shipping_threshold: 0, shipping_mode: "desi", cargo_carrier: "hepsiJET", default_desi: 2, shipping_vat_included: false, commission_plus_vat: true, min_stock: 5, target_profit_rate: null };
+const hbListings = [
+  { merchantSku: "OS13-AAA", hepsiburadaSku: "HBV1", price: 100, availableStock: 5, isSalable: true },
+  { merchantSku: "ÖS13-G0et_94794", hepsiburadaSku: "HBV2", price: 2000, availableStock: 5, isSalable: true },
+  { merchantSku: "OS13-KILITLI", hepsiburadaSku: "HBV3", price: 150, availableStock: 0, isSalable: false },
+  { merchantSku: "OS13-HBYETIM", hepsiburadaSku: "HBV4", price: 50, availableStock: 3, isSalable: true },
+  ...Array.from({ length: 1500 }, (_, i) => ({ merchantSku: `BULK-${i}`, hepsiburadaSku: `HB${i}`, price: 99, availableStock: 4, isSalable: true })),
+];
 const json = (b, st = 200) => new Response(JSON.stringify(b), { status: st, headers: { "content-type": "application/json" } });
 const pageOf = (arr, u, max) => {
   const size = Number(u.searchParams.get("size"));
@@ -70,19 +78,34 @@ const pageOf = (arr, u, max) => {
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(String(url));
   const method = init.method ?? "GET";
-  const body = init.body ? JSON.parse(init.body) : undefined;
+  const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body instanceof FormData ? JSON.parse(await init.body.get("file").text()) : undefined;
+  const noMig = process.env.MOCK_NOMIG === "1"; // migration 002 çalıştırılmamış veritabanı
   if (u.host === "mock-xml") return new Response(xml, { status: 200 });
   if (u.host === "mock-supa") {
     const t = u.pathname.split("/").pop();
     const single = String(new Headers(init.headers).get("accept") ?? "").includes("vnd.pgrst.object");
     if (method === "GET") {
+      if (noMig && u.search.includes("marketplace=")) return json({ message: "column marketplace does not exist" }, 400);
       if (t === "settings") return json(single ? settings : [settings]);
+      if (t === "marketplace_settings") return json(single ? hbSettings : [hbSettings]);
       if (t === "category_map") return json(catMap);
       if (t === "product_overrides") return json([]);
     }
-    if (t === "sync_runs" && method === "POST") return json(single ? { id: 1 } : [{ id: 1 }], 201);
+    if (t === "sync_runs" && method === "POST") { if (noMig && body?.marketplace) return json({ message: "column marketplace does not exist" }, 400); log.runInsert = body; return json(single ? { id: 1 } : [{ id: 1 }], 201); }
+    if (t === "unmapped_categories" && method === "POST") log.unmapped = body;
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });
+  }
+  if (u.host === "listing-external-sit.hepsiburada.com" || u.host === "mpop-sit.hepsiburada.com") {
+    const p = u.pathname;
+    if (!String(new Headers(init.headers).get("authorization") ?? "").startsWith("Basic ")) return json({ message: "auth" }, 401);
+    if (method === "GET" && /\/listings\/merchantid\/[^/]+$/.test(p)) {
+      const off = Number(u.searchParams.get("offset")), lim = Number(u.searchParams.get("limit"));
+      return json({ totalCount: hbListings.length, listings: hbListings.slice(off, off + lim) });
+    }
+    if (method === "POST") { log.hbWrites.push({ path: p, body }); return json({ id: "trk-" + log.hbWrites.length }); }
+    if (method === "GET" && /(stock-uploads|price-uploads)\/id\//.test(p)) return json({ status: "DONE", errors: [] });
+    if (method === "GET" && p.includes("/products/status/")) return json({ status: "DONE", data: [{ merchantSku: "OS13-YENI-2", status: "FAILED", errors: ["Marka bulunamadı"] }] });
   }
   if (u.host === "apigw.trendyol.com") {
     const p = u.pathname;

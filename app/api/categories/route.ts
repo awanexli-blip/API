@@ -1,25 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { admin, guard, unauthorized, bad } from "@/lib/server";
+import { admin, guard, unauthorized, bad, mpOf, mpSelect } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
-  const db = admin();
-  const [m, u] = await Promise.all([
-    db.from("category_map").select("*").order("xml_category"),
-    db.from("unmapped_categories").select("*").order("product_count", { ascending: false }),
-  ]);
-  if (m.error) return bad(m.error.message);
+  const mp = mpOf(req);
+  if (!mp) return bad("Geçersiz pazaryeri");
+  const [m, u] = await Promise.all([mpSelect("category_map", mp, "xml_category"), mpSelect("unmapped_categories", mp, "product_count", false)]);
+  if (m.error) return bad(m.error);
   return NextResponse.json({ mapped: m.data, unmapped: u.data ?? [] });
 }
 
 export async function PUT(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
+  const mp = mpOf(req);
+  if (!mp) return bad("Geçersiz pazaryeri");
   const b = await req.json();
   const xml_category = String(b.xml_category ?? "").trim();
   const category_id = Number(b.category_id);
-  if (!xml_category || !Number.isInteger(category_id) || category_id <= 0) return bad("Kategori adı ve geçerli Trendyol kategori ID gerekli");
+  if (!xml_category || !Number.isInteger(category_id) || category_id <= 0) return bad("Kategori adı ve geçerli kategori ID gerekli");
 
   const opt = (v: unknown) => (v === "" || v == null ? null : Number(v));
   const commission_rate = opt(b.commission_rate);
@@ -35,17 +35,22 @@ export async function PUT(req: NextRequest) {
   }
 
   const db = admin();
-  const { error } = await db.from("category_map").upsert({ xml_category, category_id, commission_rate, vat_rate, attributes });
+  const row = { xml_category, category_id, commission_rate, vat_rate, attributes };
+  let { error } = await db.from("category_map").upsert({ ...row, marketplace: mp });
+  if (error && mp === "trendyol") ({ error } = await db.from("category_map").upsert(row)); // migration 002 öncesi
   if (error) return bad(error.message);
-  await db.from("unmapped_categories").delete().eq("xml_category", xml_category);
+  const del = await db.from("unmapped_categories").delete().eq("xml_category", xml_category).eq("marketplace", mp);
+  if (del.error && mp === "trendyol") await db.from("unmapped_categories").delete().eq("xml_category", xml_category);
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
+  const mp = mpOf(req);
   const xml_category = req.nextUrl.searchParams.get("xml_category");
-  if (!xml_category) return bad("xml_category gerekli");
-  const { error } = await admin().from("category_map").delete().eq("xml_category", xml_category);
+  if (!xml_category || !mp) return bad("xml_category gerekli");
+  let { error } = await admin().from("category_map").delete().eq("xml_category", xml_category).eq("marketplace", mp);
+  if (error && mp === "trendyol") ({ error } = await admin().from("category_map").delete().eq("xml_category", xml_category));
   if (error) return bad(error.message);
   return NextResponse.json({ ok: true });
 }

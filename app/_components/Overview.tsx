@@ -22,11 +22,11 @@ export default function Overview({ api, notify, marketplace }: Props) {
   // Ayarlar ve geçmiş birbirini beklemeden yüklenir
   const loadSettings = useCallback(async () => {
     setSErr("");
-    try { setS(await api("/api/settings")); } catch (e: any) { setSErr(e.message); }
-  }, [api]);
+    try { setS(await api(`/api/settings?mp=${marketplace}`)); } catch (e: any) { setSErr(e.message); }
+  }, [api, marketplace]);
   const loadRuns = useCallback(async () => {
-    try { setRuns(await api("/api/runs")); } catch (e: any) { notify("err", "Çalıştırma geçmişi okunamadı: " + e.message); }
-  }, [api, notify]);
+    try { setRuns(await api(`/api/runs?mp=${marketplace}`)); } catch (e: any) { notify("err", "Çalıştırma geçmişi okunamadı: " + e.message); }
+  }, [api, notify, marketplace]);
   const checkHealth = useCallback(async () => {
     setHealth({ loading: true });
     try { setHealth(await api("/api/health")); } catch (e: any) { setHealth({ ok: false, checks: [{ name: "Panel API", ok: false, detail: e.message }] }); }
@@ -60,7 +60,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
     if (next && !confirm("Otomatik senkronizasyon açılsın mı? Her 4 saatte bir stok ve fiyatlar güncellenir.")) return;
     setToggling(true);
     try {
-      const d = await api("/api/settings", { method: "PUT", body: JSON.stringify({ auto_sync: next }) });
+      const d = await api(`/api/settings?mp=${marketplace}`, { method: "PUT", body: JSON.stringify({ auto_sync: next }) });
       setS(d);
       if (d.auto_sync !== next) notify("err", "Ayar kaydedilemedi, sayfayı yenileyip tekrar dene.");
       else notify("good", next ? `Otomatik senkronizasyon açıldı. İlk çalışma: ${nextScheduledRun().toLocaleString("tr-TR")}` : "Otomatik senkronizasyon duraklatıldı.");

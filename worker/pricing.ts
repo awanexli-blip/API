@@ -16,6 +16,8 @@ export interface PricingConfig {
   maxPrice: number;              // bunun üstündeki ürünler atlanır
   vatRate?: number;              // ürünün KDV oranı (satış ve alış), varsayılan 0.20
   serviceVatRate?: number;       // komisyon/kargo faturası KDV'si, varsayılan 0.20
+  commissionPlusVat?: boolean;   // komisyon oranı "+KDV" mi (fatura = oran x satış + KDV). Hepsiburada: evet
+  shippingVatIncluded?: boolean; // kargo ücreti KDV dahil mi girildi (varsayılan evet). Hepsiburada tarifesi: hayır
 }
 
 export const defaultConfig: PricingConfig = {
@@ -61,8 +63,9 @@ export interface Breakdown {
 // Bir satıştaki tüm kalemler (TL)
 export function breakdown(price: number, cost: number, cfg: PricingConfig, commission: number = cfg.commissionRate): Breakdown {
   const v = vatOf(cfg), sv = svatOf(cfg);
-  const shipping = price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0;
-  const comm = price * commission;
+  // Tüm hizmet kalemleri KDV dahil tutara çevrilir (cebinden çıkan para)
+  const shipping = r2((price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0) * (cfg.shippingVatIncluded === false ? 1 + sv : 1));
+  const comm = price * commission * (cfg.commissionPlusVat ? 1 + sv : 1);
   const services = comm + shipping + cfg.fixedCost;
   const vatDue = (price - cost) * v / (1 + v) - services * sv / (1 + sv);
   const net = price - cost - services - vatDue;
@@ -77,10 +80,13 @@ export function profitOf(price: number, cost: number, cfg: PricingConfig, commis
 
 // Hedef kârı veren fiyat (yuvarlamadan önce). withShipping: kargo satıcıda
 function targetPrice(cost: number, cfg: PricingConfig, commission: number, withShipping: boolean): number {
-  const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + svatOf(cfg));
+  const sv = svatOf(cfg);
+  const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + sv);
+  const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);                                   // KDV dahil komisyon oranı
+  const ship = withShipping ? cfg.shippingCost * (cfg.shippingVatIncluded === false ? 1 + sv : 1) : 0; // KDV dahil kargo
   // net = a(P - cost) - b(cP + kargo + sabit) = t·a·P  =>  P = (a·cost + b(kargo + sabit)) / (a(1 - t) - b·c)
-  const den = a * (1 - cfg.targetProfitRate) - b * commission;
-  return den > 0 ? (a * cost + b * ((withShipping ? cfg.shippingCost : 0) + cfg.fixedCost)) / den : Infinity;
+  const den = a * (1 - cfg.targetProfitRate) - b * c;
+  return den > 0 ? (a * cost + b * (ship + cfg.fixedCost)) / den : Infinity;
 }
 
 export function calcPrice(

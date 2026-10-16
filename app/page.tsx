@@ -12,7 +12,8 @@ import Upcoming, { UPCOMING } from "./_components/Upcoming";
 
 const MARKETS: { id: string; label: string; live: boolean }[] = [
   { id: "trendyol", label: "Trendyol", live: true },
-  ...UPCOMING.map((u) => ({ id: u.id, label: u.label, live: false })),
+  { id: "hepsiburada", label: "Hepsiburada", live: true },
+  ...UPCOMING.filter((u) => u.id !== "hepsiburada").map((u) => ({ id: u.id, label: u.label, live: false })),
 ];
 
 type Sub = "ozet" | "ayarlar" | "kategoriler" | "ozel";
@@ -73,7 +74,7 @@ function Panel({ token, email }: { token: string; email: string }) {
 
   // useCallback: aksi halde her mesajda yeni fonksiyon -> alt sekmelerin load() efekti tekrar çalışır -> hata varsa sonsuz döngü
   const notify: Notify = useCallback((t, m) => { setMsg({ t, m }); window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
-  const info = UPCOMING.find((u) => u.id === market);
+  const info = MARKETS.find((m) => m.id === market)?.live ? undefined : UPCOMING.find((u) => u.id === market);
   const props = { api, notify, marketplace: market };
 
   return (
@@ -103,10 +104,12 @@ function Panel({ token, email }: { token: string; email: string }) {
               <button key={k} role="tab" aria-selected={sub === k} className="tab" onClick={() => { setSub(k); setMsg(null); }}>{label}</button>
             ))}
           </div>
-          {sub === "ozet" && <Overview {...props} />}
-          {sub === "ayarlar" && <Settings {...props} />}
-          {sub === "kategoriler" && <Categories {...props} />}
-          {sub === "ozel" && <Overrides {...props} />}
+          <div key={market}>
+            {sub === "ozet" && <Overview {...props} />}
+            {sub === "ayarlar" && <Settings {...props} />}
+            {sub === "kategoriler" && <Categories {...props} />}
+            {sub === "ozel" && <Overrides {...props} />}
+          </div>
         </>
       )}
     </div>

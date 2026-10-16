@@ -5,19 +5,19 @@ import { type Props, type Row } from "./shared";
 
 const emptyDraft = { xml_category: "", category_id: "", commission_rate: "", vat_rate: "", attributes: "" };
 
-export default function Categories({ api, notify }: Props) {
+export default function Categories({ api, notify, marketplace }: Props) {
   const [mapped, setMapped] = useState<Row[]>([]);
   const [unmapped, setUnmapped] = useState<Row[]>([]);
   const [d, setD] = useState<Row>(emptyDraft);
 
   const load = useCallback(async () => {
-    try { const r = await api("/api/categories"); setMapped(r.mapped); setUnmapped(r.unmapped); } catch (e: any) { notify("err", e.message); }
-  }, [api, notify]);
+    try { const r = await api(`/api/categories?mp=${marketplace}`); setMapped(r.mapped); setUnmapped(r.unmapped); } catch (e: any) { notify("err", e.message); }
+  }, [api, notify, marketplace]);
   useEffect(() => { load(); }, [load]);
 
   async function save() {
     try {
-      await api("/api/categories", {
+      await api(`/api/categories?mp=${marketplace}`, {
         method: "PUT",
         body: JSON.stringify({
           xml_category: d.xml_category, category_id: d.category_id,
@@ -31,7 +31,7 @@ export default function Categories({ api, notify }: Props) {
 
   async function remove(name: string) {
     if (!confirm(`"${name}" eşleşmesi silinsin mi?`)) return;
-    try { await api(`/api/categories?xml_category=${encodeURIComponent(name)}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
+    try { await api(`/api/categories?mp=${marketplace}&xml_category=${encodeURIComponent(name)}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
   }
 
   const edit = (c: Row) => {
@@ -48,16 +48,16 @@ export default function Categories({ api, notify }: Props) {
     <>
       <div className="card">
         <h2>Kategori eşleştir</h2>
-        <p className="muted">XML'deki kategori adını Trendyol kategori ID'si ile eşleştir. Eşleşmeyen kategorideki yeni ürünler açılmaz.</p>
+        <p className="muted">XML'deki kategori adını pazaryerinin kategori ID'si ile eşleştir. Eşleşmeyen kategorideki yeni ürünler açılmaz.</p>
         <div className="grid">
           <label className="f">XML kategori adı<input type="text" value={d.xml_category} onChange={(e) => setD({ ...d, xml_category: e.target.value })} /></label>
-          <label className="f">Trendyol kategori ID<input type="text" inputMode="numeric" value={d.category_id} onChange={(e) => setD({ ...d, category_id: e.target.value })} /></label>
+          <label className="f">Pazaryeri kategori ID<input type="text" inputMode="numeric" value={d.category_id} onChange={(e) => setD({ ...d, category_id: e.target.value })} /></label>
           <label className="f">Komisyon (%)<input type="text" inputMode="decimal" value={d.commission_rate} onChange={(e) => setD({ ...d, commission_rate: e.target.value })} /><small>Boşsa varsayılan komisyon kullanılır</small></label>
           <label className="f">KDV (%)<input type="text" inputMode="decimal" value={d.vat_rate} onChange={(e) => setD({ ...d, vat_rate: e.target.value })} /><small>Boşsa varsayılan KDV</small></label>
         </div>
         <label className="f" style={{ marginTop: 12 }}>Zorunlu özellikler (JSON, isteğe bağlı)
           <textarea value={d.attributes} placeholder='[{"attributeId": 47, "attributeValueId": 1234}]' onChange={(e) => setD({ ...d, attributes: e.target.value })} />
-          <small>Trendyol bazı kategorilerde renk, beden gibi özellikleri zorunlu tutar.</small>
+          <small>Pazaryerleri bazı kategorilerde renk, beden gibi özellikleri zorunlu tutar. {marketplace === "hepsiburada" ? 'Örnek: [{"name": "renk_variant_property", "value": "Siyah"}]' : 'Örnek: [{"attributeId": 47, "attributeValueId": 1}]'}</small>
         </label>
         <div className="row" style={{ marginTop: 12 }}>
           <button className="btn primary" onClick={save}>Eşleşmeyi kaydet</button>
@@ -82,7 +82,7 @@ export default function Categories({ api, notify }: Props) {
         <h2>Eşleşenler ({mapped.length})</h2>
         {mapped.length === 0 ? <p className="muted">Henüz eşleşme yok.</p> : (
           <div className="scroll"><table>
-            <thead><tr><th>XML kategorisi</th><th className="n">Trendyol ID</th><th className="n">Komisyon</th><th className="n">KDV</th><th /></tr></thead>
+            <thead><tr><th>XML kategorisi</th><th className="n">Kategori ID</th><th className="n">Komisyon</th><th className="n">KDV</th><th /></tr></thead>
             <tbody>{mapped.map((c) => (
               <tr key={c.xml_category}>
                 <td>{c.xml_category}</td><td className="n">{c.category_id}</td>

@@ -10,3 +10,4 @@ preview_*.csv
 worker/package-lock.json
 package-lock.json
 *.xlsx
+kaynaklar/

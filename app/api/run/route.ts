@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guard, unauthorized, bad } from "@/lib/server";
+import { guard, unauthorized, bad, MARKETPLACES } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
 const MODES = ["preview", "update", "create", "auto"];
-const MARKETPLACES = ["trendyol"]; // worker/marketplaces/index.ts ile aynı tutulur
 
 // GitHub Actions workflow'unu tetikler
 export async function POST(req: NextRequest) {

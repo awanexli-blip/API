@@ -3,23 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { tl, type Props, type Row } from "./shared";
 
-export default function Overrides({ api, notify }: Props) {
+export default function Overrides({ api, notify, marketplace }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
   const [d, setD] = useState<Row>({ barcode: "", price_override: "", hidden: false, note: "" });
 
   const load = useCallback(async () => {
-    try { setRows(await api("/api/overrides")); } catch (e: any) { notify("err", e.message); }
-  }, [api, notify]);
+    try { setRows(await api(`/api/overrides?mp=${marketplace}`)); } catch (e: any) { notify("err", e.message); }
+  }, [api, notify, marketplace]);
   useEffect(() => { load(); }, [load]);
 
   async function save() {
     try {
-      await api("/api/overrides", { method: "PUT", body: JSON.stringify({ ...d, price_override: String(d.price_override).replace(",", ".") }) });
+      await api(`/api/overrides?mp=${marketplace}`, { method: "PUT", body: JSON.stringify({ ...d, price_override: String(d.price_override).replace(",", ".") }) });
       notify("good", "Kaydedildi."); setD({ barcode: "", price_override: "", hidden: false, note: "" }); load();
     } catch (e: any) { notify("err", e.message); }
   }
   async function remove(barcode: string) {
-    try { await api(`/api/overrides?barcode=${encodeURIComponent(barcode)}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
+    try { await api(`/api/overrides?mp=${marketplace}&barcode=${encodeURIComponent(barcode)}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
   }
 
   return (

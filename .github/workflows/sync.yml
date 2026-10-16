@@ -2,7 +2,7 @@ name: Trendyol sync
 
 on:
   schedule:
-    - cron: "0 */4 * * *"   # her 4 saatte bir (UTC)
+    - cron: "0 */4 * * *"   # her 4 saatte bir (UTC), tüm pazaryerleri
   workflow_dispatch:
     inputs:
       mode:
@@ -13,17 +13,22 @@ on:
       marketplace:
         description: "Pazaryeri"
         type: choice
-        options: [trendyol]
+        options: [trendyol, hepsiburada]
         default: "trendyol"
-
-concurrency:
-  group: marketplace-sync
-  cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # Zamanlanmış çalışmada hepsi, elle tetiklemede seçilen pazaryeri.
+        # Kimlik bilgisi tanımlı olmayan veya panelde kapalı pazaryeri kendiliğinden atlanır.
+        marketplace: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', github.event.inputs.marketplace) || '["trendyol","hepsiburada"]') }}
+    concurrency:
+      group: sync-${{ matrix.marketplace }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,11 +51,16 @@ jobs:
           TRENDYOL_BRAND_NAME: ${{ vars.TRENDYOL_BRAND_NAME }}
           TRENDYOL_SHIPMENT_ADDRESS_ID: ${{ secrets.TRENDYOL_SHIPMENT_ADDRESS_ID }}
           TRENDYOL_RETURN_ADDRESS_ID: ${{ secrets.TRENDYOL_RETURN_ADDRESS_ID }}
-        run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ github.event.inputs.marketplace || 'trendyol' }}"
+          HB_MERCHANT_ID: ${{ secrets.HB_MERCHANT_ID }}
+          HB_USERNAME: ${{ secrets.HB_USERNAME }}
+          HB_PASSWORD: ${{ secrets.HB_PASSWORD }}
+          HB_ENV: ${{ vars.HB_ENV }}             # boş = test (SIT), "prod" = canlı
+          HB_USER_AGENT: ${{ vars.HB_USER_AGENT }}
+        run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ matrix.marketplace }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: preview-csv
+          name: ${{ matrix.marketplace == 'trendyol' && 'preview-csv' || format('preview-{0}', matrix.marketplace) }}
           path: |
             preview*.csv
             xml_dump.csv

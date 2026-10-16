@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { breakdown, calcPrice, defaultConfig } from "@/worker/pricing";
 import { tl, type Props, type Row } from "./shared";
+import cargo from "@/worker/data/hepsiburada/cargo.json";
+
+const tariff = cargo as { carriers: string[]; byDesi: Record<string, number[]> };
+const cargoPrice = (desi: number, carrier: string) => tariff.byDesi[String(Math.min(60, Math.max(0, Math.ceil(desi))))]?.[Math.max(0, tariff.carriers.indexOf(carrier))] ?? NaN;
 
 type Field = { key: string; label: string; kind: "pct" | "num" | "int"; hint?: string; advanced?: boolean };
 const FIELDS: Field[] = [
@@ -24,9 +28,10 @@ const BOOLS: [string, string][] = [
   ["zero_missing", "XML'den kalkan ürünlerin stoğunu sıfırla"],
 ];
 
-export default function Settings({ api, notify }: Props) {
+export default function Settings({ api, notify, marketplace }: Props) {
   const [f, setF] = useState<Row | null>(null); // ekranda gösterilen değerler (yüzde alanları ×100)
   const [simVat, setSimVat] = useState(20);
+  const [simDesi, setSimDesi] = useState(2);
 
   const toForm = (d: Row) => {
     const o: Row = { ...d };
@@ -36,7 +41,7 @@ export default function Settings({ api, notify }: Props) {
     return o;
   };
 
-  useEffect(() => { api("/api/settings").then((d) => setF(toForm(d))).catch((e) => notify("err", e.message)); /* eslint-disable-next-line */ }, [api]);
+  useEffect(() => { api(`/api/settings?mp=${marketplace}`).then((d) => setF(toForm(d))).catch((e) => notify("err", e.message)); /* eslint-disable-next-line */ }, [api, marketplace]);
   if (!f) return <p className="muted">Yükleniyor...</p>;
 
   const num = (k: string) => Number(String(f[k]).replace(",", "."));
@@ -47,7 +52,11 @@ export default function Settings({ api, notify }: Props) {
     minMarkup: num("min_markup"), fixedCost: num("fixed_cost"),
     minAcceptableProfitRate: num("min_acceptable_profit_rate") / 100, maxPrice: num("max_price"),
     vatRate: simVat / 100,
+    commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false,
   };
+  const byDesi = f.shipping_mode === "desi";
+  if (byDesi) cfg.shippingCost = cargoPrice(simDesi, f.cargo_carrier || "hepsiJET");
+  const label = marketplace === "trendyol" ? "Trendyol" : marketplace === "hepsiburada" ? "Hepsiburada" : marketplace;
   const valid = Object.values(cfg).every((v) => Number.isFinite(v)) && cfg.commissionRate + cfg.targetProfitRate < 1;
 
   async function save() {
@@ -57,9 +66,12 @@ export default function Settings({ api, notify }: Props) {
       body[x.key] = x.kind === "pct" ? v / 100 : v;
     }
     for (const [k] of BOOLS) body[k] = f![k];
+    // Pazaryerine özel alanlar (yalnızca sunucudan geldiyse gönderilir: migration öncesi kayıt bozulmasın)
+    for (const k of ["commission_plus_vat", "shipping_vat_included", "enabled", "shipping_mode", "cargo_carrier"]) if (k in f!) body[k] = f![k];
+    if ("default_desi" in f!) body.default_desi = Number(String(f!.default_desi).replace(",", "."));
     body.update_prices = true; // fiyat davranışı yalnızca politika seçimiyle belirlenir ("Fiyata dokunma" = keep)
     body.existing_price_policy = f!.existing_price_policy;
-    try { setF(toForm(await api("/api/settings", { method: "PUT", body: JSON.stringify(body) }))); notify("good", "Ayarlar kaydedildi. Bir sonraki senkronizasyonda geçerli olur."); }
+    try { setF(toForm(await api(`/api/settings?mp=${marketplace}`, { method: "PUT", body: JSON.stringify(body) }))); notify("good", "Ayarlar kaydedildi. Bir sonraki senkronizasyonda geçerli olur."); }
     catch (e: any) { notify("err", e.message); }
   }
 
@@ -87,7 +99,7 @@ export default function Settings({ api, notify }: Props) {
           </div>
         </details>
         <h3>Mevcut ürünlerin fiyatı</h3>
-        <label className="f" style={{ maxWidth: 520 }}>Trendyol'da zaten olan ürünlerde fiyat nasıl güncellensin?
+        <label className="f" style={{ maxWidth: 520 }}>{label}'da zaten olan ürünlerde fiyat nasıl güncellensin?
           <select value={f.existing_price_policy ?? "smart"} onChange={(e) => setF({ ...f, existing_price_policy: e.target.value })}>
             <option value="smart">Akıllı: zararı yükselt, pahalıyı her çalışmada en fazla %10 düşür, 300 TL eşiğinde 299,90'a in (önerilen)</option>
             <option value="floor">Sadece formülün altındaysa yükselt, mevcut fiyatı asla düşürme</option>
@@ -95,8 +107,33 @@ export default function Settings({ api, notify }: Props) {
             <option value="formula">Her ürünü formül fiyatına eşitle (fiyatlar düşebilir)</option>
           </select>
         </label>
+        <h3>Komisyon ve kargo</h3>
+        <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
+          {"commission_plus_vat" in f ? (
+            <label className="check"><input type="checkbox" checked={!!f.commission_plus_vat} onChange={(e) => setF({ ...f, commission_plus_vat: e.target.checked })} />
+              Komisyon oranı +KDV (komisyon faturasına ayrıca KDV ekleniyor){marketplace === "hepsiburada" ? " — Hepsiburada sözleşmesine göre evet" : " — Trendyol komisyon faturandan kontrol et"}</label>
+          ) : <p className="muted" style={{ fontSize: 13 }}>Komisyon +KDV ayarı için Supabase migration 002 çalıştırılmalı.</p>}
+          {"shipping_mode" in f && <>
+            <label className="f" style={{ maxWidth: 520 }}>Kargo ücreti nasıl hesaplansın?
+              <select value={f.shipping_mode} onChange={(e) => setF({ ...f, shipping_mode: e.target.value })}>
+                <option value="desi">Desi tarifesine göre (ürünün desisi XML'den)</option>
+                <option value="fixed">Sabit tutar (yukarıdaki kargo ücreti)</option>
+              </select>
+            </label>
+            {f.shipping_mode === "desi" && <div className="grid">
+              <label className="f">Kargo firması
+                <select value={f.cargo_carrier || "hepsiJET"} onChange={(e) => setF({ ...f, cargo_carrier: e.target.value })}>
+                  {tariff.carriers.map((c) => <option key={c} value={c}>{c} (2 desi: {tl(cargoPrice(2, c))})</option>)}
+                </select>
+              </label>
+              <label className="f">Varsayılan desi<input type="text" inputMode="decimal" value={f.default_desi} onChange={(e) => setF({ ...f, default_desi: e.target.value })} /><small>XML'de desi yoksa</small></label>
+            </div>}
+            <label className="check"><input type="checkbox" checked={f.shipping_vat_included !== false} onChange={(e) => setF({ ...f, shipping_vat_included: e.target.checked })} />Kargo tutarları KDV dahil (Hepsiburada tarifesi KDV hariçtir: işareti kaldır)</label>
+          </>}
+        </div>
         <h3>Davranış</h3>
         <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
+          {"enabled" in f && <label className="check"><input type="checkbox" checked={!!f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />Bu pazaryeri aktif (kapalıysa hiç çalışmaz)</label>}
           {BOOLS.map(([k, label]) => (
             <label className="check" key={k}>
               <input type="checkbox" checked={!!f[k]} onChange={(e) => setF({ ...f, [k]: e.target.checked })} />{label}
@@ -112,11 +149,18 @@ export default function Settings({ api, notify }: Props) {
       <div className="card">
         <h2>Fiyat simülasyonu</h2>
         <p className="muted">Kaydetmeden denemek için yukarıdaki değerleri değiştir. Tutarlar KDV dahil girilir. Alış, komisyon ve kargo faturalarındaki KDV indirilir. <strong>Net kâr cebe kalan tutardır</strong> (KDV ödendikten sonra), kâr oranı KDV hariç satışa göredir. Gerçek senkronda her ürünün kendi komisyonu ve KDV oranı kullanılır.</p>
-        <label className="f" style={{ maxWidth: 220, marginBottom: 12 }}>Ürün KDV oranı
-          <select value={simVat} onChange={(e) => setSimVat(Number(e.target.value))}>
-            <option value={20}>%20</option><option value={10}>%10</option><option value={1}>%1</option>
-          </select>
-        </label>
+        <div className="row" style={{ marginBottom: 12, alignItems: "flex-end" }}>
+          <label className="f" style={{ width: 160 }}>Ürün KDV oranı
+            <select value={simVat} onChange={(e) => setSimVat(Number(e.target.value))}>
+              <option value={20}>%20</option><option value={10}>%10</option><option value={1}>%1</option>
+            </select>
+          </label>
+          {byDesi && <label className="f" style={{ width: 160 }}>Desi
+            <select value={simDesi} onChange={(e) => setSimDesi(Number(e.target.value))}>
+              {[1, 2, 3, 5, 10, 20, 30].map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>}
+        </div>
         {valid ? (
           <div className="scroll">
             <table className="sim">

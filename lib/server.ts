@@ -23,3 +23,19 @@ export const unauthorized = () => {
   return NextResponse.json({ error }, { status: 401 });
 };
 export const bad = (error: string) => NextResponse.json({ error }, { status: 400 });
+
+export const MARKETPLACES = ["trendyol", "hepsiburada"]; // worker/marketplaces/index.ts ile aynı tutulur
+export const mpOf = (req: NextRequest) => {
+  const m = req.nextUrl.searchParams.get("mp") ?? "trendyol";
+  return MARKETPLACES.includes(m) ? m : null;
+};
+
+// Pazaryerine ait tablo satırları. Migration 002 çalıştırılmadıysa Trendyol filtresiz okur.
+export async function mpSelect(table: string, mp: string, order: string, ascending = true) {
+  const db = admin();
+  const r = await db.from(table).select("*").eq("marketplace", mp).order(order, { ascending });
+  if (!r.error) return { data: r.data ?? [], migrated: true as const };
+  if (mp !== "trendyol") return { error: `Supabase migration 002 çalıştırılmamış (${r.error.message})` };
+  const r2 = await db.from(table).select("*").order(order, { ascending });
+  return r2.error ? { error: r2.error.message } : { data: r2.data ?? [], migrated: false as const };
+}

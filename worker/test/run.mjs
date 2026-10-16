@@ -17,11 +17,11 @@ const envBase = {
 let fails = 0;
 const check = (name, cond, info = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + info}`); if (!cond) fails++; };
 
-function run(mode, env = {}) {
+function run(mode, env = {}, marketplace = "trendyol") {
   const dir = mkdtempSync(join(tmpdir(), "synctest-"));
-  execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, sync, mode], { cwd: dir, env: { ...envBase, ...env }, stdio: ["ignore", "ignore", "inherit"] });
+  execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, sync, mode, marketplace], { cwd: dir, env: { ...envBase, ...env }, stdio: ["ignore", "ignore", "inherit"] });
   const calls = JSON.parse(readFileSync(join(dir, "calls.json"), "utf8"));
-  const csv = readFileSync(join(dir, "preview.csv"), "utf8").split("\n");
+  const csv = readFileSync(join(dir, marketplace === "trendyol" ? "preview.csv" : `preview_${marketplace}.csv`), "utf8").split("\n");
   const line = (b) => csv.find((l) => l.startsWith(b + ";")) ?? "";
   return { calls, s: calls.run?.summary ?? {}, status: calls.run?.status, line };
 }
@@ -86,7 +86,43 @@ function run(mode, env = {}) {
   check("smart: CSV kârı gönderilen fiyata göre", /;hayir;[\d.]+;17\.5;MEVCUT \(düşecek; formül 239\.9; eski 359\.9\)/.test(line("DEAD-1")), line("DEAD-1"));
 }
 
-// 6) birim testleri
+// 6) migration 002 çalıştırılmamış veritabanı: Trendyol eskisi gibi çalışır
+{
+  const { calls, s, status } = run("update", { MOCK_NOMIG: "1", MOCK_BULK: "50" });
+  check("migrasyonsuz: Trendyol çalışır", status === "ok" && s.updated > 0, status);
+  check("migrasyonsuz: geçmiş kaydı eski biçimde", calls.runInsert && !("marketplace" in calls.runInsert), JSON.stringify(calls.runInsert));
+}
+
+// 7) Hepsiburada (sahte SIT)
+{
+  const hbEnv = { HB_MERCHANT_ID: "m-1", HB_USERNAME: "u", HB_PASSWORD: "p", MOCK_BULK: "1500" };
+  const { calls, s, status, line } = run("auto", hbEnv, "hepsiburada");
+  const stock = calls.hbWrites.filter((w) => w.path.endsWith("/stock-uploads")).flatMap((w) => w.body);
+  const price = calls.hbWrites.filter((w) => w.path.endsWith("/price-uploads")).flatMap((w) => w.body);
+  const imp = calls.hbWrites.filter((w) => w.path.endsWith("/products/import")).flatMap((w) => w.body);
+  check("hb: tüm listing'ler sayfalı yüklendi", s.listingTotals?.loaded === 1504, JSON.stringify(s.listingTotals));
+  check("hb: OS13- ve ÖS13- eşleşti", stock.some((x) => x.merchantSku === "OS13-AAA") && stock.some((x) => x.merchantSku === "ÖS13-G0et_94794"), stock.length);
+  check("hb: kapalı ürün gönderilmedi", !stock.some((x) => x.merchantSku === "OS13-KILITLI"));
+  check("hb: min stok 5 altı stok gönderilmez (0 veya ≥5)", stock.every((x) => x.availableStock === 0 || x.availableStock >= 5));
+  check("hb: fiyat ayrı uçtan", price.length > 0 && price.every((x) => x.price > 0));
+  check("hb: komisyon +KDV ve desi kargo fiyata yansıdı", Number(line("OS13-YEN-1").split(";")[4]) > 200, line("OS13-YEN-1"));
+  check("hb: her sipariş kargo satıcıda", line("OS13-YEN-1").split(";")[5] === "evet", line("OS13-YEN-1"));
+  check("hb: ürün açma import (Marka, merchant)", imp.length >= 2 && imp.every((x) => x.attributes.Marka === "Eco Lounge" && x.merchant === "m-1"), JSON.stringify(imp.map((x) => x.attributes.merchantSku)));
+  check("hb: ürün hatası özete yazıldı", s.batchCheck?.failedItems === 1, JSON.stringify(s.batchCheck));
+  check("hb: geçmiş kaydı marketplace ile", calls.runInsert?.marketplace === "hepsiburada");
+  check("hb: eşleşmeyen kategori pazaryeri ile", (calls.unmapped ?? []).every((x) => x.marketplace === "hepsiburada"));
+  check("hb: durum partial", status === "partial", status);
+}
+
+// 8) Hepsiburada kimlik bilgisi yoksa zamanlanmış çalışma atlanır
+{
+  const dir = mkdtempSync(join(tmpdir(), "synctest-"));
+  execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, sync, "auto", "hepsiburada"], { cwd: dir, env: { ...envBase, TRIGGER: "schedule" }, stdio: ["ignore", "ignore", "inherit"] });
+  const calls = JSON.parse(readFileSync(join(dir, "calls.json"), "utf8"));
+  check("hb: secret yoksa zamanlı çalışma atlanır", calls.run?.status === "skipped", JSON.stringify(calls.run));
+}
+
+// 9) birim testleri
 try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, "pricing.test.ts")], { stdio: "inherit" }); }
 catch { fails++; }
 

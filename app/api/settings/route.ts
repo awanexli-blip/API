@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { admin, guard, unauthorized, bad } from "@/lib/server";
+import { admin, guard, unauthorized, bad, mpOf } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
+
+// Trendyol: "settings" tablosu (ortak ayarlar). Diğer pazaryerleri: "settings" + "marketplace_settings" (dolu alanlar ezer).
 
 // alan -> [min, max, tamsayı mı]
 const NUM: Record<string, [number, number, boolean]> = {
@@ -17,19 +19,39 @@ const NUM: Record<string, [number, number, boolean]> = {
   vat_rate: [0, 100, false],
   fx_usd: [0, 1000, false],
   fx_eur: [0, 1000, false],
+  default_desi: [0, 1000, false],
 };
-const BOOL = ["auto_sync", "auto_create", "update_prices", "zero_missing"];
+const BOOL = ["auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
 const POLICIES = ["keep", "floor", "formula", "smart"];
+// Yalnızca ortak (settings) tablosunda olanlar
+const BASE_ONLY = ["min_markup", "vat_rate", "fx_usd", "fx_eur", "update_prices"];
+// Yalnızca marketplace_settings tablosunda olanlar
+const MP_ONLY = ["shipping_mode", "cargo_carrier", "default_desi", "shipping_vat_included", "enabled"];
+
+async function read(mp: string) {
+  const db = admin();
+  const { data: base, error } = await db.from("settings").select("*").eq("id", 1).single();
+  if (error) return { error: error.message };
+  if (mp === "trendyol") return { data: base };
+  const { data: own, error: e2 } = await db.from("marketplace_settings").select("*").eq("marketplace", mp).maybeSingle();
+  if (e2) return { error: `Supabase migration 002 çalıştırılmamış (${e2.message})` };
+  const merged: Record<string, unknown> = { ...base, enabled: false, ...Object.fromEntries(Object.entries(own ?? {}).filter(([, v]) => v != null)) };
+  return { data: { ...merged, marketplace: mp } };
+}
 
 export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
-  const { data, error } = await admin().from("settings").select("*").eq("id", 1).single();
-  if (error) return bad(error.message);
-  return NextResponse.json(data);
+  const mp = mpOf(req);
+  if (!mp) return bad("Geçersiz pazaryeri");
+  const r = await read(mp);
+  if (r.error) return bad(r.error);
+  return NextResponse.json(r.data);
 }
 
 export async function PUT(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
+  const mp = mpOf(req);
+  if (!mp) return bad("Geçersiz pazaryeri");
   const body = await req.json();
   const patch: Record<string, number | boolean | string> = {};
   for (const [k, [min, max, int]] of Object.entries(NUM)) {
@@ -43,15 +65,31 @@ export async function PUT(req: NextRequest) {
     if (!POLICIES.includes(body.existing_price_policy)) return bad("Geçersiz fiyat politikası");
     patch.existing_price_policy = body.existing_price_policy;
   }
+  if ("shipping_mode" in body) {
+    if (!["fixed", "desi"].includes(body.shipping_mode)) return bad("Geçersiz kargo hesabı");
+    patch.shipping_mode = body.shipping_mode;
+  }
+  if ("cargo_carrier" in body) patch.cargo_carrier = String(body.cargo_carrier).slice(0, 50);
 
   // komisyon + hedef kâr %100'ü geçerse fiyat formülü çalışmaz
-  const { data: cur } = await admin().from("settings").select("commission_rate,target_profit_rate").eq("id", 1).single();
-  const c = Number(patch.commission_rate ?? cur?.commission_rate);
-  const t = Number(patch.target_profit_rate ?? cur?.target_profit_rate);
+  const cur = await read(mp);
+  if (cur.error) return bad(cur.error);
+  const c = Number(patch.commission_rate ?? (cur.data as any).commission_rate);
+  const t = Number(patch.target_profit_rate ?? (cur.data as any).target_profit_rate);
   if (c + t >= 1) return bad("Komisyon ve hedef kâr toplamı %100'den küçük olmalı");
 
-  patch.updated_at = new Date().toISOString();
-  const { data, error } = await admin().from("settings").update(patch).eq("id", 1).select("*").single();
-  if (error) return bad(error.message);
-  return NextResponse.json(data);
+  const db = admin();
+  const now = new Date().toISOString();
+  if (mp === "trendyol") {
+    for (const k of MP_ONLY) delete patch[k];
+    const { error } = await db.from("settings").update({ ...patch, updated_at: now }).eq("id", 1);
+    if (error) return bad(error.message.includes("commission_plus_vat") ? "Komisyon +KDV ayarı için Supabase migration 002 çalıştırılmalı" : error.message);
+  } else {
+    for (const k of BASE_ONLY) delete patch[k];
+    const { error } = await db.from("marketplace_settings").upsert({ marketplace: mp, ...patch, updated_at: now });
+    if (error) return bad(error.message);
+  }
+  const r = await read(mp);
+  if (r.error) return bad(r.error);
+  return NextResponse.json(r.data);
 }

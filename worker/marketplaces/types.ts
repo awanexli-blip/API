@@ -59,6 +59,8 @@ export interface Marketplace {
   pushInventory(items: InventoryItem[]): Promise<BatchResult>;
   zeroStock(ids: string[]): Promise<BatchResult>;
   createProducts(items: NewProduct[], ctx: { vatRate: number; skip: (why: string) => void }): Promise<BatchResult>;
+  /** İsteğe bağlı: desi tarifesine göre kargo ücreti (KDV durumu ayarlarda) */
+  shippingCost?(desi: number, carrier?: string): number;
   /** İsteğe bağlı: gönderilen toplu isteklerin ürün bazlı sonucu */
   checkBatches?(ids: string[]): Promise<BatchCheck>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */

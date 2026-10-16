@@ -37,6 +37,18 @@ const netOf = (p: number, cost: number, k: number) => breakdown(p, cost, cfg, k)
   check("kdv1: kâr ≥ %15", r1.ok && r1.profitRate >= 0.15, r1);
 }
 
+// Komisyon +KDV ve KDV hariç kargo (Hepsiburada)
+{
+  const hb = { ...cfg, commissionPlusVat: true, shippingVatIncluded: false, freeShippingThreshold: 0, shippingCost: 80 };
+  const r = calcPrice(200, hb, 0.18);
+  const b = breakdown(r.price, 200, hb, 0.18);
+  check("hb: komisyon KDV'li", Math.abs(b.commission - r.price * 0.18 * 1.2) < 0.01, b);
+  check("hb: kargo KDV'li (80 -> 96)", b.shipping === 96, b);
+  check("hb: kâr ≥ %15", r.ok && r.profitRate >= 0.15, r);
+  check("hb: kalemler toplamı", Math.abs(b.commission + b.shipping + b.vatDue + b.net + 200 - r.price) < 0.02, b);
+  check("hb: +KDV komisyonla fiyat daha yüksek", r.price > calcPrice(200, { ...hb, commissionPlusVat: false }, 0.18).price);
+}
+
 // existingPrice
 {
   check("keep: dokunma", existingPrice("keep", 500, 400, cfg, 0.18) === null);

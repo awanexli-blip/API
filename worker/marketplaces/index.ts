@@ -1,9 +1,11 @@
 import type { Marketplace } from "./types.ts";
 import { createTrendyol } from "./trendyol.ts";
+import { createHepsiburada } from "./hepsiburada.ts";
 
 // Yeni pazaryeri: adaptörü yaz, buraya ekle. Kimlik bilgileri yalnızca seçilen pazaryeri için okunur.
 const registry: Record<string, () => Marketplace> = {
   trendyol: createTrendyol,
+  hepsiburada: createHepsiburada,
 };
 
 export const marketplaceIds = Object.keys(registry);
