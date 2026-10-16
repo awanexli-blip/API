@@ -3,7 +3,7 @@
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Gelişmeler ve kararlar: `docs/PROGRESS.md`.
 
-## P0 — Acil: Trendyol V1 kapanışı (15 Ekim 2026) — kod hazır, canlı doğrulama bekliyor
+## P0 — Acil: Trendyol V1 kapanışı (15 Ekim 2026) — bitti, canlıda doğrulandı (16.10)
 
 Trendyol "Product V1 servisleri 15.10.2026'dan itibaren geçersiz" diyor. Worker V1 kullanıyor.
 
@@ -14,14 +14,15 @@ Trendyol "Product V1 servisleri 15.10.2026'dan itibaren geçersiz" diyor. Worker
 - [x] Stok/fiyat ucu değişmedi (`/inventory/.../price-and-inventory`, 1000'e kadar ürün), sadece `storeFrontCode` eklenecek.
 - [x] Toplu sonuç kontrolü: `GET /product/sellers/{id}/products/batch-requests/{batchRequestId}` → `failureReasons` panele yaz.
 - [x] Kalıcı mock test (`worker/test/run.mjs`, workflow'da her çalışmadan önce).
-- [ ] (K) Canlı `preview`: özette `listingTotals.approved` ≈ mağazadaki ürün sayısı, `matched` ≈ 19.700, hata yok.
+- [x] (K) Canlı çalışma (auto, 17.026 güncellendi, hata 0): özette `listingTotals.approved` ≈ mağazadaki ürün sayısı, `matched` ≈ 19.700, hata yok.
 - [x] Canlı komisyon: `variants[].commission` öncelikli, JSON yedek (`commissionSource.urun_canli`). Belgede yüzde mi oran mı net değil: >1 ise /100.
 - [x] Onay bekleyen/reddedilen ürünler (`products/unapproved`) `existing`'e dahil, güncellenmez, yeniden açılmaz.
 - [ ] Bonus: `category.id` → yeni ürün kategori önerisi.
 
 ## P1 — Trendyol canlıya alma
 
-- [ ] (K) `preview` → >%20 artan 5 ürünü kontrol → `update` → `failedBatches` 0 → elle 3 ürün doğrula → `auto_sync` aç.
+- [x] İlk `update` yapıldı (17.026, hata 0).
+- [ ] (K) Trendyol panelinden 3-5 ürünü elle doğrula; `preview.csv` artifact'ı ile fiyat artışlarını analiz et → `auto_sync` aç.
 - [ ] Yeni ürün (~7.380): kategori önerisi (aynı XML kategorisindeki mevcut ürünlerin `category.id`'si + başlık benzerliği), zorunlu özellikler, 50 ürünlük deneme (K), sonra tamamı. `auto_create` kapalı kalır.
 - [ ] Kapalı ~420 ürün: (K) bırak/arşivle kararı; benzer başlıklı yeni ürünleri filtrele.
 

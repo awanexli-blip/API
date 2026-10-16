@@ -6,10 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "preview | update | create | auto"
-        default: "auto"
+        description: "preview = sadece hesapla (yazmaz) · update = stok/fiyat gönder · create = yeni ürün aç · auto = update (+ayar açıksa create)"
+        type: choice
+        options: [preview, update, create, auto]
+        default: "preview"
       marketplace:
-        description: "trendyol (yeni pazaryerleri eklendikçe genişler)"
+        description: "Pazaryeri"
+        type: choice
+        options: [trendyol]
         default: "trendyol"
 
 concurrency:
