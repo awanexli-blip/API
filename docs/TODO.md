@@ -67,6 +67,7 @@ Ortamlar: test (SIT) `mpop-sit.hepsiburada.com`, `listing-external-sit.hepsibura
 | Katalog ürünleri | `GET mpop/product/api/products/all-products-of-merchant/{id}` |
 
 Adımlar:
+- [ ] H0a (K): HB entegratör hesabı: satıcı paneli > Entegratör bilgileri > "Yeni entegratör ekle" bir entegratör kullanıcı adı istiyor. Kendi entegrasyonumuz için HB geliştirici portalından entegratör kaydı (kullanıcı adı + şifre) alınmalı, sonra bu kullanıcı adı mağazaya eklenmeli. Mağaza ID (merchantId) panelde görünüyor.
 - [ ] H0 (K): Hepsiburada satıcı hesabı aktif mi? Merchant ID, API kullanıcı adı ve şifresi (canlı + test/SIT), uygulama adı (User-Agent). Kategori komisyonları, kargo kuralı (kim öder, eşik, desi tarifesi). "Eco Lounge" markası HB'de kayıtlı/onaylı mı.
 - [ ] H1: P2 veri modeli (pazaryeri bazlı ayarlar, `category_map`/`product_overrides`/`sync_runs` için `marketplace` kolonu). İkinci pazaryeri için şart. Supabase migration (K çalıştırır).
 - [ ] H2: `worker/marketplaces/hepsiburada.ts`: ilan çekme, eşleştirme (merchantSku = `OS13-` + productCode), stok ve fiyat ayrı isteklerle, trackingId sonuç kontrolü, mock test.
