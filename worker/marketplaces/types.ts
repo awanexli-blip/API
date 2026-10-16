@@ -6,6 +6,15 @@ export interface Listing {
   title: string;
   price: number;     // mevcut satış fiyatı (NaN olabilir)
   quantity: number;
+  // active: güncellenir · closed: pazaryeri kapatmış (kilitli/arşiv), dokunulmaz · pending: onay bekliyor/reddedildi, dokunulmaz ama yeniden açılmaz
+  status?: "active" | "closed" | "pending";
+}
+
+export interface BatchCheck {
+  checked: number;      // sonucu alınan toplu istek
+  pending: number;      // süre içinde bitmeyen
+  failedItems: number;  // başarısız ürün sayısı
+  reasons: string[];    // ilk hatalar: "barkod: neden"
 }
 
 export interface InventoryItem {
@@ -49,6 +58,8 @@ export interface Marketplace {
   pushInventory(items: InventoryItem[]): Promise<BatchResult>;
   zeroStock(ids: string[]): Promise<BatchResult>;
   createProducts(items: NewProduct[], ctx: { vatRate: number; skip: (why: string) => void }): Promise<BatchResult>;
+  /** İsteğe bağlı: gönderilen toplu isteklerin ürün bazlı sonucu */
+  checkBatches?(ids: string[]): Promise<BatchCheck>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */
   diagnostics?(xml: any[], linkedCount: number): Record<string, unknown>;
 }

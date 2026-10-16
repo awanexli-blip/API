@@ -93,7 +93,8 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 **Henüz denenmedi (canlı doğrulama yok):**
 - 17 binlik toplu `update` (stok + fiyat).
 - `create` (yeni ürün açma) hiç çalışmadı.
-- Trendyol endpoint yolları ve alan adları dokümandan hatırlanarak yazıldı, canlıda hata çıkarsa panelde "Ayrıntı" altındaki Trendyol hata mesajına göre düzelt. İlgili uçlar: `GET /product/sellers/{id}/products?page=&size=` (ürün listesi), `POST /inventory/sellers/{id}/products/price-and-inventory` (stok+fiyat), `POST /product/sellers/{id}/products` (ürün oluşturma), `GET /product/brands/by-name`. Toplu işlem sonucu `batchRequestId` ile kontrol edilmeli.
+- Trendyol **Product V2** uçları (V1 15.10.2026'da kapandı), resmi dokümana göre yazıldı, canlıda doğrulanmadı: `GET /product/sellers/{id}/products/approved` (size ≤100, 10.000 sonrası `nextPageToken`), `GET .../products/unapproved`, `POST /inventory/sellers/{id}/products/price-and-inventory`, `POST /product/sellers/{id}/v2/products`, `GET /product/brands/by-name` (dizi döner), `GET .../products/batch-requests/{id}` (sonuç özetin `batchCheck` alanına yazılır). `storeFrontCode` başlığı yalnızca `TRENDYOL_STOREFRONT` (GitHub Variable) ayarlıysa gönderilir, gönderilmezse TR sayılır.
+- Test: `node worker/test/run.mjs` (sahte servisler, canlıya yazmaz). Workflow her çalışmadan önce koşar.
 
 **Kullanıcı tarafında:** son `API.zip` içeriği en güncel kod. GitHub'daki repo (`awanexli-blip/API`) ile yerel kopya aynı olmayabilir (kullanıcı bazı değişiklikleri GitHub web arayüzünden yaptı). İlk iş: `git pull`, `git status` ve fark kontrolü. `auto_sync` panelden duraklatılmış olabilir, durumu `settings` tablosundan kontrol et.
 
@@ -125,7 +126,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 
 ## 8. Ortam değişkenleri (sadece adlar)
 
-**GitHub Secrets (worker):** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `XML_URL`, `TRENDYOL_SELLER_ID`, `TRENDYOL_API_KEY`, `TRENDYOL_API_SECRET`, `TRENDYOL_CARGO_COMPANY_ID`, `TRENDYOL_SHIPMENT_ADDRESS_ID`, `TRENDYOL_RETURN_ADDRESS_ID` (son üçü sadece `create` için).
+**GitHub Secrets (worker):** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `XML_URL`, `TRENDYOL_SELLER_ID`, `TRENDYOL_API_KEY`, `TRENDYOL_API_SECRET`, `TRENDYOL_SHIPMENT_ADDRESS_ID`, `TRENDYOL_RETURN_ADDRESS_ID` (opsiyonel, `create` için; V2'de `TRENDYOL_CARGO_COMPANY_ID` kullanılmıyor). **GitHub Variables (opsiyonel):** `TRENDYOL_STOREFRONT`, `TRENDYOL_BRAND_NAME`.
 
 **Vercel (panel):** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `GH_TOKEN` (fine-grained, bu repo, Actions: Read and write), `GH_REPO` (`awanexli-blip/API`).
 

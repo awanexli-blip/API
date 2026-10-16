@@ -26,6 +26,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install --prefix worker
+      - name: Test (sahte servislerle, canlıya yazmaz)
+        run: node worker/test/run.mjs
       - name: Sync
         env:
           NODE_OPTIONS: --max-old-space-size=4096
@@ -36,7 +38,8 @@ jobs:
           TRENDYOL_SELLER_ID: ${{ secrets.TRENDYOL_SELLER_ID }}
           TRENDYOL_API_KEY: ${{ secrets.TRENDYOL_API_KEY }}
           TRENDYOL_API_SECRET: ${{ secrets.TRENDYOL_API_SECRET }}
-          TRENDYOL_CARGO_COMPANY_ID: ${{ secrets.TRENDYOL_CARGO_COMPANY_ID }}
+          TRENDYOL_STOREFRONT: ${{ vars.TRENDYOL_STOREFRONT }}
+          TRENDYOL_BRAND_NAME: ${{ vars.TRENDYOL_BRAND_NAME }}
           TRENDYOL_SHIPMENT_ADDRESS_ID: ${{ secrets.TRENDYOL_SHIPMENT_ADDRESS_ID }}
           TRENDYOL_RETURN_ADDRESS_ID: ${{ secrets.TRENDYOL_RETURN_ADDRESS_ID }}
         run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ github.event.inputs.marketplace || 'trendyol' }}"

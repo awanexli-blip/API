@@ -1,0 +1,108 @@
+// Sahte XML + Supabase + Trendyol V2. `node --import ./worker/test/mock.mjs worker/sync.ts ...` ile yüklenir.
+// Trendyol'a giden yazma istekleri ve Supabase'e yazılan özet calls.json'a yazılır.
+import { writeFileSync } from "node:fs";
+
+const N_BULK = Number(process.env.MOCK_BULK ?? 10150); // >10.000: nextPageToken yolunu test eder
+
+// Onaylı ürünler (V2: içerik + varyant)
+const content = (barcode, title, salePrice, extra = {}) => ({
+  contentId: barcode, productMainId: barcode, title, brand: { id: 9, name: "Eco Lounge" }, category: { id: 555, name: "Kat" },
+  variants: [{ barcode, stockCode: barcode, price: { salePrice, listPrice: salePrice }, stock: { quantity: 5 }, locked: false, archived: false, blacklisted: false, ...extra }],
+});
+const approved = [
+  content("ÖS13-AAA", "Urun A", 100, { commission: 12.5 }),       // canlı komisyon
+  content("ÖS13-G0et_94794", "Urun B", 900),                       // JSON komisyonu (gerçek anahtar)
+  content("OS13-NEWPC1", "Urun C", 200),
+  content("DIRECT-1", "Urun D", 150),
+  content("ÖS13-KILITLI", "Kilitli Urun", 120, { locked: true }),
+  content("ÖS13-SIFIR", "Sifir Fiyat", 0),
+  content("ORPHAN-1", "Yetim Urun", 50),
+  content("X-SAME", "Ayni Baslikli Urun Burada", 80),
+];
+for (let i = 0; i < N_BULK; i++) approved.push(content(`BULK-${i}`, `Toplu ${i}`, 99));
+const unapproved = [{ barcode: "OS13-BEKLEYEN", title: "Bekleyen Urun", salePrice: 70, quantity: 3, status: "pendingApproval" }];
+
+const row = (o) => ({ brand: "BayilikXML.com", currency: "TL", quantity: "10", ...o });
+const xmlRows = [
+  row({ barcode: "BX1", productCode: "AAA", category: "Cat1", price: "50", name: "Urun A" }),
+  row({ barcode: "BX2", productCode: "G0et_94794", category: "Cat1", price: "400", name: "Urun B" }),
+  row({ barcode: "BX3", productCode: "NEWPC1", category: "Cat2", price: "120", name: "Urun C" }),
+  row({ barcode: "DIRECT-1", productCode: "ZZ", category: "Cat2", price: "3", currency: "USD", name: "Urun D" }),
+  row({ barcode: "BX5", productCode: "KILITLI", category: "Cat1", price: "60", name: "Kilitli Urun" }),
+  row({ barcode: "BX6", productCode: "SIFIR", category: "Cat1", price: "60", name: "Sifir Fiyat" }),
+  row({ barcode: "BX7", productCode: "BEKLEYEN", category: "Cat3", price: "40", name: "Bekleyen Urun", image1: "https://i/b.jpg" }),
+  row({ barcode: "BX8", productCode: "YENİ-1", category: "Cat3", price: "80", name: "Yeni Urun 1", image1: "https://i/1.jpg", detail: "d", desi: "2" }),
+  row({ barcode: "BX9", productCode: "YENI-2", category: "Cat3", price: "250", name: "Yeni Urun 2", ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`image${i + 1}`, `https://i/2-${i}.jpg`])) }),
+  row({ barcode: "BX10", productCode: "YENI-3", category: "Cat3", price: "80", name: "Resimsiz" }),
+  row({ barcode: "BX11", productCode: "YENI-4", category: "CatX", price: "80", name: "Kategorisiz", image1: "https://i/4.jpg" }),
+  row({ barcode: "BX12", productCode: "SAME", category: "Cat3", price: "80", name: "Ayni Baslikli Urun Burada", image1: "https://i/6.jpg" }),
+];
+for (let i = 0; i < N_BULK; i++) xmlRows.push(row({ barcode: `B${i}`, productCode: `BULK-${i}`.replace(/^BULK-/, "BULK-"), category: "Cat1", price: "30", name: `Toplu ${i}` }));
+// BULK ürünleri doğrudan barkodla eşleşsin
+for (let i = 0; i < N_BULK; i++) xmlRows[xmlRows.length - N_BULK + i].barcode = `BULK-${i}`;
+
+const esc = (v) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const xml = "<?xml version='1.0'?><products>" + xmlRows.map((r) => "<product>" + Object.entries(r).map(([k, v]) => `<${k}>${esc(v)}</${k}>`).join("") + "</product>").join("") + "</products>";
+
+const settings = { id: 1, commission_rate: 0.18, target_profit_rate: 0.15, shipping_cost: 90, free_shipping_threshold: 300, min_markup: 1.3, fixed_cost: 0, min_acceptable_profit_rate: 0.08, max_price: 10000, min_stock: 3, vat_rate: 20, fx_usd: 35, fx_eur: 40, auto_sync: true, auto_create: true, update_prices: true, zero_missing: process.env.MOCK_ZERO === "1", existing_price_policy: process.env.MOCK_POLICY ?? "floor" };
+const catMap = [
+  { xml_category: "Cat1", category_id: 1, commission_rate: 0.2, vat_rate: null, attributes: [] },
+  { xml_category: "Cat3", category_id: 3, commission_rate: null, vat_rate: 10, attributes: [{ attributeId: 47, customAttributeValue: "Siyah" }] },
+];
+
+const log = { trendyolWrites: [], trendyolReads: [], summary: null, run: null };
+const json = (b, st = 200) => new Response(JSON.stringify(b), { status: st, headers: { "content-type": "application/json" } });
+const pageOf = (arr, u, max) => {
+  const size = Number(u.searchParams.get("size"));
+  if (size > max) return json({ errors: [{ message: "size too big" }] }, 400);
+  const token = u.searchParams.get("nextPageToken");
+  const page = token ? Number(Buffer.from(token, "base64").toString()) : Number(u.searchParams.get("page"));
+  if (!token && page * size >= 10000) return json({ errors: [{ message: "page*size > 10000" }] }, 400);
+  const slice = arr.slice(page * size, page * size + size);
+  const more = (page + 1) * size < arr.length;
+  return json({ totalElements: arr.length, totalPages: Math.ceil(arr.length / size), page, size, nextPageToken: more ? Buffer.from(String(page + 1)).toString("base64") : null, content: slice });
+};
+
+globalThis.fetch = async (url, init = {}) => {
+  const u = new URL(String(url));
+  const method = init.method ?? "GET";
+  const body = init.body ? JSON.parse(init.body) : undefined;
+  if (u.host === "mock-xml") return new Response(xml, { status: 200 });
+  if (u.host === "mock-supa") {
+    const t = u.pathname.split("/").pop();
+    const single = String(new Headers(init.headers).get("accept") ?? "").includes("vnd.pgrst.object");
+    if (method === "GET") {
+      if (t === "settings") return json(single ? settings : [settings]);
+      if (t === "category_map") return json(catMap);
+      if (t === "product_overrides") return json([]);
+    }
+    if (t === "sync_runs" && method === "POST") return json(single ? { id: 1 } : [{ id: 1 }], 201);
+    if (t === "sync_runs" && method === "PATCH") log.run = body;
+    return new Response(null, { status: 204 });
+  }
+  if (u.host === "apigw.trendyol.com") {
+    const p = u.pathname;
+    if (/\/products(\?|$)/.test(p) && method === "GET") return json({ errors: [{ message: "V1 kapalı" }] }, 410);
+    if (p.endsWith("/products/approved")) { log.trendyolReads.push("approved"); return pageOf(approved, u, 100); }
+    if (p.endsWith("/products/unapproved")) { log.trendyolReads.push("unapproved"); return pageOf(unapproved, u, 1000); }
+    if (p.includes("/brands/by-name")) return json([{ id: 66, name: "Eco Lounge Home" }, { id: 77, name: "Eco Lounge" }]);
+    if (p.includes("/batch-requests/")) {
+      const id = p.split("/").pop();
+      const w = log.trendyolWrites[Number(id.split("-")[1]) - 1];
+      const its = (w?.body?.items ?? []).map((it, i) => ({ requestItem: { barcode: it.barcode }, status: i === 0 && w.path.includes("/v2/") ? "FAILED" : "SUCCESS", failureReasons: i === 0 && w.path.includes("/v2/") ? ["Zorunlu özellik eksik: Renk"] : [] }));
+      return json({ batchRequestId: id, status: "COMPLETED", items: its });
+    }
+    if (method === "POST") {
+      if (p.endsWith("/sellers/1/products")) return json({ errors: [{ message: "V1 create kapalı" }] }, 410);
+      log.trendyolWrites.push({ method, path: p, body });
+      return json({ batchRequestId: "batch-" + log.trendyolWrites.length });
+    }
+  }
+  throw new Error("beklenmeyen istek " + method + " " + url);
+};
+
+// Testte bekleme sürelerini kısalt
+const realSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms, ...a) => realSetTimeout(fn, 0, ...a);
+
+process.on("exit", () => writeFileSync("calls.json", JSON.stringify({ ...log, trendyolReads: log.trendyolReads.length }, null, 1)));

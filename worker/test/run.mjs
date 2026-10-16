@@ -1,0 +1,80 @@
+// Worker'ı sahte servislerle çalıştırır ve sonuçları doğrular. Gerçek servislere istek atmaz.
+// node worker/test/run.mjs
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const here = fileURLToPath(new URL(".", import.meta.url));
+const sync = join(here, "..", "sync.ts");
+const mock = pathToFileURL(join(here, "mock.mjs")).href;
+const envBase = {
+  ...process.env, SUPABASE_URL: "http://mock-supa", SUPABASE_SERVICE_ROLE_KEY: "x", XML_URL: "http://mock-xml",
+  TRENDYOL_SELLER_ID: "1", TRENDYOL_API_KEY: "k", TRENDYOL_API_SECRET: "s",
+};
+
+let fails = 0;
+const check = (name, cond, info = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + info}`); if (!cond) fails++; };
+
+function run(mode, env = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "synctest-"));
+  execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, sync, mode], { cwd: dir, env: { ...envBase, ...env }, stdio: ["ignore", "ignore", "inherit"] });
+  const calls = JSON.parse(readFileSync(join(dir, "calls.json"), "utf8"));
+  const csv = readFileSync(join(dir, "preview.csv"), "utf8").split("\n");
+  const line = (b) => csv.find((l) => l.startsWith(b + ";")) ?? "";
+  return { calls, s: calls.run?.summary ?? {}, status: calls.run?.status, line };
+}
+
+// 1) preview: okuma, eşleştirme, hiçbir yazma yok
+{
+  const { calls, s, line } = run("preview");
+  check("preview: Trendyol'a yazma yok", calls.trendyolWrites.length === 0);
+  check("preview: tüm onaylı varyantlar yüklendi (nextPageToken)", s.listingTotals?.approvedVariantsLoaded === 10158, JSON.stringify(s.listingTotals));
+  check("preview: eşleşen", s.matched === 10157, String(s.matched));
+  check("preview: canlı komisyon kullanıldı", s.commissionSource?.urun_canli >= 1, JSON.stringify(s.commissionSource));
+  check("preview: JSON komisyonu yedek", s.commissionSource?.urun >= 1, JSON.stringify(s.commissionSource));
+  check("preview: kilitli ürün atlandı", line("ÖS13-KILITLI").includes("kapalı/fiyatsız"));
+  check("preview: sıfır fiyatlı ürün atlandı", line("ÖS13-SIFIR").includes("kapalı/fiyatsız"));
+  check("preview: onay bekleyen yeniden açılmıyor", line("OS13-BEKLEYEN").includes("onay bekliyor"));
+  check("preview: yeni ürün (Türkçe karakter atıldı)", line("OS13-YEN-1").includes("YENI"));
+  check("preview: aynı başlık engeli", line("BX12").includes("aynı başlık"));
+  check("preview: create sayısı", s.create === 2, String(s.create));
+}
+
+// 2) auto (update + create)
+{
+  const { calls, s, status } = run("auto");
+  const inv = calls.trendyolWrites.filter((w) => w.path.includes("price-and-inventory"));
+  const cr = calls.trendyolWrites.filter((w) => w.path.includes("/v2/products"));
+  const sent = inv.flatMap((w) => w.body.items);
+  check("auto: stok/fiyat gönderildi", sent.length === s.update && s.updated === s.update, `${sent.length}/${s.update}`);
+  check("auto: kapalı/bekleyen gönderilmedi", !sent.some((i) => ["ÖS13-KILITLI", "ÖS13-SIFIR", "OS13-BEKLEYEN"].includes(i.barcode)));
+  check("auto: floor politikası fiyat düşürmüyor", sent.find((i) => i.barcode === "ÖS13-G0et_94794")?.salePrice >= 900);
+  check("auto: V2 ürün açma ucu", cr.length === 1 && cr[0].body.items.length === 2);
+  const p = cr[0]?.body.items.find((i) => i.barcode === "OS13-YENI-2") ?? {};
+  check("auto: marka tam eşleşme (Eco Lounge=77)", p.brandId === 77, String(p.brandId));
+  check("auto: en fazla 8 resim", p.images?.length === 8, String(p.images?.length));
+  check("auto: listPrice >= salePrice", p.listPrice >= p.salePrice);
+  check("auto: cargoCompanyId gönderilmiyor (V2'de yok)", !("cargoCompanyId" in p));
+  check("auto: toplu sonuç kontrol edildi", s.batchCheck?.checked === s.batchIds.length || s.batchCheck?.checked >= 1, JSON.stringify(s.batchCheck));
+  check("auto: ürün hatası özete yazıldı", s.batchCheck?.failedItems === 1 && /Renk/.test(s.batchCheck.reasons[0]), JSON.stringify(s.batchCheck));
+  check("auto: durum partial", status === "partial", status);
+}
+
+// 3) keep politikası: fiyat gönderilmez
+{
+  const { calls } = run("update", { MOCK_POLICY: "keep", MOCK_BULK: "50" });
+  const sent = calls.trendyolWrites.flatMap((w) => w.body.items);
+  check("keep: fiyat alanı yok", sent.length > 0 && sent.every((i) => !("salePrice" in i)));
+}
+
+// 4) zero_missing: XML'de olmayan ilanlar sıfırlanır
+{
+  const { calls, s } = run("update", { MOCK_ZERO: "1", MOCK_BULK: "50" });
+  const zeroed = calls.trendyolWrites.flatMap((w) => w.body.items).filter((i) => i.quantity === 0 && !("salePrice" in i)).map((i) => i.barcode);
+  check("zero_missing: yetim ürün sıfırlandı", zeroed.includes("ORPHAN-1") && s.zeroed >= 1, JSON.stringify(zeroed));
+}
+
+console.log(fails ? `\n${fails} test başarısız` : "\nTüm testler geçti");
+process.exit(fails ? 1 : 0);

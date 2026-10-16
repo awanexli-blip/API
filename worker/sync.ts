@@ -111,9 +111,15 @@ async function main() {
       const lid = listingId as string;
       if (linked.has(lid)) { skip("XML'de tekrar eden ürün kodu"); continue; }
       linked.add(lid);
-      const curPrice = Number(lsBy.get(lid)?.price);
+      const ls = lsBy.get(lid);
+      const curPrice = Number(ls?.price);
       const known = Number.isFinite(curPrice);
-      if (known && curPrice <= 0 && !ov?.price_override) {
+      if (ls?.status === "pending") {
+        skip(`${mp.label}'da onay bekliyor/reddedildi`);
+        csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da onay bekliyor/reddedildi`);
+        continue;
+      }
+      if ((ls?.status === "closed" || (known && curPrice <= 0)) && !ov?.price_override) {
         skip(`${mp.label}'da kapalı/fiyatsız ürün`);
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da kapalı/fiyatsız`);
         continue;
@@ -167,7 +173,7 @@ async function main() {
       if (existing.size && matched / existing.size >= 0.5) {
         const gone = [...existing].filter((b) => !linked.has(b));
         const z = await mp.zeroStock(gone);
-        summary.zeroed += z.ok; summary.failedBatches += z.failed;
+        summary.zeroed += z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds);
       } else {
         summary.zeroMissingSkipped = `${mp.label} ilanlarının yarısından azı XML ile eşleşti, güvenlik için çalıştırılmadı`;
       }
@@ -183,6 +189,9 @@ async function main() {
     summary.created += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
   }
 
+  if (summary.batchIds.length && mp.checkBatches) {
+    summary.batchCheck = await mp.checkBatches(summary.batchIds);
+  }
   summary.batchIds = summary.batchIds.slice(0, 20);
   return summary;
 }
@@ -192,7 +201,7 @@ async function main() {
   const id = run?.id as number;
   try {
     const summary: any = await main();
-    const status = summary.skippedRun ? "skipped" : summary.failedBatches > 0 ? "partial" : "ok";
+    const status = summary.skippedRun ? "skipped" : summary.failedBatches > 0 || summary.batchCheck?.failedItems > 0 ? "partial" : "ok";
     await db.from("sync_runs").update({ status, finished_at: new Date().toISOString(), summary }).eq("id", id);
     console.log(JSON.stringify(summary, null, 1));
   } catch (e: any) {

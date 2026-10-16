@@ -3,18 +3,21 @@
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Gelişmeler ve kararlar: `docs/PROGRESS.md`.
 
-## P0 — Acil: Trendyol V1 kapanışı (15 Ekim 2026)
+## P0 — Acil: Trendyol V1 kapanışı (15 Ekim 2026) — kod hazır, canlı doğrulama bekliyor
 
 Trendyol "Product V1 servisleri 15.10.2026'dan itibaren geçersiz" diyor. Worker V1 kullanıyor.
 
-- [ ] Ürün listeleme: `GET /product/sellers/{id}/products?size=1000` (V1) → `GET /product/sellers/{id}/products/approved` (V2). Sayfa boyutu en fazla **100**, `page*size` 10.000'i geçemez, sonrası `nextPageToken`. Barkod/fiyat/stok `content[].variants[]` içinde (`price.salePrice`, `stock.quantity`, `commission`, `locked`, `archived`). `category.id` / `brand.id` içerikte.
-- [ ] Her isteğe `storeFrontCode` başlığı (TR için değer belgede yok, `TR` dene, canlı doğrula).
-- [ ] Ürün açma: `POST /product/sellers/{id}/products` → `POST /product/sellers/{id}/v2/products`. `listPrice`, `description`, `images`, `attributes` zorunlu. Teslimat: `deliveryOption.deliveryDuration`.
-- [ ] Marka: `GET /product/brands/by-name` yerine `GET /product/brands` (V1-V2 ortak) ile doğrula.
-- [ ] Stok/fiyat ucu değişmedi (`/inventory/.../price-and-inventory`, 1000'e kadar ürün), sadece `storeFrontCode` eklenecek.
-- [ ] Toplu sonuç kontrolü: `GET /product/sellers/{id}/products/batch-requests/{batchRequestId}` → `failureReasons` panele yaz.
-- [ ] Mock regresyon testi + canlı `preview` (K).
-- [ ] Bonus: V2 yanıtındaki `variants[].commission` → `commissions_by_barcode.json` yerine canlı komisyon. `category.id` → yeni ürün kategori önerisi.
+- [x] Ürün listeleme: `GET /product/sellers/{id}/products?size=1000` (V1) → `GET /product/sellers/{id}/products/approved` (V2). Sayfa boyutu en fazla **100**, `page*size` 10.000'i geçemez, sonrası `nextPageToken`. Barkod/fiyat/stok `content[].variants[]` içinde (`price.salePrice`, `stock.quantity`, `commission`, `locked`, `archived`). `category.id` / `brand.id` içerikte.
+- [x] Her isteğe `storeFrontCode` başlığı → belgeye göre gönderilmezse TR. Sadece `TRENDYOL_STOREFRONT` variable ayarlıysa gönderiliyor.
+- [x] Ürün açma: `POST /product/sellers/{id}/products` → `POST /product/sellers/{id}/v2/products`. `listPrice`, `description`, `images`, `attributes` zorunlu. Teslimat: `deliveryOption.deliveryDuration`.
+- [x] Marka: `by-name` V2'de dizi döndürüyor, tam ad eşleşmesi seçiliyor.
+- [x] Stok/fiyat ucu değişmedi (`/inventory/.../price-and-inventory`, 1000'e kadar ürün), sadece `storeFrontCode` eklenecek.
+- [x] Toplu sonuç kontrolü: `GET /product/sellers/{id}/products/batch-requests/{batchRequestId}` → `failureReasons` panele yaz.
+- [x] Kalıcı mock test (`worker/test/run.mjs`, workflow'da her çalışmadan önce).
+- [ ] (K) Canlı `preview`: özette `listingTotals.approved` ≈ mağazadaki ürün sayısı, `matched` ≈ 19.700, hata yok.
+- [x] Canlı komisyon: `variants[].commission` öncelikli, JSON yedek (`commissionSource.urun_canli`). Belgede yüzde mi oran mı net değil: >1 ise /100.
+- [x] Onay bekleyen/reddedilen ürünler (`products/unapproved`) `existing`'e dahil, güncellenmez, yeniden açılmaz.
+- [ ] Bonus: `category.id` → yeni ürün kategori önerisi.
 
 ## P1 — Trendyol canlıya alma
 
