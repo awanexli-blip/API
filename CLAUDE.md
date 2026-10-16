@@ -25,8 +25,8 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
                           Supabase  <-  Vercel'deki Next.js kontrol paneli (app/)
 ```
 
-- **GitHub Actions** (`.github/workflows/sync.yml`): her saat (UTC, :07) `auto` modunda, tüm pazaryerleri ayrı job (matris) çalışır, elle de tetiklenebilir (`workflow_dispatch`, mod: `preview | update | create | auto`). Artifact olarak `preview.csv` ve `xml_dump.csv` yükler (7 gün saklanır). Vercel fonksiyonları 48 MB XML ve 25 bin ürün için uygun olmadığından işi Actions yapar.
-- **Supabase**: `settings`, `category_map`, `product_overrides`, `unmapped_categories`, `sync_runs` tabloları. Şema: `supabase/schema.sql`. RLS açık, erişim sadece sunucu tarafında `service_role` ile.
+- **GitHub Actions** (`.github/workflows/sync.yml`): 15 dakikada bir (UTC :07/:22/:37/:52) `auto` modunda, tüm pazaryerleri ayrı job (matris) çalışır, elle de tetiklenebilir (`workflow_dispatch`, mod: `preview | update | create | auto`). Artifact olarak `preview.csv` ve `xml_dump.csv` yükler (7 gün saklanır). Vercel fonksiyonları 48 MB XML ve 25 bin ürün için uygun olmadığından işi Actions yapar.
+- **Supabase** (proje `xovqsjiddoituaayyhae`, Claude MCP ile erişebilir): `settings`, `marketplace_settings`, `category_map`, `product_overrides`, `unmapped_categories`, `sync_runs`, `create_failures` tabloları. Şema: `supabase/schema.sql`. RLS açık, erişim sadece sunucu tarafında `service_role` ile.
 - **Vercel + Next.js 14 paneli** (`app/`): sadece `ADMIN_EMAIL` ile giriş yapan kullanıcı. Sekmeler: Özet (otomatik modu duraklat, Önizleme / Stok ve fiyatı güncelle / Yeni ürünleri aç düğmeleri, son çalıştırmalar), Fiyat ve stok ayarları (simülasyon dahil), Kategoriler, Ürün istisnaları. Düğmeler GitHub API ile `sync.yml` workflow'unu tetikler (`GH_TOKEN` gerekir).
 
 ### Dosya haritası
@@ -129,7 +129,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - **Trendyol hız sınırı:** aynı uç noktaya 10 saniyede en fazla 50 istek (429). Worker istekler arasında 300 ms bekler.
 - **Trendyol 401:** seller ID, API key, API secret karışmış veya boşluk içeriyor demektir. `User-Agent: "<sellerId> - SelfIntegration"` zorunlu.
 - **CSV tuzağı:** `preview.csv` ayracı `;`. Mevcut ürün satırlarının son sütununda (`MEVCUT (artacak; formül 479.9)`) ek bir `;` var. Analiz yaparken satırı ilk 8 `;` ile böl, kalanı durum sütunu say. `satis` sütunu **gönderilecek** fiyattır, mevcut fiyat değil (mevcut fiyatla karşılaştırma için Trendyol dışa aktarımı gerekir).
-- **Zamanlı çalışma:** cron UTC'dir. `auto_sync` açıksa her saat gerçekten güncelleme yapar. Önizleme istiyorsan `auto_sync`'i duraklat veya mod olarak `preview` yaz (varsayılan mod `auto`).
+- **Zamanlı çalışma:** cron UTC'dir. `auto_sync` açıksa 15 dakikada bir gerçekten güncelleme yapar. Önizleme istiyorsan `auto_sync`'i duraklat veya mod olarak `preview` yaz (varsayılan mod `auto`).
 - **Aracı yükleyici:** önceki yükleyici hâlâ senkronize ediyorsa fiyat/stokları ezer. Kullanıcı durdurdu ve secret'ı yeniledi, ama devam ettiğinden şüphelenirsen Trendyol panelindeki son güncelleme tarihlerine bak.
 - **Node:** worker `node --experimental-strip-types` ile TypeScript'i doğrudan çalıştırır (Node 22+). `worker/` kendi `package.json`'una sahip (`@supabase/supabase-js`, `fast-xml-parser`).
 

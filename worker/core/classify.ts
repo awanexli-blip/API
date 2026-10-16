@@ -3,7 +3,7 @@
 // Kelime kökü yerine ilk 5 harf (Türkçe ekler için kaba kök). 18 bin Trendyol ürününde ölçüm (16.10):
 // tümünde %80 isabet, "yüksek" güvende (%58 ürün) %95 isabet.
 
-export interface Example { title: string; xmlCategory: string; categoryId: string; categoryName: string; commission?: number }
+export interface Example { title: string; xmlCategory: string; categoryId: string; categoryName: string; commission?: number; ref?: string }
 export interface Prediction {
   categoryId: string; categoryName: string;
   confidence: number;      // kazanan kategorinin oy payı (0-1)
@@ -11,6 +11,7 @@ export interface Prediction {
   level: "yuksek" | "orta" | "dusuk";
   commission?: number;     // aynı kategorideki komşuların en yüksek komisyonu (güvenli taraf)
   nearest: string;         // en benzer mevcut ilanın başlığı
+  refs: string[];          // kazanan kategorideki benzer ilanlar (benzerlik sırasıyla)
 }
 
 const lower = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
@@ -63,6 +64,7 @@ export function buildClassifier(examples: Example[], k = 5) {
       level: confidence >= 0.8 && similarity >= 0.5 ? "yuksek" : confidence >= 0.6 && similarity >= 0.35 ? "orta" : "dusuk",
       commission: comms.length ? Math.max(...comms) : undefined,
       nearest: examples[top[0][0]].title,
+      refs: same.map((e) => e.ref).filter((r): r is string => !!r),
     };
   };
 }

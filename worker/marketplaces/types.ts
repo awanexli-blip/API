@@ -19,6 +19,7 @@ export interface BatchCheck {
   pending: number;      // süre içinde bitmeyen
   failedItems: number;  // başarısız ürün sayısı
   reasons: string[];    // ilk hatalar: "barkod: neden"
+  failed?: { id: string; reason: string }[]; // tüm başarısız ürünler (ürün açmanın tekrar denenmesini engellemek için)
 }
 
 export interface InventoryItem {
@@ -35,7 +36,8 @@ export interface NewProduct {
   productCode: string;
   desi: number;
   images: string[];
-  cat: any;             // category_map satırı
+  cat: any;             // category_map satırı (category_id tahminden de gelebilir)
+  refs?: string[];      // benzer mevcut ilanlar (zorunlu özellikleri kopyalamak için)
   price: number;
   qty: number;
 }

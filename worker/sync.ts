@@ -97,7 +97,7 @@ async function main() {
   const examples: Example[] = [];
   for (const r of raw) {
     const l = lsBy.get(mp.findListing(r, existing) ?? "");
-    if (l?.categoryId && l.status !== "pending") examples.push({ title: l.title || String(r.name ?? ""), xmlCategory: String(r.category ?? ""), categoryId: l.categoryId, categoryName: l.categoryName ?? "", commission: l.commission });
+    if (l?.categoryId && l.status !== "pending") examples.push({ title: l.title || String(r.name ?? ""), xmlCategory: String(r.category ?? ""), categoryId: l.categoryId, categoryName: l.categoryName ?? "", commission: l.commission, ref: l.id });
   }
   const predict = examples.length >= 50 ? buildClassifier(examples) : null;
   const predCount: Record<string, number> = {};
@@ -205,7 +205,7 @@ async function main() {
     if (!images.length) { skip("resim yok"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: resim yok`); continue; }
     if (hidden || qty < minStock) { skip("stok yok / gizli"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: stok yok`); continue; }
     const newId = mp.newListingId(r);
-    toCreate.push({ id: newId, name, detail: String(r.detail ?? ""), brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat: { ...(cat ?? {}), category_id: categoryId }, price, qty });
+    toCreate.push({ id: newId, name, detail: String(r.detail ?? ""), brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat: { ...(cat ?? {}), category_id: categoryId }, price, qty, refs: pred?.refs });
     csv.push(`${newId};${q(name)};${q(category)};${r.price};${price};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};YENI${cat?.category_id ? "" : guess}`);
   }
 
@@ -259,6 +259,16 @@ async function main() {
   if (doCreate && weakMatch) {
     summary.createBlocked = `${mp.label} ürünlerinin yarısından azı XML ile eşleşti. Aynı ürünleri ikinci kez açmamak için yeni ürün açma durduruldu.`;
   }
+  // Son 24 saatte pazaryerinin reddettiği ürünler tekrar gönderilmez (her çalışmada aynı hatayı tekrarlamasın)
+  let recentFails = new Set<string>();
+  if (doCreate && toCreate.length) {
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { data, error } = await db.from("create_failures").select("barcode").eq("marketplace", marketplaceId).gt("last_at", since);
+    if (!error) recentFails = new Set((data ?? []).map((x: any) => x.barcode));
+    const before = toCreate.length;
+    toCreate.splice(0, toCreate.length, ...toCreate.filter((p) => !recentFails.has(p.id)));
+    if (before > toCreate.length) skipped["son 24 saatte reddedildi, beklemede"] = before - toCreate.length;
+  }
   if (doCreate && !weakMatch && toCreate.length) {
     // Deneme için adet sınırı (workflow girdisi "limit", elle tetiklemede varsayılan 50)
     const limit = Number(process.env.CREATE_LIMIT || 0);
@@ -270,6 +280,12 @@ async function main() {
 
   if (summary.batchIds.length && mp.checkBatches) {
     summary.batchCheck = await mp.checkBatches(summary.batchIds);
+    // Reddedilen yeni ürünleri kaydet (mevcut ilanların stok/fiyat hataları değil)
+    const created = new Set(toCreate.map((p) => p.id));
+    const rows = (summary.batchCheck.failed ?? []).filter((f: any) => created.has(f.id)).map((f: any) => ({ marketplace: marketplaceId, barcode: f.id, reason: f.reason, last_at: new Date().toISOString() }));
+    for (const part of chunk(rows, 500)) await db.from("create_failures").upsert(part);
+    summary.createRejected = rows.length;
+    delete summary.batchCheck.failed; // özet şişmesin
   }
   summary.batchIds = summary.batchIds.slice(0, 20);
   return summary;

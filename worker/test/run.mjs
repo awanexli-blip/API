@@ -30,7 +30,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 {
   const { calls, s, line } = run("preview");
   check("preview: Trendyol'a yazma yok", calls.trendyolWrites.length === 0);
-  check("preview: tüm onaylı varyantlar yüklendi (nextPageToken)", s.listingTotals?.approvedVariantsLoaded === 10160, JSON.stringify(s.listingTotals));
+  check("preview: tüm onaylı varyantlar yüklendi (nextPageToken)", s.listingTotals?.approvedVariantsLoaded === 10161, JSON.stringify(s.listingTotals));
   check("preview: eşleşen", s.matched === 10159, String(s.matched));
   check("preview: canlı komisyon kullanıldı", s.commissionSource?.urun_canli >= 1, JSON.stringify(s.commissionSource));
   check("preview: JSON komisyonu yedek", s.commissionSource?.urun >= 1, JSON.stringify(s.commissionSource));
@@ -39,7 +39,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("preview: onay bekleyen yeniden açılmıyor", line("OS13-BEKLEYEN").includes("onay bekliyor"));
   check("preview: yeni ürün (Türkçe karakter atıldı)", line("OS13-YEN-1").includes("YENI"));
   check("preview: aynı başlık engeli", line("BX12").includes("aynı başlık"));
-  check("preview: create sayısı", s.create === 2, String(s.create));
+  check("preview: create sayısı (filtre öncesi)", s.create === 4, String(s.create));
 }
 
 // 2) auto (update + create)
@@ -60,6 +60,15 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("auto: toplu sonuç kontrol edildi", s.batchCheck?.checked === s.batchIds.length || s.batchCheck?.checked >= 1, JSON.stringify(s.batchCheck));
   check("auto: ürün hatası özete yazıldı", s.batchCheck?.failedItems === 1 && /Renk/.test(s.batchCheck.reasons[0]), JSON.stringify(s.batchCheck));
   check("auto: durum partial", status === "partial", status);
+  const items = cr[0]?.body.items ?? [];
+  const attrOf = (bc, id) => items.find((i) => i.barcode === bc)?.attributes.find((a) => a.attributeId === id);
+  check("özellik: başlıktaki renk (Siyah)", attrOf("OS13-YENI-2", 47)?.attributeValueId === 1, JSON.stringify(attrOf("OS13-YENI-2", 47)));
+  check("özellik: renk yoksa Çok Renkli", attrOf("OS13-YEN-1", 47)?.attributeValueId === 2, JSON.stringify(attrOf("OS13-YEN-1", 47)));
+  check("özellik: Menşei benzer onaylı ilandan", attrOf("OS13-YEN-1", 1192)?.attributeValueId === 7001, JSON.stringify(attrOf("OS13-YEN-1", 1192)));
+  check("özellik: opsiyonel gönderilmez", !attrOf("OS13-YEN-1", 999));
+  check("özellik: doldurulamayan ürün gönderilmez", !items.some((i) => i.barcode === "OS13-IMKANSIZ") && Object.keys(s.skipped).some((k) => k.startsWith("zorunlu özellik doldurulamadı")), JSON.stringify(s.skipped));
+  check("tekrar: son 24 saatte reddedilen gönderilmez", !items.some((i) => i.barcode === "OS13-FAILED1") && s.skipped["son 24 saatte reddedildi, beklemede"] === 1, JSON.stringify(s.skipped));
+  check("tekrar: yeni ret kaydedildi", (calls.createFailures ?? []).length === 1 && s.createRejected === 1, JSON.stringify(calls.createFailures));
 }
 
 // 3) keep politikası: fiyat gönderilmez

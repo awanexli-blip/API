@@ -60,6 +60,22 @@ export function createTrendyol(): Marketplace {
 
   const tgItems: any[] = [];
   const liveComm = new Map<string, number>();
+  // Onaylı ilanların özellikleri (yeni ürünün zorunlu özelliklerini benzer üründen doldurmak için)
+  type Attr = { attributeId: number; attributeValueId?: number; customAttributeValue?: string; name?: string; value?: string };
+  const attrsByBarcode = new Map<string, Attr[]>();
+  const catOfBarcode = new Map<string, string>();
+  const barcodesByCat = new Map<string, string[]>();
+  const toAttrs = (list: any[]): Attr[] => {
+    const out: Attr[] = [];
+    for (const a of list ?? []) {
+      const vals: any[] = a.attributeValues ?? [{ attributeValueId: a.attributeValueId, attributeValue: a.attributeValue }];
+      const v = vals[0];
+      if (!a.attributeId || !v) continue;
+      if (v.attributeValueId) out.push({ attributeId: Number(a.attributeId), attributeValueId: Number(v.attributeValueId), name: a.attributeName, value: v.attributeValue });
+      else if (v.attributeValue) out.push({ attributeId: Number(a.attributeId), customAttributeValue: String(v.attributeValue), name: a.attributeName, value: v.attributeValue });
+    }
+    return out;
+  };
   const totals: Record<string, number> = {};
 
   const brandCache = new Map<string, number | null>();
@@ -76,6 +92,77 @@ export function createTrendyol(): Marketplace {
     brandCache.set(name, id);
     await sleep(300);
     return id;
+  }
+
+  // Kategori özellikleri ve değerleri (çalışma boyunca önbellek)
+  const catAttrCache = new Map<string, any[]>();
+  async function categoryAttributes(cid: string): Promise<any[]> {
+    if (!catAttrCache.has(cid)) {
+      let list: any[] = [];
+      try { list = (await tg(`/product/categories/${cid}/attributes`)).categoryAttributes ?? []; } catch (e: any) { console.error(e.message); }
+      catAttrCache.set(cid, list);
+      await sleep(300);
+    }
+    return catAttrCache.get(cid)!;
+  }
+  const valueCache = new Map<string, { id: number; name: string }[]>();
+  async function attributeValues(cid: string, aid: number) {
+    const key = cid + ":" + aid;
+    if (!valueCache.has(key)) {
+      const out: { id: number; name: string }[] = [];
+      try {
+        for (let page = 0; page < 5; page++) {
+          const r = await tg(`/product/categories/${cid}/attributes/${aid}/values?page=${page}&size=1000`);
+          const list: any[] = r.content ?? r.attributeValues ?? (Array.isArray(r) ? r : []);
+          for (const v of list) out.push({ id: Number(v.attributeValueId ?? v.id), name: String(v.attributeValue ?? v.name ?? "") });
+          await sleep(300);
+          if (!r.totalPages || page + 1 >= r.totalPages) break;
+        }
+      } catch (e: any) { console.error(e.message); }
+      valueCache.set(key, out);
+    }
+    return valueCache.get(key)!;
+  }
+  const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
+  // Belirsiz durumlarda seçilecek nötr değerler (sırayla)
+  const NEUTRAL = ["çok renkli", "karışık", "renkli", "tek ebat", "standart", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
+  const isColor = (name: string) => /renk|color/i.test(name);
+
+  // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > benzer onaylı ilan > nötr değer
+  async function fillAttributes(p: NewProduct, cid: string): Promise<{ attributes: any[]; missing: string[] }> {
+    const out = new Map<number, Attr>();
+    for (const a of p.cat.attributes ?? []) if (a?.attributeId) out.set(Number(a.attributeId), a);
+    const refs = [...(p.refs ?? []).filter((b) => catOfBarcode.get(b) === cid), ...(barcodesByCat.get(cid) ?? [])];
+    const missing: string[] = [];
+    for (const ca of await categoryAttributes(cid)) {
+      if (!ca.required) continue;
+      const id = Number(ca.attribute?.id), name = String(ca.attribute?.name ?? id);
+      if (out.has(id)) continue;
+      let val: Attr | undefined;
+      if (isColor(name)) {
+        const vals = await attributeValues(cid, id);
+        const title = " " + lo(p.name).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
+        const hit = vals.filter((v) => v.name && title.includes(" " + lo(v.name) + " ")).sort((a, b) => b.name.length - a.name.length)[0];
+        if (hit) val = { attributeId: id, attributeValueId: hit.id };
+        else {
+          const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
+          if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
+          else if (ca.allowCustom) val = { attributeId: id, customAttributeValue: "Çok Renkli" };
+        }
+      }
+      if (!val) for (const b of refs) {
+        const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);
+        if (a) { val = a.attributeValueId ? { attributeId: id, attributeValueId: a.attributeValueId } : { attributeId: id, customAttributeValue: a.customAttributeValue }; break; }
+      }
+      if (!val) {
+        const vals = await attributeValues(cid, id);
+        const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
+        if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
+      }
+      if (val) out.set(id, val); else missing.push(name);
+    }
+    const attributes = [...out.values()].map(({ attributeId, attributeValueId, customAttributeValue }) => (attributeValueId ? { attributeId, attributeValueId } : { attributeId, customAttributeValue }));
+    return { attributes, missing };
   }
 
   return {
@@ -96,6 +183,12 @@ export function createTrendyol(): Marketplace {
           if (Number.isFinite(comm) && comm > 0) liveComm.set(barcode, comm > 1 ? comm / 100 : comm);
           out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), vatRate: Number(v.vatRate), status: closed ? "closed" : "active",
             categoryId: c.category?.id != null ? String(c.category.id) : undefined, categoryName: c.category?.name ?? "", commission: liveComm.get(barcode) });
+          if (!closed && c.category?.id != null) {
+            const cid = String(c.category.id);
+            attrsByBarcode.set(barcode, [...toAttrs(c.attributes), ...toAttrs(v.attributes)]);
+            catOfBarcode.set(barcode, cid);
+            const l = barcodesByCat.get(cid); if (l) { if (l.length < 50) l.push(barcode); } else barcodesByCat.set(cid, [barcode]);
+          }
           tgItems.push({ barcode, stockCode: v.stockCode ? String(v.stockCode) : "", productMainId: c.productMainId ? String(c.productMainId) : "", title, salePrice: price, categoryId: c.category?.id ?? null, categoryName: c.category?.name ?? "", brandId: c.brand?.id ?? null, closed });
         }
       });
@@ -169,13 +262,16 @@ export function createTrendyol(): Marketplace {
         used.add(p.id);
         const bId = await brandId(BRAND_NAME);
         if (!bId) { ctx.skip(`marka bulunamadı: ${BRAND_NAME}`); continue; }
+        const cid = String(p.cat.category_id);
+        const { attributes, missing } = await fillAttributes(p, cid);
+        if (missing.length) { ctx.skip(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
         payloads.push({
           barcode: p.id, title: p.name.slice(0, 100), productMainId: p.id, brandId: bId,
           categoryId: Number(p.cat.category_id), quantity: Math.min(Math.floor(p.qty), 20000), stockCode: p.id,
           dimensionalWeight: p.desi, description: p.detail.slice(0, 30000),
           listPrice: p.price, salePrice: p.price, vatRate: Number(p.cat.vat_rate ?? ctx.vatRate),
           ...(shipmentAddressId ? { shipmentAddressId } : {}), ...(returningAddressId ? { returningAddressId } : {}),
-          images: p.images.slice(0, 8).map((url: string) => ({ url })), attributes: p.cat.attributes ?? [],
+          images: p.images.slice(0, 8).map((url: string) => ({ url })), attributes,
         });
       }
       for (const batch of chunk(payloads, 100)) {
@@ -204,6 +300,7 @@ export function createTrendyol(): Marketplace {
             for (const it of its) {
               if (it.status !== "FAILED") continue;
               out.failedItems++;
+              (out.failed ??= []).push({ id: String(it.requestItem?.barcode ?? it.requestItem?.product?.barcode ?? ""), reason: (it.failureReasons ?? []).join(" | ").slice(0, 500) });
               if (out.reasons.length < 30) out.reasons.push(`${it.requestItem?.barcode ?? "?"}: ${(it.failureReasons ?? []).join(" | ")}`);
             }
           } catch (e: any) { next.push(id); console.error(e.message); }

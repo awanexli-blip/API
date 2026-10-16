@@ -5,8 +5,8 @@ import { writeFileSync } from "node:fs";
 const N_BULK = Number(process.env.MOCK_BULK ?? 10150); // >10.000: nextPageToken yolunu test eder
 
 // Onaylı ürünler (V2: içerik + varyant)
-const content = (barcode, title, salePrice, extra = {}) => ({
-  contentId: barcode, productMainId: barcode, title, brand: { id: 9, name: "Eco Lounge" }, category: { id: 555, name: "Kat" },
+const content = (barcode, title, salePrice, extra = {}, cat = { id: 555, name: "Kat" }, attributes = []) => ({
+  contentId: barcode, productMainId: barcode, title, brand: { id: 9, name: "Eco Lounge" }, category: cat, attributes,
   variants: [{ barcode, stockCode: barcode, price: { salePrice, listPrice: salePrice }, stock: { quantity: 5 }, locked: false, archived: false, blacklisted: false, ...extra }],
 });
 const approved = [
@@ -20,6 +20,8 @@ const approved = [
   content("X-SAME", "Ayni Baslikli Urun Burada", 80),
   content("DEAD-1", "Olu Bolge Urunu", 359.9),                    // 300-410 arası: 299,90 hem ucuz hem kârlı
   content("PAHALI-1", "Pahali Urun", 1000),                       // formülün çok üstünde: kademeli düşüş
+  // Kategori 3'te onaylı ilan: zorunlu "Menşei" buradan kopyalanır
+  content("REF-1", "Referans Urun", 100, {}, { id: 3, name: "Kat3" }, [{ attributeId: 1192, attributeName: "Menşei", attributeValues: [{ attributeValueId: 7001, attributeValue: "CN" }] }]),
 ];
 for (let i = 0; i < N_BULK; i++) approved.push(content(`BULK-${i}`, `Toplu ${i}`, 99));
 const unapproved = [{ barcode: "OS13-BEKLEYEN", title: "Bekleyen Urun", salePrice: 70, quantity: 3, status: "pendingApproval" }];
@@ -34,7 +36,9 @@ const xmlRows = [
   row({ barcode: "BX6", productCode: "SIFIR", category: "Cat1", price: "60", name: "Sifir Fiyat" }),
   row({ barcode: "BX7", productCode: "BEKLEYEN", category: "Cat3", price: "40", name: "Bekleyen Urun", image1: "https://i/b.jpg" }),
   row({ barcode: "BX8", productCode: "YENİ-1", category: "Cat3", price: "80", name: "Yeni Urun 1", image1: "https://i/1.jpg", detail: "d", desi: "2" }),
-  row({ barcode: "BX9", productCode: "YENI-2", category: "Cat3", price: "250", name: "Yeni Urun 2", ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`image${i + 1}`, `https://i/2-${i}.jpg`])) }),
+  row({ barcode: "BX13", productCode: "IMKANSIZ", category: "Cat4", price: "80", name: "Imkansiz Ozellik", image1: "https://i/9.jpg" }),
+  row({ barcode: "BX14", productCode: "FAILED1", category: "Cat3", price: "80", name: "Dun Reddedilen", image1: "https://i/8.jpg" }),
+  row({ barcode: "BX9", productCode: "YENI-2", category: "Cat3", price: "250", name: "Yeni Urun 2 Siyah", ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`image${i + 1}`, `https://i/2-${i}.jpg`])) }),
   row({ barcode: "BX10", productCode: "YENI-3", category: "Cat3", price: "80", name: "Resimsiz" }),
   row({ barcode: "BX11", productCode: "YENI-4", category: "CatX", price: "80", name: "Kategorisiz", image1: "https://i/4.jpg" }),
   row({ barcode: "DEAD-1", productCode: "DD", category: "Cat1", price: "150", name: "Olu Bolge Urunu" }),
@@ -51,7 +55,8 @@ const xml = "<?xml version='1.0'?><products>" + xmlRows.map((r) => "<product>" +
 const settings = { id: 1, commission_rate: 0.18, target_profit_rate: 0.15, shipping_cost: 90, free_shipping_threshold: 300, min_markup: 1.3, fixed_cost: 0, min_acceptable_profit_rate: 0.08, max_price: 10000, min_stock: 3, vat_rate: 20, fx_usd: 35, fx_eur: 40, auto_sync: true, auto_create: true, update_prices: true, zero_missing: process.env.MOCK_ZERO === "1", existing_price_policy: process.env.MOCK_POLICY ?? "floor" };
 const catMap = [
   { xml_category: "Cat1", category_id: 1, commission_rate: 0.2, vat_rate: null, attributes: [] },
-  { xml_category: "Cat3", category_id: 3, commission_rate: null, vat_rate: 10, attributes: [{ attributeId: 47, customAttributeValue: "Siyah" }] },
+  { xml_category: "Cat3", category_id: 3, commission_rate: null, vat_rate: 10, attributes: [] },
+  { xml_category: "Cat4", category_id: 4, commission_rate: null, vat_rate: 20, attributes: [] },
 ];
 
 const log = { trendyolWrites: [], trendyolReads: [], hbWrites: [], summary: null, run: null };
@@ -90,9 +95,11 @@ globalThis.fetch = async (url, init = {}) => {
       if (t === "marketplace_settings") return json(single ? hbSettings : [hbSettings]);
       if (t === "category_map") return json(catMap);
       if (t === "product_overrides") return json([]);
+      if (t === "create_failures") return json([{ barcode: "OS13-FAILED1" }]);
     }
     if (t === "sync_runs" && method === "POST") { if (noMig && body?.marketplace) return json({ message: "column marketplace does not exist" }, 400); log.runInsert = body; return json(single ? { id: 1 } : [{ id: 1 }], 201); }
     if (t === "unmapped_categories" && method === "POST") log.unmapped = body;
+    if (t === "create_failures" && method === "POST") log.createFailures = body;
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });
   }
@@ -112,6 +119,13 @@ globalThis.fetch = async (url, init = {}) => {
     if (/\/products(\?|$)/.test(p) && method === "GET") return json({ errors: [{ message: "V1 kapalı" }] }, 410);
     if (p.endsWith("/products/approved")) { log.trendyolReads.push("approved"); return pageOf(approved, u, 100); }
     if (p.endsWith("/products/unapproved")) { log.trendyolReads.push("unapproved"); return pageOf(unapproved, u, 1000); }
+    // Kategori özellikleri: 3 -> Renk (başlıktan / nötr) + Menşei (benzer ilandan); 4 -> doldurulamayan zorunlu özellik
+    const ca = p.match(/\/product\/categories\/(\d+)\/attributes$/);
+    if (ca) return json({ categoryAttributes: ca[1] === "4"
+      ? [{ attribute: { id: 500, name: "Garanti Süresi" }, required: true, allowCustom: false }]
+      : [{ attribute: { id: 47, name: "Renk" }, required: true, allowCustom: false }, { attribute: { id: 1192, name: "Menşei" }, required: true, allowCustom: false }, { attribute: { id: 999, name: "Opsiyonel" }, required: false }] });
+    const av = p.match(/\/product\/categories\/(\d+)\/attributes\/(\d+)\/values$/);
+    if (av) return json({ totalPages: 1, content: av[2] === "47" ? [{ attributeValueId: 1, attributeValue: "Siyah" }, { attributeValueId: 2, attributeValue: "Çok Renkli" }] : av[2] === "1192" ? [{ attributeValueId: 3, attributeValue: "TR" }] : [] });
     if (p.includes("/brands/by-name")) return json([{ id: 66, name: "Eco Lounge Home" }, { id: 77, name: "Eco Lounge" }]);
     if (p.includes("/batch-requests/")) {
       const id = p.split("/").pop();

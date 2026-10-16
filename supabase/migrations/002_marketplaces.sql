@@ -57,3 +57,14 @@ alter table unmapped_categories add column if not exists suggested_commission nu
 
 alter table sync_runs add column if not exists marketplace text not null default 'trendyol';
 create index if not exists sync_runs_marketplace_id on sync_runs (marketplace, id desc);
+
+-- Pazaryerinin reddettiği ürün açma denemeleri: aynı ürün 24 saat boyunca tekrar gönderilmez
+create table if not exists create_failures (
+  marketplace text not null,
+  barcode text not null,
+  reason text,
+  tries int not null default 1,
+  last_at timestamptz not null default now(),
+  primary key (marketplace, barcode)
+);
+alter table create_failures enable row level security;
