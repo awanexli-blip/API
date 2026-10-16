@@ -9,3 +9,4 @@ xml_dump.csv
 preview_*.csv
 worker/package-lock.json
 package-lock.json
+*.xlsx

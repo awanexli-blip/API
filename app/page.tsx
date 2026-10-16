@@ -77,7 +77,8 @@ function Panel({ token }: { token: string }) {
     [token]
   );
 
-  const notify = (t: "err" | "good", m: string) => { setMsg({ t, m }); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  // useCallback: aksi halde her mesajda yeni fonksiyon -> alt sekmelerin load() efekti tekrar çalışır -> hata varsa sonsuz döngü
+  const notify = useCallback((t: "err" | "good", m: string) => { setMsg({ t, m }); window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
 
   return (
     <div className="wrap">
@@ -113,13 +114,18 @@ function Overview({ api, notify }: Props) {
   const [runs, setRuns] = useState<Row[]>([]);
   const [s, setS] = useState<Row | null>(null);
   const [busy, setBusy] = useState("");
+  const [toggling, setToggling] = useState(false);
 
+  // Ayarlar ve geçmiş ayrı yüklenir: biri hata verirse diğeri yine görünür
   const load = useCallback(async () => {
-    try { setRuns(await api("/api/runs")); setS(await api("/api/settings")); } catch (e: any) { notify("err", e.message); }
+    const [st, rn] = await Promise.allSettled([api("/api/settings"), api("/api/runs")]);
+    if (st.status === "fulfilled") setS(st.value); else notify("err", "Ayarlar okunamadı: " + st.reason?.message);
+    if (rn.status === "fulfilled") setRuns(rn.value); else notify("err", "Çalıştırma geçmişi okunamadı: " + rn.reason?.message);
   }, [api, notify]);
 
   useEffect(() => { load(); }, [load]);
-  const running = runs.some((r) => r.status === "running");
+  // 1 saatten eski "running" kayıtlar yarıda kalmış sayılır, sonsuz yenilemeye sokmasın
+  const running = runs.some((r) => r.status === "running" && Date.now() - new Date(r.started_at).getTime() < 3600_000);
   useEffect(() => {
     if (!running) return;
     const t = setInterval(load, 8000);
@@ -138,9 +144,17 @@ function Overview({ api, notify }: Props) {
   }
 
   async function toggleAuto() {
-    if (!s) return;
-    try { setS(await api("/api/settings", { method: "PUT", body: JSON.stringify({ auto_sync: !s.auto_sync }) })); }
-    catch (e: any) { notify("err", e.message); }
+    if (!s || toggling) return;
+    const next = !s.auto_sync;
+    if (next && !confirm("Otomatik senkronizasyon açılsın mı? Her 4 saatte bir Trendyol'daki stok ve fiyatlar güncellenir.")) return;
+    setToggling(true);
+    try {
+      const d = await api("/api/settings", { method: "PUT", body: JSON.stringify({ auto_sync: next }) });
+      setS(d);
+      if (d.auto_sync !== next) notify("err", "Ayar kaydedilemedi, sayfayı yenileyip tekrar dene.");
+      else notify("good", next ? "Otomatik senkronizasyon açıldı. İlk çalışma bir sonraki 4 saatlik dilimde (03:00, 07:00, 11:00, 15:00, 19:00, 23:00 TR saati)." : "Otomatik senkronizasyon duraklatıldı.");
+    } catch (e: any) { notify("err", "Kaydedilemedi: " + e.message); }
+    setToggling(false);
   }
 
   return (
@@ -150,7 +164,8 @@ function Overview({ api, notify }: Props) {
         <p className="muted">GitHub Actions her 4 saatte bir XML'i çeker, stok ve fiyatı hesaplar, Trendyol'a gönderir.</p>
         <div className="row">
           <span className={`pill ${s?.auto_sync ? "ok" : "partial"}`}>{s ? (s.auto_sync ? "Açık" : "Duraklatıldı") : "..."}</span>
-          <button className="btn" onClick={toggleAuto} disabled={!s}>{s?.auto_sync ? "Duraklat" : "Devam ettir"}</button>
+          <button className={`btn ${s?.auto_sync ? "" : "primary"}`} onClick={toggleAuto} disabled={!s || toggling}>{toggling ? "Kaydediliyor..." : s?.auto_sync ? "Duraklat" : "Aç"}</button>
+          {s?.updated_at && <span className="muted" style={{ fontSize: 13 }}>son değişiklik: {when(s.updated_at)}</span>}
         </div>
       </div>
 
