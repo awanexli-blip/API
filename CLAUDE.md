@@ -35,6 +35,10 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 |---|---|
 | `worker/sync.ts` | Pazaryerinden bağımsız orkestratör: XML çek, ilanları çek, eşleştir, fiyat hesapla, güncelle/oluştur, CSV yaz, Supabase'e sonuç yaz. Kullanım: `sync.ts <mod> [pazaryeri]` |
 | `worker/marketplaces/` | `types.ts` (Marketplace arayüzü), `index.ts` (kayıt defteri), `trendyol.ts` (API, barkod kuralı, komisyon kaynağı, ürün açma). Yeni pazaryeri = yeni adaptör dosyası + kayıt defterine ekleme |
+| `worker/marketplaces/hepsiburada.ts` | Hepsiburada adaptörü (SIT varsayılan, `HB_ENV=prod`), uçlar canlıda doğrulanmadı |
+| `worker/data/hepsiburada/` | `commissions.json` (kategori komisyonu, +KDV), `cargo.json` (desi kargo tarifesi, KDV hariç) |
+| `supabase/migrations/002_marketplaces.sql` | Pazaryeri bazlı ayarlar ve `marketplace` kolonları |
+| `kaynaklar/` | Git dışı: PDF/Excel/ekran görüntüleri (repo herkese açık) |
 | `worker/core/` | Ortak yardımcılar (`util.ts`), XML okuma (`xml.ts`) |
 | `docs/TODO.md` | Yapılacaklar (öncelik sırasıyla) ve pazaryeri zorunlu alanları |
 | `docs/PROGRESS.md` | Gelişme günlüğü. **Her oturumda önce bunu oku, sonunda güncelle** |
@@ -127,6 +131,8 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - **Node:** worker `node --experimental-strip-types` ile TypeScript'i doğrudan çalıştırır (Node 22+). `worker/` kendi `package.json`'una sahip (`@supabase/supabase-js`, `fast-xml-parser`).
 
 ## 8. Ortam değişkenleri (sadece adlar)
+
+**Hepsiburada (GitHub Secrets):** `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`; Variables: `HB_ENV` (boş=SIT, `prod`), `HB_USER_AGENT`.
 
 **GitHub Secrets (worker):** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `XML_URL`, `TRENDYOL_SELLER_ID`, `TRENDYOL_API_KEY`, `TRENDYOL_API_SECRET`, `TRENDYOL_SHIPMENT_ADDRESS_ID`, `TRENDYOL_RETURN_ADDRESS_ID` (opsiyonel, `create` için; V2'de `TRENDYOL_CARGO_COMPANY_ID` kullanılmıyor). **GitHub Variables (opsiyonel):** `TRENDYOL_STOREFRONT`, `TRENDYOL_BRAND_NAME`.
 

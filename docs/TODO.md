@@ -69,11 +69,14 @@ Ortamlar: test (SIT) `mpop-sit.hepsiburada.com`, `listing-external-sit.hepsibura
 Adımlar:
 - [ ] H0a (K): HB entegratör hesabı: satıcı paneli > Entegratör bilgileri > "Yeni entegratör ekle" bir entegratör kullanıcı adı istiyor. Kendi entegrasyonumuz için HB geliştirici portalından entegratör kaydı (kullanıcı adı + şifre) alınmalı, sonra bu kullanıcı adı mağazaya eklenmeli. Mağaza ID (merchantId) panelde görünüyor.
 - [ ] H0 (K): Hepsiburada satıcı hesabı aktif mi? Merchant ID, API kullanıcı adı ve şifresi (canlı + test/SIT), uygulama adı (User-Agent). Kategori komisyonları, kargo kuralı (kim öder, eşik, desi tarifesi). "Eco Lounge" markası HB'de kayıtlı/onaylı mı.
-- [ ] H1: P2 veri modeli (pazaryeri bazlı ayarlar, `category_map`/`product_overrides`/`sync_runs` için `marketplace` kolonu). İkinci pazaryeri için şart. Supabase migration (K çalıştırır).
-- [ ] H2: `worker/marketplaces/hepsiburada.ts`: ilan çekme, eşleştirme (merchantSku = `OS13-` + productCode), stok ve fiyat ayrı isteklerle, trackingId sonuç kontrolü, mock test.
+- [x] H1 (kod): P2 veri modeli — migration 002 yazıldı, (K) Supabase'de çalıştırılacak. Eski: (pazaryeri bazlı ayarlar, `category_map`/`product_overrides`/`sync_runs` için `marketplace` kolonu). İkinci pazaryeri için şart. Supabase migration (K çalıştırır).
+- [x] H2 (canlıda doğrulanacak): `worker/marketplaces/hepsiburada.ts`: ilan çekme, eşleştirme (merchantSku = `OS13-` + productCode), stok ve fiyat ayrı isteklerle, trackingId sonuç kontrolü, mock test.
 - [ ] H3: Kategori eşleme aracı: HB kategori ağacında arama + seçilen kategorinin zorunlu özellik formu (panelde). Öneri: Trendyol'daki kategori adına benzeyen HB kategorisi.
-- [ ] H4: Ürün açma: import JSON (merchantSku, VaryantGroupID, Barcode, UrunAdi, UrunAciklamasi, Marka, GarantiSuresi, kg, tax_vat_rate, price, stock, Image1..5 + kategori özellikleri).
-- [ ] H5: Workflow: pazaryeri matrisi, secrets `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`, `HB_ENV` (sit|prod).
+- [x] H4 (canlıda doğrulanacak): Ürün açma: import JSON (merchantSku, VaryantGroupID, Barcode, UrunAdi, UrunAciklamasi, Marka, GarantiSuresi, kg, tax_vat_rate, price, stock, Image1..5 + kategori özellikleri).
+- [x] H5: Workflow: pazaryeri matrisi, secrets `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`, `HB_ENV` (sit|prod).
+- [ ] (K) Trendyol komisyonu +KDV mi? Faturadan kontrol, evetse panelde işaretle (fiyatlar ~%4-5 artar).
+- [ ] (K) HB kargo: her siparişte satıcı mı ödüyor, müşteri ödediği bir eşik var mı? Hangi kargo firması?
+- [ ] HB kategori eşleme: XML kategorisi -> HB kategori ID + komisyon (commissions.json'dan öneri).
 - [ ] H6: Test ortamında 10 ürün → canlıda 50 ürün → tamamı. `auto_create` kapalı başlar.
 
 ## P4 — Yeni pazaryeri adaptörleri
