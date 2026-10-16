@@ -111,7 +111,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
         <div className="grid" style={{ gridTemplateColumns: "1fr" }}>
           {"commission_plus_vat" in f ? (
             <label className="check"><input type="checkbox" checked={!!f.commission_plus_vat} onChange={(e) => setF({ ...f, commission_plus_vat: e.target.checked })} />
-              Komisyon oranı +KDV (komisyon faturasına ayrıca KDV ekleniyor){marketplace === "hepsiburada" ? " — Hepsiburada sözleşmesine göre evet" : " — Trendyol komisyon faturandan kontrol et"}</label>
+              Komisyon oranı +KDV (komisyon faturasına ayrıca KDV ekleniyor){marketplace === "hepsiburada" ? " — Hepsiburada sözleşmesine göre evet" : " — Trendyol'da komisyonlara KDV dahil: kapalı kalmalı"}</label>
           ) : <p className="muted" style={{ fontSize: 13 }}>Komisyon +KDV ayarı için Supabase migration 002 çalıştırılmalı.</p>}
           {"shipping_mode" in f && <>
             <label className="f" style={{ maxWidth: 520 }}>Kargo ücreti nasıl hesaplansın?

@@ -74,7 +74,7 @@ Adımlar:
 - [ ] H3: Kategori eşleme aracı: HB kategori ağacında arama + seçilen kategorinin zorunlu özellik formu (panelde). Öneri: Trendyol'daki kategori adına benzeyen HB kategorisi.
 - [x] H4 (canlıda doğrulanacak): Ürün açma: import JSON (merchantSku, VaryantGroupID, Barcode, UrunAdi, UrunAciklamasi, Marka, GarantiSuresi, kg, tax_vat_rate, price, stock, Image1..5 + kategori özellikleri).
 - [x] H5: Workflow: pazaryeri matrisi, secrets `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`, `HB_ENV` (sit|prod).
-- [ ] (K) Trendyol komisyonu +KDV mi? Faturadan kontrol, evetse panelde işaretle (fiyatlar ~%4-5 artar).
+- [x] Trendyol komisyonu KDV dahil (Trendyol paneli: "Komisyonlara KDV dahildir", 16.10). `commission_plus_vat` Trendyol için false kalır.
 - [ ] (K) HB kargo: her siparişte satıcı mı ödüyor, müşteri ödediği bir eşik var mı? Hangi kargo firması?
 - [ ] HB kategori eşleme: XML kategorisi -> HB kategori ID + komisyon (commissions.json'dan öneri).
 - [ ] H6: Test ortamında 10 ürün → canlıda 50 ürün → tamamı. `auto_create` kapalı başlar.

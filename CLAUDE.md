@@ -63,6 +63,8 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - Alt sınır: fiyat >= maliyet x 1,3. Psikolojik yuvarlama: x9,90. Zarar eden ve 10.000 TL üstü ürünler atlanır. Stok < 3 ise Trendyol'a stok 0 gönderilir.
 - Kullanıcı sabit %18 komisyon istedi, "kategoriye göre düşebilir" dedi. Şu an ürün bazlı gerçek oran kullanılıyor.
 
+**Komisyon ve KDV:** Trendyol komisyon oranları KDV dahil (panel bilgi kutusu, 16.10). Hepsiburada komisyonları +KDV (sözleşme EK.4). Fiyat formülü KDV'yi açıkça hesaplar, net kâr KDV sonrası, oran KDV hariç satışa göre.
+
 **Komisyon önceliği** (`worker/sync.ts` döngüsü): ürünün kendi oranı (barkod JSON) > panelde girilen kategori oranı (`category_map.commission_rate`) > kategori içindeki en yüksek oran (kategori JSON) > varsayılan (%18).
 
 **Mevcut ürünlerde fiyat politikası** (`settings.existing_price_policy`, panelden seçilir, varsayılan `floor`):
