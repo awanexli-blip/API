@@ -39,6 +39,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("preview: onay bekleyen yeniden açılmıyor", line("OS13-BEKLEYEN").includes("onay bekliyor"));
   check("preview: yeni ürün (Türkçe karakter atıldı)", line("OS13-YEN-1").includes("YENI"));
   check("preview: aynı başlık engeli", line("BX12").includes("aynı başlık"));
+  check("onay: bekleyen ve reddedilen sayıldı", s.newProductApproval?.pendingApproval === 1 && s.newProductApproval?.rejected === 1 && s.newProductApproval?.topReasons?.["Görsel uygun değil"] === 1, JSON.stringify(s.newProductApproval));
   check("preview: create sayısı (filtre öncesi)", s.create === 4, String(s.create));
 }
 

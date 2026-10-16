@@ -77,6 +77,8 @@ export function createTrendyol(): Marketplace {
     return out;
   };
   const totals: Record<string, number> = {};
+  // Onay süreci: sistemin açtığı (OS13-) ürünlerin durumu ve ret nedenleri
+  const approval = { pendingApproval: 0, rejected: 0, docNeeded: 0, reasons: new Map<string, number>(), samples: [] as string[] };
 
   const brandCache = new Map<string, number | null>();
   async function brandId(name: string): Promise<number | null> {
@@ -195,6 +197,17 @@ export function createTrendyol(): Marketplace {
       // Onay bekleyen / reddedilen: güncellenmez ama "var" sayılır, aynı ürün ikinci kez açılmasın
       totals.unapproved = await fetchAll(`/product/sellers/${SELLER_ID}/products/unapproved`, 1000, (p) => {
         if (!p.barcode || out.has(String(p.barcode))) return;
+        if (String(p.barcode).startsWith(NEW_PREFIX)) {
+          if (p.status === "rejected") {
+            approval.rejected++;
+            for (const r of p.rejectReasonDetails ?? []) {
+              const k = String(r.rejectReason ?? r.rejectReasonDetail ?? "?").slice(0, 120);
+              approval.reasons.set(k, (approval.reasons.get(k) ?? 0) + 1);
+            }
+            if (approval.samples.length < 10) approval.samples.push(`${p.barcode}: ${(p.rejectReasonDetails ?? []).map((r: any) => r.rejectReasonDetail ?? r.rejectReason).join(" | ").slice(0, 300)}`);
+          } else approval.pendingApproval++;
+          if (p.docNeeded) approval.docNeeded++;
+        }
         out.set(String(p.barcode), { id: String(p.barcode), title: String(p.title ?? "").slice(0, 120), price: Number(p.salePrice), quantity: Number(p.quantity), status: "pending" });
       });
       return [...out.values()];
@@ -318,6 +331,13 @@ export function createTrendyol(): Marketplace {
       const stat = (f: (i: any) => string, S: Set<string>) => tgItems.filter((i) => f(i) && S.has(f(i))).length;
       return {
         listingTotals: { ...totals, approvedVariantsLoaded: tgItems.length, closed: tgItems.filter((i) => i.closed).length, liveCommission: liveComm.size },
+        // Sistemin açtığı ürünler: onaylanan (approved listesinde OS13-), bekleyen, reddedilen + ret nedenleri
+        newProductApproval: {
+          approved: tgItems.filter((i) => i.barcode.startsWith(NEW_PREFIX)).length,
+          pendingApproval: approval.pendingApproval, rejected: approval.rejected, docNeeded: approval.docNeeded,
+          topReasons: Object.fromEntries([...approval.reasons].sort((a, b) => b[1] - a[1]).slice(0, 10)),
+          samples: approval.samples,
+        },
         matchStats: {
           barcode_to_barcode: linkedCount,
           stockCode_to_barcode: stat((i) => i.stockCode, xmlBarcodes),

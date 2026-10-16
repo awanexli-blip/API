@@ -24,7 +24,10 @@ const approved = [
   content("REF-1", "Referans Urun", 100, {}, { id: 3, name: "Kat3" }, [{ attributeId: 1192, attributeName: "Menşei", attributeValues: [{ attributeValueId: 7001, attributeValue: "CN" }] }]),
 ];
 for (let i = 0; i < N_BULK; i++) approved.push(content(`BULK-${i}`, `Toplu ${i}`, 99));
-const unapproved = [{ barcode: "OS13-BEKLEYEN", title: "Bekleyen Urun", salePrice: 70, quantity: 3, status: "pendingApproval" }];
+const unapproved = [
+  { barcode: "OS13-BEKLEYEN", title: "Bekleyen Urun", salePrice: 70, quantity: 3, status: "pendingApproval" },
+  { barcode: "OS13-RED", title: "Reddedilen Urun", salePrice: 70, quantity: 3, status: "rejected", rejectReasonDetails: [{ rejectReason: "Görsel uygun değil", rejectReasonDetail: "Görselde logo var" }] },
+];
 
 const row = (o) => ({ brand: "BayilikXML.com", currency: "TL", quantity: "10", ...o });
 const xmlRows = [

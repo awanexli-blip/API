@@ -157,6 +157,8 @@ function RunRow({ r }: { r: Row }) {
               eşleşen {m.matched} · {r.mode === "preview" ? `güncellenecek ${m.update}` : `güncellenen ${m.updated}`}{m.created ? ` · açılan ${m.created}` : ""}{m.zeroed ? ` · sıfırlanan ${m.zeroed}` : ""}
               {(pm["artacak"] || pm["düşecek"]) ? <><br />fiyat: {pm["artacak"] ?? 0} artış · {pm["düşecek"] ?? 0} düşüş · {pm["aynı"] ?? 0} aynı</> : null}
               {(m.failedBatches || bc?.failedItems) ? <><br /><span style={{ color: "var(--bad)" }}>hata: {m.failedBatches ? `${m.failedBatches} paket ` : ""}{bc?.failedItems ? `${bc.failedItems} ürün` : ""}</span></> : null}
+              {m.newProductApproval ? <><br />açılan ürünler: {m.newProductApproval.approved} onaylı · {m.newProductApproval.pendingApproval} onay bekliyor · <span style={m.newProductApproval.rejected ? { color: "var(--bad)" } : undefined}>{m.newProductApproval.rejected} reddedildi</span></> : null}
+              {m.newProductApproval?.samples?.length ? <details><summary>Ret nedenleri</summary><pre>{Object.entries(m.newProductApproval.topReasons ?? {}).map(([k, v]) => `${v} × ${k}`).join("\n") + "\n\n" + m.newProductApproval.samples.join("\n")}</pre></details> : null}
               {bc?.reasons?.length ? <details><summary>Ürün hataları</summary><pre>{bc.reasons.join("\n")}</pre></details> : null}
               <details><summary>Ayrıntı</summary><pre>{JSON.stringify(m, null, 1)}</pre></details>
             </>
