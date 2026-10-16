@@ -8,7 +8,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
-import { calcPrice, existingPrice } from "./pricing.ts";
+import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./pricing.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
@@ -38,6 +38,8 @@ async function main() {
     minMarkup: Number(s.min_markup), fixedCost: Number(s.fixed_cost),
     minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price),
   };
+  const defaultVat = Number(s.vat_rate ?? 20) / 100;
+  const vatCount: Record<string, number> = {};
   const fx: Record<string, number> = { TL: 1, TRY: 1, USD: Number(s.fx_usd), EUR: Number(s.fx_eur) };
   const minStock = Number(s.min_stock);
 
@@ -90,14 +92,18 @@ async function main() {
     if (!rate) { skip(`kur yok: ${currency}`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};;;;;ATLANDI: kur yok`); continue; }
     const { rate: comm, source: commSource } = mp.commission(listingId, category, cat?.commission_rate != null ? Number(cat.commission_rate) : null, cfg.commissionRate);
     commCount[commSource] = (commCount[commSource] ?? 0) + 1;
-    const calc = calcPrice(cost, cfg as any, comm);
+    // KDV: pazaryerindeki ilanın oranı > panel kategori oranı > varsayılan
+    const lsVat = listingId ? Number(lsBy.get(listingId)?.vatRate) : NaN;
+    const vatRate = lsVat > 0 ? lsVat / 100 : cat?.vat_rate != null ? Number(cat.vat_rate) / 100 : defaultVat;
+    vatCount[String(Math.round(vatRate * 100))] = (vatCount[String(Math.round(vatRate * 100))] ?? 0) + 1;
+    const pcfg: PricingConfig = { ...cfg, vatRate };
+    const calc = calcPrice(cost, pcfg, comm);
 
     let price: number, sellerPays = false, net = 0, rateOut = 0;
     if (ov?.price_override) {
       price = Number(ov.price_override);
-      const ship = price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0;
-      net = price * (1 - comm) - cost - cfg.fixedCost - ship;
-      rateOut = net / price; sellerPays = ship > 0;
+      const b = breakdown(price, cost, pcfg, comm);
+      net = b.net; rateOut = b.rate; sellerPays = b.shipping > 0;
     } else if (!calc.ok) {
       skip(calc.reason ?? "fiyat hesaplanamadı");
       csv.push(`${barcode};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${calc.reason}`);
@@ -125,15 +131,14 @@ async function main() {
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da kapalı/fiyatsız`);
         continue;
       }
-      const sendPrice: number | null = ov?.price_override ? price : existingPrice(policy, curPrice, price, cfg as any, comm);
+      const sendPrice: number | null = ov?.price_override ? price : existingPrice(policy, curPrice, price, pcfg, comm);
       const change = sendPrice == null ? "fiyat korunur" : !known ? "yeni fiyat" : sendPrice > curPrice + 0.005 ? "artacak" : sendPrice < curPrice - 0.005 ? "düşecek" : "aynı";
       priceMoves[change] = (priceMoves[change] ?? 0) + 1;
       toUpdate.push({ id: lid, price: sendPrice, quantity: hidden || qty < minStock ? 0 : Math.min(Math.floor(qty), 20000) });
       // Kâr sütunları satışta geçerli olacak fiyata göre (formül fiyatına göre değil)
       const eff = sendPrice ?? curPrice;
-      const effShip = eff >= cfg.freeShippingThreshold ? cfg.shippingCost : 0;
-      const effNet = eff * (1 - comm) - cost - cfg.fixedCost - effShip;
-      csv.push(`${lid};${q(name)};${q(category)};${r.price};${known || sendPrice != null ? eff : ""};${effShip ? "evet" : "hayir"};${effNet.toFixed(2)};${(eff > 0 ? (effNet / eff) * 100 : 0).toFixed(1)};MEVCUT (${change}; formül ${price}; eski ${known ? curPrice : "-"})`);
+      const eb = breakdown(eff, cost, pcfg, comm);
+      csv.push(`${lid};${q(name)};${q(category)};${r.price};${known || sendPrice != null ? eff : ""};${eb.shipping ? "evet" : "hayir"};${eb.net.toFixed(2)};${(eb.rate * 100).toFixed(1)};MEVCUT (${change}; formül ${price}; eski ${known ? curPrice : "-"})`);
       continue;
     }
 
@@ -154,7 +159,7 @@ async function main() {
   const matched = linked.size;
   const summary: any = {
     marketplace: mp.id,
-    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount,
+    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount, vatRates: vatCount,
     update: toUpdate.length, create: toCreate.length, skipped,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };

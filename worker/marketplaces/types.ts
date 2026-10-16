@@ -6,6 +6,7 @@ export interface Listing {
   title: string;
   price: number;     // mevcut satış fiyatı (NaN olabilir)
   quantity: number;
+  vatRate?: number;   // ilandaki KDV oranı (yüzde, örn. 20)
   // active: güncellenir · closed: pazaryeri kapatmış (kilitli/arşiv), dokunulmaz · pending: onay bekliyor/reddedildi, dokunulmaz ama yeniden açılmaz
   status?: "active" | "closed" | "pending";
 }

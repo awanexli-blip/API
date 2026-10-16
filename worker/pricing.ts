@@ -1,15 +1,21 @@
-// Fiyat hesaplama: kargo eşiği (300 TL) mantığı dahil.
-// Tüm tutarlar KDV dahil TL.
+// Fiyat hesaplama: kargo eşiği (300 TL) ve KDV dahil.
+// Girdi tutarları (maliyet, kargo, sabit gider, satış fiyatı) KDV DAHİL TL.
+// KDV mükellefi + faturalı alım: alış, komisyon ve kargo faturasındaki KDV indirilir.
+// Net kâr = KDV hariç satış - KDV hariç maliyet - KDV hariç (komisyon + kargo + sabit gider).
+// Kâr oranı = net kâr / KDV hariç satış.
+// Ürün ve hizmet KDV'si eşitse (%20) sonuç, eski "KDV dahil" formülle aynı fiyatı verir; farkı %10 / %1 KDV'li ürünler görür.
 
 export interface PricingConfig {
-  commissionRate: number;        // 0.18
-  targetProfitRate: number;      // 0.15 (satış fiyatı üzerinden net kâr)
-  shippingCost: number;          // 90
+  commissionRate: number;        // 0.18 (KDV dahil satış fiyatı üzerinden)
+  targetProfitRate: number;      // 0.15 (KDV hariç satış üzerinden net kâr)
+  shippingCost: number;          // 90 (KDV dahil)
   freeShippingThreshold: number; // 300 -> fiyat >= 300 ise kargoyu SEN ödersin
   minMarkup: number;             // 1.3 -> fiyat en az maliyet x 1.3
-  fixedCost: number;             // paketleme vb. ürün başı sabit gider
+  fixedCost: number;             // paketleme vb. ürün başı sabit gider (KDV dahil)
   minAcceptableProfitRate: number; // 300 TL altına sıkıştırma durumunda kabul edilen en düşük kâr oranı
   maxPrice: number;              // bunun üstündeki ürünler atlanır
+  vatRate?: number;              // ürünün KDV oranı (satış ve alış), varsayılan 0.20
+  serviceVatRate?: number;       // komisyon/kargo faturası KDV'si, varsayılan 0.20
 }
 
 export const defaultConfig: PricingConfig = {
@@ -21,6 +27,8 @@ export const defaultConfig: PricingConfig = {
   fixedCost: 0,
   minAcceptableProfitRate: 0.08,
   maxPrice: 10000,
+  vatRate: 0.2,
+  serviceVatRate: 0.2,
 };
 
 export interface PriceResult {
@@ -29,8 +37,8 @@ export interface PriceResult {
   price: number;
   sellerPaysShipping: boolean;
   shipping: number;
-  netProfit: number;
-  profitRate: number;
+  netProfit: number;   // KDV sonrası, cebe kalan
+  profitRate: number;  // net / KDV hariç satış
   note?: string;
 }
 
@@ -41,10 +49,38 @@ export function roundUpPsych(x: number): number {
   return r2(Math.ceil((x + 0.1) / 10) * 10 - 0.1);
 }
 
-function profitOf(price: number, cost: number, cfg: PricingConfig, commission: number) {
+const vatOf = (cfg: PricingConfig) => cfg.vatRate ?? 0.2;
+const svatOf = (cfg: PricingConfig) => cfg.serviceVatRate ?? 0.2;
+
+export interface Breakdown {
+  price: number; commission: number; shipping: number; fixed: number;
+  vatDue: number;   // devlete ödenecek KDV farkı (satış KDV'si - indirilecek KDV)
+  net: number; rate: number;
+}
+
+// Bir satıştaki tüm kalemler (TL)
+export function breakdown(price: number, cost: number, cfg: PricingConfig, commission: number = cfg.commissionRate): Breakdown {
+  const v = vatOf(cfg), sv = svatOf(cfg);
   const shipping = price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0;
-  const net = price * (1 - commission) - cost - cfg.fixedCost - shipping;
-  return { shipping, net: r2(net), rate: price > 0 ? net / price : 0 };
+  const comm = price * commission;
+  const services = comm + shipping + cfg.fixedCost;
+  const vatDue = (price - cost) * v / (1 + v) - services * sv / (1 + sv);
+  const net = price - cost - services - vatDue;
+  const exVat = price / (1 + v);
+  return { price, commission: r2(comm), shipping, fixed: cfg.fixedCost, vatDue: r2(vatDue), net: r2(net), rate: exVat > 0 ? net / exVat : 0 };
+}
+
+export function profitOf(price: number, cost: number, cfg: PricingConfig, commission: number) {
+  const b = breakdown(price, cost, cfg, commission);
+  return { shipping: b.shipping, net: b.net, rate: b.rate };
+}
+
+// Hedef kârı veren fiyat (yuvarlamadan önce). withShipping: kargo satıcıda
+function targetPrice(cost: number, cfg: PricingConfig, commission: number, withShipping: boolean): number {
+  const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + svatOf(cfg));
+  // net = a(P - cost) - b(cP + kargo + sabit) = t·a·P  =>  P = (a·cost + b(kargo + sabit)) / (a(1 - t) - b·c)
+  const den = a * (1 - cfg.targetProfitRate) - b * commission;
+  return den > 0 ? (a * cost + b * ((withShipping ? cfg.shippingCost : 0) + cfg.fixedCost)) / den : Infinity;
 }
 
 export function calcPrice(
@@ -56,15 +92,13 @@ export function calcPrice(
     ok: false, reason, price: 0, sellerPaysShipping: false, shipping: 0, netProfit: 0, profitRate: 0,
   });
   if (!(cost > 0)) return fail("maliyet yok");
-
-  const den = 1 - commissionRate - cfg.targetProfitRate;
-  if (den <= 0) return fail("komisyon + kâr %100 üstü");
+  if (!Number.isFinite(targetPrice(cost, cfg, commissionRate, false))) return fail("komisyon + kâr %100 üstü");
 
   const floor = cost * cfg.minMarkup;
   const T = cfg.freeShippingThreshold;
 
   // 1) Kargo ödemiyormuşuz gibi hesapla (fiyat < 300 senaryosu)
-  let price = roundUpPsych(Math.max((cost + cfg.fixedCost) / den, floor));
+  let price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, false), floor));
   let note: string | undefined;
 
   if (price >= T) {
@@ -76,7 +110,7 @@ export function calcPrice(
       note = "299,90'a sabitlendi (kargo alıcıda, kâr hedefin biraz altında)";
     } else {
       // 3) Kargoyu maliyete ekleyerek yeniden hesapla
-      price = roundUpPsych(Math.max((cost + cfg.fixedCost + cfg.shippingCost) / den, floor));
+      price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, true), floor));
     }
   }
 

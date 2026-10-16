@@ -1,10 +1,10 @@
 // Fiyat formülü ve mevcut ilan politikası birim testleri.
 // node --experimental-strip-types worker/test/pricing.test.ts
-import { calcPrice, defaultConfig as cfg, existingPrice } from "../pricing.ts";
+import { calcPrice, defaultConfig as cfg, existingPrice, breakdown } from "../pricing.ts";
 
 let fails = 0;
 const check = (name: string, cond: boolean, info: unknown = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + JSON.stringify(info)}`); if (!cond) fails++; };
-const netOf = (p: number, cost: number, k: number) => p * (1 - k) - cost - (p >= cfg.freeShippingThreshold ? cfg.shippingCost : 0);
+const netOf = (p: number, cost: number, k: number) => breakdown(p, cost, cfg, k).net;
 
 // calcPrice: hedef kâr, kargo eşiği, zarar yok
 {
@@ -16,6 +16,25 @@ const netOf = (p: number, cost: number, k: number) => p * (1 - k) - cost - (p >=
   const hi = calcPrice(400, cfg, 0.18);
   check("calc: 300 üstü kargo dahil kâr ≥ %15", hi.price >= 300 && hi.sellerPaysShipping && hi.profitRate >= 0.15, hi);
   check("calc: maliyetsiz atlanır", !calcPrice(0, cfg).ok);
+}
+
+// KDV
+{
+  // %20 KDV'de fiyat eski "KDV dahil" formülle aynı: (maliyet [+kargo]) / (1 - komisyon - kâr), x9,90 yukarı
+  const old = (c: number, ship = 0) => Math.ceil(((c + ship) / (1 - 0.18 - 0.15) + 0.1) / 10) * 10 - 0.1;
+  for (const c of [30, 60, 100, 150]) check(`kdv20: ${c} TL eski formülle aynı`, Math.abs(calcPrice(c, cfg).price - old(c)) < 0.01, [calcPrice(c, cfg).price, old(c)]);
+  check("kdv20: 400 TL (kargo dahil) eski formülle aynı", Math.abs(calcPrice(400, cfg).price - old(400, 90)) < 0.01, [calcPrice(400, cfg).price, old(400, 90)]);
+  // Net kâr KDV sonrası: 30 TL maliyet, 49,90 satış -> eski gösterim 10,92 TL, gerçek 10,92/1,2
+  const b = breakdown(49.9, 30, cfg, 0.18);
+  check("kdv: net = (satış - maliyet - komisyon) / 1,2", Math.abs(b.net - (49.9 - 30 - 49.9 * 0.18) / 1.2) < 0.01, b);
+  check("kdv: kalemler toplamı satışa eşit", Math.abs(b.commission + b.shipping + b.fixed + b.vatDue + b.net + 30 - 49.9) < 0.02, b);
+  check("kdv: oran KDV hariç satışa göre ~%15+", b.rate >= 0.15, b.rate);
+  // %10 KDV'li üründe komisyon/kargo KDV'si (%20) daha çok indirilir -> fiyat daha düşük ama kâr hedefi tutar
+  const r10 = calcPrice(300, { ...cfg, vatRate: 0.1 }), r20 = calcPrice(300, cfg);
+  check("kdv10: fiyat %20'den düşük", r10.price < r20.price, [r10.price, r20.price]);
+  check("kdv10: kâr ≥ %15", r10.profitRate >= 0.15, r10);
+  const r1 = calcPrice(100, { ...cfg, vatRate: 0.01 });
+  check("kdv1: kâr ≥ %15", r1.ok && r1.profitRate >= 0.15, r1);
 }
 
 // existingPrice

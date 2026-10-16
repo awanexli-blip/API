@@ -94,7 +94,7 @@ export function createTrendyol(): Marketplace {
           const closed = !!(v.locked || v.archived || v.blacklisted);
           const comm = Number(v.commission);
           if (Number.isFinite(comm) && comm > 0) liveComm.set(barcode, comm > 1 ? comm / 100 : comm);
-          out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), status: closed ? "closed" : "active" });
+          out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), vatRate: Number(v.vatRate), status: closed ? "closed" : "active" });
           tgItems.push({ barcode, stockCode: v.stockCode ? String(v.stockCode) : "", productMainId: c.productMainId ? String(c.productMainId) : "", title, salePrice: price, categoryId: c.category?.id ?? null, categoryName: c.category?.name ?? "", brandId: c.brand?.id ?? null, closed });
         }
       });
