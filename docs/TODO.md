@@ -50,6 +50,31 @@ Geriye uyumlu migration (`add column if not exists`, varsayılan `'trendyol'`).
 - [ ] API rotaları: `/api/[mp]/categories`, `/api/[mp]/category-attributes?id=` (pazaryeri API'sine sunucu tarafından vekil). Bunun için pazaryeri kimlik bilgileri **Vercel env**'e de girilecek (K).
 - [ ] `app/page.tsx` tek dosya → sekme başına bileşenlere bölünür.
 
+## P3.5 — Hepsiburada (sıradaki pazaryeri, kullanıcı kararı 16.10)
+
+Kaynak: resmi doküman (developers.hepsiburada.com) bot korumalı, otomatik okunamıyor. Uçlar açık kaynak kütüphaneden (github.com/bagbaq/hepsiburada-api) + ikincil kaynaklardan; hesap gelince doğrulanacak.
+
+Ortamlar: test (SIT) `mpop-sit.hepsiburada.com`, `listing-external-sit.hepsiburada.com` · canlı `mpop.hepsiburada.com`, `listing-external.hepsiburada.com`. Kimlik: Basic (API kullanıcı adı:şifre), `User-Agent: <merchantId> - <uygulama adı>`.
+
+| İş | Uç |
+|---|---|
+| Mağaza ilanları | `GET listing-external/listings/merchantid/{id}?offset=&limit=` → `listings[]` (merchantSku, hepsiburadaSku, price, availableStock) |
+| Stok | `POST .../listings/merchantid/{id}/stock-uploads` [{merchantSku, availableStock}] → trackingId, sonuç `GET .../stock-uploads/id/{trackingId}` |
+| Fiyat | `POST .../listings/merchantid/{id}/price-uploads` [{merchantSku, price}] → trackingId, sonuç `GET .../price-uploads/id/{trackingId}` |
+| Ürün açma | `POST mpop/product/api/products/import` (multipart, JSON dosya; ≤100 ürün) → trackingId, durum sorgusu |
+| Kategoriler | `GET mpop/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&page=&size=` |
+| Kategori özellikleri | `GET mpop/product/api/categories/{id}/attributes`, değerler `.../attribute/{attrId}/values` |
+| Katalog ürünleri | `GET mpop/product/api/products/all-products-of-merchant/{id}` |
+
+Adımlar:
+- [ ] H0 (K): Hepsiburada satıcı hesabı aktif mi? Merchant ID, API kullanıcı adı ve şifresi (canlı + test/SIT), uygulama adı (User-Agent). Kategori komisyonları, kargo kuralı (kim öder, eşik, desi tarifesi). "Eco Lounge" markası HB'de kayıtlı/onaylı mı.
+- [ ] H1: P2 veri modeli (pazaryeri bazlı ayarlar, `category_map`/`product_overrides`/`sync_runs` için `marketplace` kolonu). İkinci pazaryeri için şart. Supabase migration (K çalıştırır).
+- [ ] H2: `worker/marketplaces/hepsiburada.ts`: ilan çekme, eşleştirme (merchantSku = `OS13-` + productCode), stok ve fiyat ayrı isteklerle, trackingId sonuç kontrolü, mock test.
+- [ ] H3: Kategori eşleme aracı: HB kategori ağacında arama + seçilen kategorinin zorunlu özellik formu (panelde). Öneri: Trendyol'daki kategori adına benzeyen HB kategorisi.
+- [ ] H4: Ürün açma: import JSON (merchantSku, VaryantGroupID, Barcode, UrunAdi, UrunAciklamasi, Marka, GarantiSuresi, kg, tax_vat_rate, price, stock, Image1..5 + kategori özellikleri).
+- [ ] H5: Workflow: pazaryeri matrisi, secrets `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`, `HB_ENV` (sit|prod).
+- [ ] H6: Test ortamında 10 ürün → canlıda 50 ürün → tamamı. `auto_create` kapalı başlar.
+
 ## P4 — Yeni pazaryeri adaptörleri
 
 Her biri: hesap/API anahtarı (K) → adaptör (`worker/marketplaces/<ad>.ts`) → preview → stok/fiyat → yeni ürün. Önce mevcut ilanları eşleştirme, sonra açma.
