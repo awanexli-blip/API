@@ -57,7 +57,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
   async function toggleAuto() {
     if (!s || toggling) return;
     const next = !s.auto_sync;
-    if (next && !confirm("Otomatik senkronizasyon açılsın mı? Her 4 saatte bir stok ve fiyatlar güncellenir.")) return;
+    if (next && !confirm("Otomatik senkronizasyon açılsın mı? Her saat stok ve fiyatlar güncellenir.")) return;
     setToggling(true);
     try {
       const d = await api(`/api/settings?mp=${marketplace}`, { method: "PUT", body: JSON.stringify({ auto_sync: next }) });
@@ -72,7 +72,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
     <>
       <div className="card">
         <h2>Otomatik senkronizasyon</h2>
-        <p className="muted">Her 4 saatte bir XML çekilir, stok ve fiyat hesaplanıp gönderilir.</p>
+        <p className="muted">Her saat XML çekilir, stok ve fiyat hesaplanıp gönderilir.</p>
         {sErr ? (
           <div className="msg err">
             Ayarlar okunamadı: {sErr}

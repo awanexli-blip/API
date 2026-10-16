@@ -123,8 +123,10 @@ function run(mode, env = {}, marketplace = "trendyol") {
 }
 
 // 9) birim testleri
-try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, "pricing.test.ts")], { stdio: "inherit" }); }
-catch { fails++; }
+for (const f of ["pricing.test.ts", "classify.test.ts"]) {
+  try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
+  catch { fails++; }
+}
 
 console.log(fails ? `\n${fails} test başarısız` : "\nTüm testler geçti");
 process.exit(fails ? 1 : 0);

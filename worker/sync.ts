@@ -11,6 +11,7 @@ import { writeFileSync } from "node:fs";
 import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./pricing.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
+import { buildClassifier, type Example } from "./core/classify.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
 import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
 
@@ -91,6 +92,15 @@ async function main() {
   const lsBy = new Map(listings.map((l) => [l.id, l]));
   const lsTitles = new Set<string>(listings.map((l) => normTitle(l.title)).filter(Boolean));
   const linked = new Set<string>();
+
+  // Yeni ürün kategori/komisyon tahmini: mağazadaki eşleşmiş ilanlar örnek (başlık + XML kategorisi -> pazaryeri kategorisi)
+  const examples: Example[] = [];
+  for (const r of raw) {
+    const l = lsBy.get(mp.findListing(r, existing) ?? "");
+    if (l?.categoryId && l.status !== "pending") examples.push({ title: l.title || String(r.name ?? ""), xmlCategory: String(r.category ?? ""), categoryId: l.categoryId, categoryName: l.categoryName ?? "", commission: l.commission });
+  }
+  const predict = examples.length >= 50 ? buildClassifier(examples) : null;
+  const predCount: Record<string, number> = {};
   // Mevcut ürünlerde fiyat politikası: keep = fiyata dokunma, floor = sadece formülün altındaysa yükselt, formula = formüle eşitle
   const policy: string = s.update_prices === false ? "keep" : String(s.existing_price_policy ?? "floor");
   console.log(`XML: ${raw.length} ürün | ${mp.label}'da: ${existing.size}`);
@@ -103,6 +113,8 @@ async function main() {
   const toUpdate: InventoryItem[] = [];
   const toCreate: NewProduct[] = [];
   const unmapped = new Map<string, number>();
+  // XML kategorisi -> tahmin edilen pazaryeri kategorileri (panelde öneri)
+  const suggest = new Map<string, Map<string, { name: string; n: number; comm: number }>>();
   const commCount: Record<string, number> = {};
   const priceMoves: Record<string, number> = {};
 
@@ -121,7 +133,11 @@ async function main() {
     const isExisting = !!listingId;
 
     if (!rate) { skip(`kur yok: ${currency}`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};;;;;ATLANDI: kur yok`); continue; }
-    const { rate: comm, source: commSource } = mp.commission(listingId, category, cat?.commission_rate != null ? Number(cat.commission_rate) : null, cfg.commissionRate);
+    let { rate: comm, source: commSource } = mp.commission(listingId, category, cat?.commission_rate != null ? Number(cat.commission_rate) : null, cfg.commissionRate);
+    // Yeni ürün: panelde kategori oranı yoksa benzer ilanların komisyonu (aynı tahmini kategorideki en yüksek oran)
+    const pred = !listingId && predict ? predict(name, category) : null;
+    if (pred) predCount[pred.level] = (predCount[pred.level] ?? 0) + 1;
+    if (pred?.commission != null && pred.level !== "dusuk" && commSource !== "panel") { comm = pred.commission; commSource = "tahmin"; }
     commCount[commSource] = (commCount[commSource] ?? 0) + 1;
     // KDV: pazaryerindeki ilanın oranı > panel kategori oranı > varsayılan
     const lsVat = listingId ? Number(lsBy.get(listingId)?.vatRate) : NaN;
@@ -177,12 +193,20 @@ async function main() {
     // Yeni ürün: önce aynı başlıklı ürün mağazada var mı (çoklama riski)
     if (lsTitles.has(normTitle(name))) { skip(`${mp.label}'da aynı başlık var (çoklama riski)`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: aynı başlık ${mp.label}'da var`); continue; }
     // kategori eşleşmesi, resim ve stok şart
-    if (!cat?.category_id) { unmapped.set(category, (unmapped.get(category) ?? 0) + 1); skip("kategori eşleşmemiş"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: kategori eşleşmemiş`); continue; }
+    // Kategori: panel eşleşmesi > yüksek güvenli tahmin. Orta/düşük güvenli tahmin elle onay bekler.
+    const guess = pred ? ` (tahmin: ${pred.categoryName} #${pred.categoryId}, ${pred.level}, en benzer: ${q(pred.nearest).slice(0, 60)})` : "";
+    const categoryId = cat?.category_id ?? (pred?.level === "yuksek" ? pred.categoryId : null);
+    if (pred && pred.level !== "dusuk") {
+      let m = suggest.get(category); if (!m) suggest.set(category, (m = new Map()));
+      const e = m.get(pred.categoryId) ?? { name: pred.categoryName, n: 0, comm: 0 };
+      e.n++; e.comm = Math.max(e.comm, pred.commission ?? 0); m.set(pred.categoryId, e);
+    }
+    if (!categoryId) { unmapped.set(category, (unmapped.get(category) ?? 0) + 1); skip(pred ? `kategori belirsiz (${pred.level} güven)` : "kategori eşleşmemiş"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: kategori${guess || " eşleşmemiş"}`); continue; }
     if (!images.length) { skip("resim yok"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: resim yok`); continue; }
     if (hidden || qty < minStock) { skip("stok yok / gizli"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: stok yok`); continue; }
     const newId = mp.newListingId(r);
-    toCreate.push({ id: newId, name, detail: String(r.detail ?? ""), brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat, price, qty });
-    csv.push(`${newId};${q(name)};${q(category)};${r.price};${price};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};YENI`);
+    toCreate.push({ id: newId, name, detail: String(r.detail ?? ""), brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat: { ...(cat ?? {}), category_id: categoryId }, price, qty });
+    csv.push(`${newId};${q(name)};${q(category)};${r.price};${price};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};YENI${cat?.category_id ? "" : guess}`);
   }
 
   // BOM'lu UTF-8: Excel'de Türkçe karakterler bozulmasın
@@ -191,7 +215,7 @@ async function main() {
   const matched = linked.size;
   const summary: any = {
     marketplace: mp.id,
-    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount, vatRates: vatCount,
+    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount, vatRates: vatCount, categoryPrediction: { examples: examples.length, ...predCount },
     update: toUpdate.length, create: toCreate.length, skipped,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };
@@ -201,8 +225,18 @@ async function main() {
   // Eşleşmeyen kategoriler panelde görünsün
   if (mpColumns) await db.from("unmapped_categories").delete().eq("marketplace", marketplaceId);
   else await db.from("unmapped_categories").delete().neq("xml_category", "");
-  const um = [...unmapped].map(([xml_category, product_count]) => (mpColumns ? { marketplace: marketplaceId, xml_category, product_count } : { xml_category, product_count }));
-  for (const part of chunk(um, 500)) await db.from("unmapped_categories").insert(part);
+  const um = [...unmapped].map(([xml_category, product_count]) => {
+    const base: any = mpColumns ? { marketplace: marketplaceId, xml_category, product_count } : { xml_category, product_count };
+    const votes = [...(suggest.get(xml_category) ?? new Map())].sort((a, b) => b[1].n - a[1].n);
+    const total = votes.reduce((t, [, v]) => t + v.n, 0);
+    if (mpColumns && votes.length) Object.assign(base, { suggested_category_id: Number(votes[0][0]), suggested_category_name: votes[0][1].name, suggested_share: Math.round((votes[0][1].n / total) * 100) / 100, suggested_commission: votes[0][1].comm || null });
+    return base;
+  });
+  for (const part of chunk(um, 500)) {
+    const { error } = await db.from("unmapped_categories").insert(part);
+    // öneri kolonları yoksa (eski şema) önerisiz yaz
+    if (error) await db.from("unmapped_categories").insert(part.map(({ suggested_category_id, suggested_category_name, suggested_share, suggested_commission, ...rest }: any) => rest));
+  }
 
   if (doUpdate) {
     const r = await mp.pushInventory(toUpdate);
@@ -225,7 +259,11 @@ async function main() {
     summary.createBlocked = `${mp.label} ürünlerinin yarısından azı XML ile eşleşti. Aynı ürünleri ikinci kez açmamak için yeni ürün açma durduruldu.`;
   }
   if (doCreate && !weakMatch && toCreate.length) {
-    const r = await mp.createProducts(toCreate, { vatRate: Number(s.vat_rate), skip });
+    // Deneme için adet sınırı (workflow girdisi "limit", elle tetiklemede varsayılan 50)
+    const limit = Number(process.env.CREATE_LIMIT || 0);
+    const batch = limit > 0 ? toCreate.slice(0, limit) : toCreate;
+    if (batch.length < toCreate.length) summary.createLimited = `${toCreate.length} üründen ilk ${batch.length} tanesi açıldı (limit)`;
+    const r = await mp.createProducts(batch, { vatRate: Number(s.vat_rate), skip });
     summary.created += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
   }
 

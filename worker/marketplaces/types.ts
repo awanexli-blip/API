@@ -7,6 +7,9 @@ export interface Listing {
   price: number;     // mevcut satış fiyatı (NaN olabilir)
   quantity: number;
   vatRate?: number;   // ilandaki KDV oranı (yüzde, örn. 20)
+  categoryId?: string;   // pazaryeri kategori ID (yeni ürün kategori tahmini için örnek)
+  categoryName?: string;
+  commission?: number;   // ilanın komisyon oranı (0-1)
   // active: güncellenir · closed: pazaryeri kapatmış (kilitli/arşiv), dokunulmaz · pending: onay bekliyor/reddedildi, dokunulmaz ama yeniden açılmaz
   status?: "active" | "closed" | "pending";
 }

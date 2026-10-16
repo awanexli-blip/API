@@ -69,10 +69,14 @@ export default function Categories({ api, notify, marketplace }: Props) {
         <h2>Eşleşmeyen kategoriler ({unmapped.length})</h2>
         {unmapped.length === 0 ? <p className="muted">Eşleşmeyen kategori yok. Liste her önizleme veya senkronizasyondan sonra güncellenir.</p> : (
           <div className="scroll"><table>
-            <thead><tr><th>XML kategorisi</th><th className="n">Yeni ürün</th><th /></tr></thead>
+            <thead><tr><th>XML kategorisi</th><th className="n">Yeni ürün</th><th>Öneri (benzer ürünlerden)</th><th /></tr></thead>
             <tbody>{unmapped.map((u) => (
               <tr key={u.xml_category}><td>{u.xml_category}</td><td className="n">{u.product_count}</td>
-                <td className="n"><button className="btn" onClick={() => edit({ xml_category: u.xml_category, category_id: "", attributes: [] })}>Eşleştir</button></td></tr>
+                <td>{u.suggested_category_id ? <>{u.suggested_category_name} <span className="muted">#{u.suggested_category_id} · ürünlerin %{Math.round(Number(u.suggested_share) * 100)}'i{u.suggested_commission ? ` · komisyon %${Math.round(Number(u.suggested_commission) * 1000) / 10}` : ""}</span></> : <span className="muted">-</span>}</td>
+                <td className="n"><div className="row" style={{ justifyContent: "flex-end" }}>
+                  {u.suggested_category_id && <button className="btn primary" onClick={() => edit({ xml_category: u.xml_category, category_id: u.suggested_category_id, commission_rate: u.suggested_commission, attributes: [] })}>Öneriyi kullan</button>}
+                  <button className="btn" onClick={() => edit({ xml_category: u.xml_category, category_id: "", attributes: [] })}>Eşleştir</button>
+                </div></td></tr>
             ))}</tbody>
           </table></div>
         )}

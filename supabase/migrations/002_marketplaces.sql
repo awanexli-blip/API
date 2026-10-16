@@ -49,6 +49,11 @@ alter table product_overrides add primary key (marketplace, barcode);
 alter table unmapped_categories add column if not exists marketplace text not null default 'trendyol';
 alter table unmapped_categories drop constraint if exists unmapped_categories_pkey;
 alter table unmapped_categories add primary key (marketplace, xml_category);
+-- Kategori önerisi (worker, benzer ilanlardan): panelde "Öneriyi kullan"
+alter table unmapped_categories add column if not exists suggested_category_id bigint;
+alter table unmapped_categories add column if not exists suggested_category_name text;
+alter table unmapped_categories add column if not exists suggested_share numeric;      -- ürünlerin ne kadarı bu kategoriye oy verdi
+alter table unmapped_categories add column if not exists suggested_commission numeric;
 
 alter table sync_runs add column if not exists marketplace text not null default 'trendyol';
 create index if not exists sync_runs_marketplace_id on sync_runs (marketplace, id desc);

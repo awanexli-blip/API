@@ -23,6 +23,7 @@ Trendyol "Product V1 servisleri 15.10.2026'dan itibaren geçersiz" diyor. Worker
 
 - [x] İlk `update` yapıldı (17.026, hata 0).
 - [ ] (K) Trendyol panelinden 3-5 ürünü elle doğrula; `preview.csv` artifact'ı ile fiyat artışlarını analiz et → `auto_sync` aç.
+- [x] Kategori tahmini worker'da (classify.ts). [ ] (K) Migration 002 + preview -> panelde öneriler -> orta/düşük güvenli kategorileri onayla. [ ] Trendyol kategori zorunlu özellikleri (attributes) otomatik çekme.
 - [ ] Yeni ürün (~7.380): kategori önerisi (aynı XML kategorisindeki mevcut ürünlerin `category.id`'si + başlık benzerliği), zorunlu özellikler, 50 ürünlük deneme (K), sonra tamamı. `auto_create` kapalı kalır.
 - [ ] Kapalı ~420 ürün: (K) bırak/arşivle kararı; benzer başlıklı yeni ürünleri filtrele.
 
