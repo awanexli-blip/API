@@ -36,6 +36,7 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `worker/sync.ts` | Pazaryerinden bağımsız orkestratör: XML çek, ilanları çek, eşleştir, fiyat hesapla, güncelle/oluştur, CSV yaz, Supabase'e sonuç yaz. Kullanım: `sync.ts <mod> [pazaryeri]` |
 | `worker/marketplaces/` | `types.ts` (Marketplace arayüzü), `index.ts` (kayıt defteri), `trendyol.ts` (API, barkod kuralı, komisyon kaynağı, ürün açma). Yeni pazaryeri = yeni adaptör dosyası + kayıt defterine ekleme |
 | `worker/marketplaces/hepsiburada.ts` | Hepsiburada adaptörü (SIT varsayılan, `HB_ENV=prod`), uçlar canlıda doğrulanmadı |
+| `worker/hb-tool.ts`, `.github/workflows/hb-tool.yml` | Hepsiburada test aracı (Actions'tan: ping, categories, suggest, attributes, send, status, stock, price, orders, raw). Kılavuz: `docs/HEPSIBURADA_TEST.md` |
 | `worker/data/hepsiburada/` | `commissions.json` (kategori komisyonu, +KDV), `cargo.json` (desi kargo tarifesi, KDV hariç) |
 | `supabase/migrations/002_marketplaces.sql` | Pazaryeri bazlı ayarlar ve `marketplace` kolonları |
 | `kaynaklar/` | Git dışı: PDF/Excel/ekran görüntüleri (repo herkese açık) |

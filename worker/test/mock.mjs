@@ -106,6 +106,7 @@ globalThis.fetch = async (url, init = {}) => {
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });
   }
+  if (u.host === "oms-external-sit.hepsiburada.com") return json({ items: [], totalCount: 0 });
   if (u.host === "listing-external-sit.hepsiburada.com" || u.host === "mpop-sit.hepsiburada.com") {
     const p = u.pathname;
     if (!String(new Headers(init.headers).get("authorization") ?? "").startsWith("Basic ")) return json({ message: "auth" }, 401);
@@ -113,6 +114,16 @@ globalThis.fetch = async (url, init = {}) => {
       const off = Number(u.searchParams.get("offset")), lim = Number(u.searchParams.get("limit"));
       return json({ totalCount: hbListings.length, listings: hbListings.slice(off, off + lim) });
     }
+    if (method === "GET" && p.endsWith("/get-all-categories")) return json({ totalPages: 1, data: [
+      { categoryId: 18021982, name: "Kirli Sepeti", paths: ["Ev & Yaşam", "Banyo", "Kirli Sepeti"] },
+      { categoryId: 5000, name: "Benzinli Çakmak", paths: ["Hobi", "Çakmak", "Benzinli Çakmak"] },
+      { categoryId: 6000, name: "Eğitici Oyuncaklar", paths: ["Oyuncak", "Eğitici Oyuncaklar"] },
+    ] });
+    if (method === "GET" && /\/product\/api\/categories\/\d+\/attributes$/.test(p)) return json({ data: {
+      baseAttributes: [{ id: "merchantSku", name: "Satıcı Stok Kodu", mandatory: true }, { id: "UrunAdi", name: "Ürün Adı", mandatory: true }],
+      attributes: [{ id: "renk_variant_property", name: "Renk", mandatory: true, type: "enum" }, { id: "garanti", name: "Garanti", mandatory: false }],
+      variantAttributes: [] } });
+    if (method === "GET" && p.includes("/attribute/renk_variant_property/values")) return json({ data: [{ value: "Siyah" }, { value: "Çok Renkli" }] });
     if (method === "POST") { log.hbWrites.push({ path: p, body }); return json({ id: "trk-" + log.hbWrites.length }); }
     if (method === "GET" && /(stock-uploads|price-uploads)\/id\//.test(p)) return json({ status: "DONE", errors: [] });
     if (method === "GET" && p.includes("/products/status/")) return json({ status: "DONE", data: [{ merchantSku: "OS13-YENI-2", status: "FAILED", errors: ["Marka bulunamadı"] }] });

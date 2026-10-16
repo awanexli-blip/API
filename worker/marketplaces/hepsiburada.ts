@@ -13,27 +13,97 @@ const BRAND_NAME = process.env.HB_BRAND_NAME || process.env.TRENDYOL_BRAND_NAME 
 
 const cargo = JSON.parse(readFileSync(new URL("../data/hepsiburada/cargo.json", import.meta.url), "utf8")) as { carriers: string[]; byDesi: Record<string, number[]> };
 
-export function createHepsiburada(): Marketplace {
+// Bağlantı (adaptör ve test aracı ortak kullanır)
+export function hbClient() {
   const MERCHANT = env("HB_MERCHANT_ID");
   const USER = env("HB_USERNAME");
   const PASS = env("HB_PASSWORD");
   const prod = process.env.HB_ENV === "prod";
-  const MPOP = prod ? "https://mpop.hepsiburada.com" : "https://mpop-sit.hepsiburada.com";
-  const LISTING = prod ? "https://listing-external.hepsiburada.com" : "https://listing-external-sit.hepsiburada.com";
+  const sit = prod ? "" : "-sit";
+  const MPOP = `https://mpop${sit}.hepsiburada.com`;
+  const LISTING = `https://listing-external${sit}.hepsiburada.com`;
+  const OMS = `https://oms-external${sit}.hepsiburada.com`;
   const HEADERS: Record<string, string> = {
     Authorization: "Basic " + Buffer.from(`${USER}:${PASS}`).toString("base64"),
     "User-Agent": process.env.HB_USER_AGENT || USER,
     Accept: "application/json",
   };
-
   async function hb(url: string, init?: RequestInit) {
     const isForm = init?.body instanceof FormData;
     const res = await fetch(url, { ...init, headers: { ...HEADERS, ...(isForm ? {} : { "Content-Type": "application/json" }) } });
     const text = await res.text();
-    if (!res.ok) throw new Error(`Hepsiburada ${res.status} ${url.replace(/^https:\/\/[^/]+/, "")}: ${text.slice(0, 400)}`);
+    if (!res.ok) throw new Error(`Hepsiburada ${res.status} ${url.replace(/^https:\/\/[^/]+/, "")}: ${text.slice(0, 600)}`);
     try { return text ? JSON.parse(text) : {}; } catch { return { raw: text }; }
   }
   const trackingId = (r: any): string => String(r?.id ?? r?.trackingId ?? r?.data?.trackingId ?? r?.data?.id ?? "");
+  return { MERCHANT, USER, prod, MPOP, LISTING, OMS, hb, trackingId };
+}
+
+// Yanıt biçimi kesin bilinmediği için içindeki ilk nesne dizisini bul
+export function firstArray(r: any): any[] {
+  if (Array.isArray(r)) return r;
+  for (const k of ["data", "content", "items", "listings", "categories", "attributes", "values"]) if (Array.isArray(r?.[k])) return r[k];
+  if (r && typeof r === "object") for (const v of Object.values(r)) { if (Array.isArray(v) && v.length && typeof v[0] === "object") return v as any[]; }
+  if (r?.data && typeof r.data === "object") return firstArray(r.data);
+  return [];
+}
+
+// Kategori özellikleri: {id, name, mandatory, type, values?}. HB yanıtı baseAttributes/attributes/variantAttributes olabilir.
+const attrCache = new Map<string, any[]>();
+const valCache = new Map<string, string[]>();
+export async function hbCategoryAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number) {
+  const key = String(categoryId);
+  if (attrCache.has(key)) return attrCache.get(key)!;
+  const list = await fetchCategoryAttributes(c, categoryId);
+  attrCache.set(key, list);
+  return list;
+}
+async function fetchCategoryAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number) {
+  const r = await c.hb(`${c.MPOP}/product/api/categories/${categoryId}/attributes`);
+  const d = r?.data ?? r;
+  const groups: [string, any[]][] = [["base", d?.baseAttributes ?? []], ["category", d?.attributes ?? []], ["variant", d?.variantAttributes ?? []]];
+  if (!groups.some(([, l]) => l.length)) groups.push(["category", firstArray(d)]);
+  return groups.flatMap(([group, list]) => list.map((a: any) => ({
+    group, id: String(a.id ?? a.attributeId ?? a.name), name: String(a.name ?? a.displayName ?? a.id),
+    mandatory: !!(a.mandatory ?? a.required), type: String(a.type ?? ""), multiValue: !!a.multiValue,
+  })));
+}
+export async function hbAttributeValues(c: ReturnType<typeof hbClient>, categoryId: string | number, attrId: string) {
+  const key = categoryId + ":" + attrId;
+  if (valCache.has(key)) return valCache.get(key)!;
+  const vals = await fetchAttributeValues(c, categoryId, attrId);
+  valCache.set(key, vals);
+  return vals;
+}
+async function fetchAttributeValues(c: ReturnType<typeof hbClient>, categoryId: string | number, attrId: string) {
+  const r = await c.hb(`${c.MPOP}/product/api/categories/${categoryId}/attribute/${encodeURIComponent(attrId)}/values?version=4&page=0&size=1000`);
+  return firstArray(r).map((v: any) => String(v.value ?? v.name ?? v));
+}
+
+// Zorunlu kategori özelliklerini doldur (base alanları: merchantSku, UrunAdi vb. ayrıca doldurulur)
+const BASE_KEYS = new Set(["merchantsku", "varyantgroupid", "barcode", "urunadi", "urunaciklamasi", "marka", "garantisuresi", "kg", "tax_vat_rate", "price", "stock", "image1", "image2", "image3", "image4", "image5", "video1"]);
+const NEUTRAL = ["çok renkli", "karışık", "renkli", "standart", "tek ebat", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
+const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
+export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}) {
+  const out: Record<string, unknown> = { ...given };
+  const missing: string[] = [];
+  for (const a of await hbCategoryAttributes(c, categoryId)) {
+    if (!a.mandatory || BASE_KEYS.has(lo(a.id)) || out[a.id] != null) continue;
+    let vals: string[] = [];
+    try { vals = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin olabilir */ }
+    const t = " " + lo(title).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
+    const hit = vals.filter((v) => v && t.includes(" " + lo(v) + " ")).sort((x, y) => y.length - x.length)[0];
+    const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v) === n)).find(Boolean);
+    const val = hit ?? neutral ?? (!vals.length && /renk|color/i.test(a.name) ? "Çok Renkli" : undefined);
+    if (val) out[a.id] = val; else missing.push(a.name);
+    await sleep(200);
+  }
+  return { attributes: out, missing };
+}
+
+export function createHepsiburada(): Marketplace {
+  const client = hbClient();
+  const { MERCHANT, prod, MPOP, LISTING, hb, trackingId } = client;
 
   const items: any[] = [];
 
@@ -123,8 +193,14 @@ export function createHepsiburada(): Marketplace {
       for (const p of list) {
         if (used.has(p.id)) { ctx.skip("aynı stok koduna dönüşen ürün kodu"); continue; }
         used.add(p.id);
-        const extra: Record<string, unknown> = {};
+        let extra: Record<string, unknown> = {};
         for (const a of p.cat.attributes ?? []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
+        // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
+        try {
+          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra);
+          if (f.missing.length) { ctx.skip(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
+          extra = f.attributes;
+        } catch (e: any) { console.error("özellik listesi alınamadı:", e.message); }
         payloads.push({
           categoryId: Number(p.cat.category_id),
           merchant: MERCHANT,

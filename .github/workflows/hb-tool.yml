@@ -1,0 +1,58 @@
+name: Hepsiburada test aracı
+
+# Hepsiburada entegrasyon testi ve canlıya geçiş için elle çalıştırılan komutlar.
+# Ayrıntı: worker/hb-tool.ts ve docs/HEPSIBURADA_TEST.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Komut"
+        type: choice
+        options: [ping, categories, suggest, attributes, send, status, listings, stock, price, orders, raw]
+        default: ping
+      args:
+        description: "Argümanlar (örn. send için: 1 18021982 mutfak · attributes için: 18021982 · stock için: OS13-XXX 10)"
+        default: ""
+      env:
+        description: "Ortam"
+        type: choice
+        options: [sit, prod]
+        default: sit
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: sync-hepsiburada
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --prefix worker
+      - name: Çalıştır
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          XML_URL: ${{ secrets.XML_URL }}
+          HB_MERCHANT_ID: ${{ secrets.HB_MERCHANT_ID }}
+          HB_USERNAME: ${{ secrets.HB_USERNAME }}
+          HB_PASSWORD: ${{ secrets.HB_PASSWORD }}
+          HB_USER_AGENT: ${{ vars.HB_USER_AGENT }}
+          HB_ENV: ${{ github.event.inputs.env == 'prod' && 'prod' || '' }}
+          CMD: ${{ github.event.inputs.command }}
+          ARGS: ${{ github.event.inputs.args }}   # ortam değişkeniyle: kabuk komutu olarak yorumlanmaz
+        run: node --experimental-strip-types worker/hb-tool.ts "$CMD" $ARGS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hb-tool-${{ github.event.inputs.command }}
+          path: |
+            hb_tool_output.json
+            hb_categories.csv
+            hb_category_suggestions.csv
+          if-no-files-found: ignore
+          retention-days: 7

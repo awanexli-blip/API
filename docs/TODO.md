@@ -78,6 +78,9 @@ Adımlar:
 - [x] Trendyol komisyonu KDV dahil (Trendyol paneli: "Komisyonlara KDV dahildir", 16.10). `commission_plus_vat` Trendyol için false kalır.
 - [ ] (K) HB kargo: her siparişte satıcı mı ödüyor, müşteri ödediği bir eşik var mı? Hangi kargo firması?
 - [ ] HB kategori eşleme: XML kategorisi -> HB kategori ID + komisyon (commissions.json'dan öneri).
+- [x] HB test aracı + kontrol listesi (docs/HEPSIBURADA_TEST.md).
+- [ ] (K) HB test araması: secrets gir, senaryoları çalıştır, sorulacakları sor.
+- [ ] HB sipariş modülü (testte zorunluysa).
 - [ ] H6: Test ortamında 10 ürün → canlıda 50 ürün → tamamı. `auto_create` kapalı başlar.
 
 ## P4 — Yeni pazaryeri adaptörleri

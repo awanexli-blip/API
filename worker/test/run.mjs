@@ -132,7 +132,41 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("hb: secret yoksa zamanlı çalışma atlanır", calls.run?.status === "skipped", JSON.stringify(calls.run));
 }
 
-// 9) birim testleri
+// 9) Hepsiburada test aracı (sahte SIT)
+{
+  const tool = join(here, "..", "hb-tool.ts");
+  const hbEnv = { ...envBase, HB_MERCHANT_ID: "m-1", HB_USERNAME: "u", HB_PASSWORD: "p", MOCK_BULK: "20" };
+  const t = (...a) => {
+    const dir = mkdtempSync(join(tmpdir(), "hbtool-"));
+    let code = 0;
+    try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, tool, ...a], { cwd: dir, env: hbEnv, stdio: ["ignore", "ignore", "inherit"] }); } catch { code = 1; }
+    const o = JSON.parse(readFileSync(join(dir, "hb_tool_output.json"), "utf8"));
+    const calls = JSON.parse(readFileSync(join(dir, "calls.json"), "utf8"));
+    const file = (f) => { try { return readFileSync(join(dir, f), "utf8"); } catch { return ""; } };
+    return { code, o, calls, file, titles: (o.steps ?? []).map((x) => x.title).join(" | ") };
+  };
+  const ping = t("ping");
+  check("araç ping", ping.code === 0 && /listing erişimi: TAMAM/.test(ping.titles) && /katalog \(mpop\) erişimi: TAMAM/.test(ping.titles), ping.titles);
+  const cats = t("categories", "kirli");
+  check("araç categories", cats.code === 0 && cats.file("hb_categories.csv").includes("18021982") && JSON.stringify(cats.o.steps).includes("Kirli Sepeti"), cats.titles);
+  const sug = t("suggest");
+  check("araç suggest (csv)", sug.code === 0 && sug.file("hb_category_suggestions.csv").split("\n").length > 3, sug.titles);
+  const at = t("attributes", "18021982");
+  check("araç attributes (zorunlu + değerler)", at.code === 0 && JSON.stringify(at.o.steps).includes("Çok Renkli"), at.titles);
+  const send = t("send", "2", "18021982");
+  const imp = send.calls.hbWrites.filter((w) => w.path.endsWith("/products/import")).flatMap((w) => w.body);
+  check("araç send 2: iki ürün, kategori ve renk dolu", send.code === 0 && imp.length === 2 && imp.every((x) => x.categoryId === 18021982 && x.attributes.renk_variant_property), JSON.stringify(imp.map((x) => x.attributes)));
+  check("araç send: Siyah başlıktan", imp.some((x) => x.attributes.UrunAdi.includes("Siyah") ? x.attributes.renk_variant_property === "Siyah" : x.attributes.renk_variant_property === "Çok Renkli"), JSON.stringify(imp.map((x) => [x.attributes.UrunAdi, x.attributes.renk_variant_property])));
+  const st = t("stock", "OS13-AAA", "7");
+  check("araç stock", st.code === 0 && st.calls.hbWrites.some((w) => w.path.endsWith("/stock-uploads") && w.body[0].availableStock === 7), st.titles);
+  const pr = t("price", "OS13-AAA", "149.9");
+  check("araç price", pr.code === 0 && pr.calls.hbWrites.some((w) => w.path.endsWith("/price-uploads") && w.body[0].price === 149.9), pr.titles);
+  check("araç orders", t("orders").code === 0);
+  const bad = t("send");
+  check("araç: eksik argüman anlaşılır hata", bad.code === 1 && /kullanım: send/.test(JSON.stringify(bad.o.steps)), bad.titles);
+}
+
+// 10) birim testleri
 for (const f of ["pricing.test.ts", "classify.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
