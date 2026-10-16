@@ -30,8 +30,8 @@ function run(mode, env = {}) {
 {
   const { calls, s, line } = run("preview");
   check("preview: Trendyol'a yazma yok", calls.trendyolWrites.length === 0);
-  check("preview: tüm onaylı varyantlar yüklendi (nextPageToken)", s.listingTotals?.approvedVariantsLoaded === 10158, JSON.stringify(s.listingTotals));
-  check("preview: eşleşen", s.matched === 10157, String(s.matched));
+  check("preview: tüm onaylı varyantlar yüklendi (nextPageToken)", s.listingTotals?.approvedVariantsLoaded === 10160, JSON.stringify(s.listingTotals));
+  check("preview: eşleşen", s.matched === 10159, String(s.matched));
   check("preview: canlı komisyon kullanıldı", s.commissionSource?.urun_canli >= 1, JSON.stringify(s.commissionSource));
   check("preview: JSON komisyonu yedek", s.commissionSource?.urun >= 1, JSON.stringify(s.commissionSource));
   check("preview: kilitli ürün atlandı", line("ÖS13-KILITLI").includes("kapalı/fiyatsız"));
@@ -75,6 +75,20 @@ function run(mode, env = {}) {
   const zeroed = calls.trendyolWrites.flatMap((w) => w.body.items).filter((i) => i.quantity === 0 && !("salePrice" in i)).map((i) => i.barcode);
   check("zero_missing: yetim ürün sıfırlandı", zeroed.includes("ORPHAN-1") && s.zeroed >= 1, JSON.stringify(zeroed));
 }
+
+// 5) smart politikası
+{
+  const { calls, s, line } = run("update", { MOCK_POLICY: "smart", MOCK_BULK: "50" });
+  const sent = Object.fromEntries(calls.trendyolWrites.flatMap((w) => w.body.items).map((i) => [i.barcode, i.salePrice]));
+  check("smart: ölü bölge 359,90 -> eşik altı", sent["DEAD-1"] < 300, sent["DEAD-1"]);
+  check("smart: pahalı 1000 -> en fazla %10 düşüş", sent["PAHALI-1"] >= 900 && sent["PAHALI-1"] < 1000, sent["PAHALI-1"]);
+  check("smart: düşen fiyat özette", s.priceMoves?.["düşecek"] >= 2, JSON.stringify(s.priceMoves));
+  check("smart: CSV kârı gönderilen fiyata göre", /;hayir;[\d.]+;17\.5;MEVCUT \(düşecek; formül 239\.9; eski 359\.9\)/.test(line("DEAD-1")), line("DEAD-1"));
+}
+
+// 6) birim testleri
+try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, "pricing.test.ts")], { stdio: "inherit" }); }
+catch { fails++; }
 
 console.log(fails ? `\n${fails} test başarısız` : "\nTüm testler geçti");
 process.exit(fails ? 1 : 0);

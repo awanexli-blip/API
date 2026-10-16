@@ -18,6 +18,8 @@ const approved = [
   content("ÖS13-SIFIR", "Sifir Fiyat", 0),
   content("ORPHAN-1", "Yetim Urun", 50),
   content("X-SAME", "Ayni Baslikli Urun Burada", 80),
+  content("DEAD-1", "Olu Bolge Urunu", 359.9),                    // 300-410 arası: 299,90 hem ucuz hem kârlı
+  content("PAHALI-1", "Pahali Urun", 1000),                       // formülün çok üstünde: kademeli düşüş
 ];
 for (let i = 0; i < N_BULK; i++) approved.push(content(`BULK-${i}`, `Toplu ${i}`, 99));
 const unapproved = [{ barcode: "OS13-BEKLEYEN", title: "Bekleyen Urun", salePrice: 70, quantity: 3, status: "pendingApproval" }];
@@ -35,6 +37,8 @@ const xmlRows = [
   row({ barcode: "BX9", productCode: "YENI-2", category: "Cat3", price: "250", name: "Yeni Urun 2", ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`image${i + 1}`, `https://i/2-${i}.jpg`])) }),
   row({ barcode: "BX10", productCode: "YENI-3", category: "Cat3", price: "80", name: "Resimsiz" }),
   row({ barcode: "BX11", productCode: "YENI-4", category: "CatX", price: "80", name: "Kategorisiz", image1: "https://i/4.jpg" }),
+  row({ barcode: "DEAD-1", productCode: "DD", category: "Cat1", price: "150", name: "Olu Bolge Urunu" }),
+  row({ barcode: "PAHALI-1", productCode: "PP", category: "Cat1", price: "300", name: "Pahali Urun" }),
   row({ barcode: "BX12", productCode: "SAME", category: "Cat3", price: "80", name: "Ayni Baslikli Urun Burada", image1: "https://i/6.jpg" }),
 ];
 for (let i = 0; i < N_BULK; i++) xmlRows.push(row({ barcode: `B${i}`, productCode: `BULK-${i}`.replace(/^BULK-/, "BULK-"), category: "Cat1", price: "30", name: `Toplu ${i}` }));

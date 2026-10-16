@@ -8,7 +8,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
-import { calcPrice } from "./pricing.ts";
+import { calcPrice, existingPrice } from "./pricing.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
@@ -71,6 +71,7 @@ async function main() {
   const toCreate: NewProduct[] = [];
   const unmapped = new Map<string, number>();
   const commCount: Record<string, number> = {};
+  const priceMoves: Record<string, number> = {};
 
   for (const r of raw) {
     const barcode = String(r.barcode ?? "").trim();
@@ -124,14 +125,15 @@ async function main() {
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da kapalı/fiyatsız`);
         continue;
       }
-      let sendPrice: number | null = price;
-      if (!ov?.price_override) {
-        if (policy === "keep" || (policy === "floor" && !known)) sendPrice = null;
-        else if (policy === "floor") sendPrice = Math.max(curPrice, price);
-      }
+      const sendPrice: number | null = ov?.price_override ? price : existingPrice(policy, curPrice, price, cfg as any, comm);
       const change = sendPrice == null ? "fiyat korunur" : !known ? "yeni fiyat" : sendPrice > curPrice + 0.005 ? "artacak" : sendPrice < curPrice - 0.005 ? "düşecek" : "aynı";
+      priceMoves[change] = (priceMoves[change] ?? 0) + 1;
       toUpdate.push({ id: lid, price: sendPrice, quantity: hidden || qty < minStock ? 0 : Math.min(Math.floor(qty), 20000) });
-      csv.push(`${lid};${q(name)};${q(category)};${r.price};${sendPrice ?? (known ? curPrice : "")};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};MEVCUT (${change}; formül ${price})`);
+      // Kâr sütunları satışta geçerli olacak fiyata göre (formül fiyatına göre değil)
+      const eff = sendPrice ?? curPrice;
+      const effShip = eff >= cfg.freeShippingThreshold ? cfg.shippingCost : 0;
+      const effNet = eff * (1 - comm) - cost - cfg.fixedCost - effShip;
+      csv.push(`${lid};${q(name)};${q(category)};${r.price};${known || sendPrice != null ? eff : ""};${effShip ? "evet" : "hayir"};${effNet.toFixed(2)};${(eff > 0 ? (effNet / eff) * 100 : 0).toFixed(1)};MEVCUT (${change}; formül ${price}; eski ${known ? curPrice : "-"})`);
       continue;
     }
 
@@ -152,7 +154,7 @@ async function main() {
   const matched = linked.size;
   const summary: any = {
     marketplace: mp.id,
-    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, commissionSource: commCount,
+    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount,
     update: toUpdate.length, create: toCreate.length, skipped,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };

@@ -19,7 +19,7 @@ const NUM: Record<string, [number, number, boolean]> = {
   fx_eur: [0, 1000, false],
 };
 const BOOL = ["auto_sync", "auto_create", "update_prices", "zero_missing"];
-const POLICIES = ["keep", "floor", "formula"];
+const POLICIES = ["keep", "floor", "formula", "smart"];
 
 export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();

@@ -95,3 +95,34 @@ export function calcPrice(
     note,
   };
 }
+
+// Mevcut ilanda gönderilecek fiyat. null = fiyata dokunma.
+//  keep    : fiyata dokunma
+//  floor   : sadece formülün altındaysa yükselt, asla düşürme
+//  formula : formül fiyatına eşitle (tek seferde düşebilir)
+//  smart   : formülün altındaysa yükselt; üstündeyse her çalışmada en fazla maxDrop kadar düşürerek formüle yaklaştır.
+//            Kargo eşiği istisnası: eşiğin altına (299,90) inmek hem daha ucuz hem daha kârlıysa doğrudan iner.
+export const SMART_MAX_DROP = 0.10;
+
+export function existingPrice(
+  policy: string,
+  current: number,
+  formula: number,
+  cfg: PricingConfig,
+  commissionRate: number,
+  maxDrop: number = SMART_MAX_DROP
+): number | null {
+  const known = Number.isFinite(current) && current > 0;
+  if (policy === "keep") return null;
+  if (policy === "floor") return known ? Math.max(current, formula) : null;
+  if (policy !== "smart" || !known || formula >= current) return formula;
+
+  const step = roundUpPsych(current * (1 - maxDrop));
+  const candidate = step < current ? Math.max(formula, step) : current;
+  const T = cfg.freeShippingThreshold;
+  if (candidate >= T && formula < T) {
+    const net = (p: number) => profitOf(p, 0, cfg, commissionRate).net; // maliyet iki tarafta da aynı, karşılaştırmada düşer
+    if (net(formula) >= net(candidate)) return formula;
+  }
+  return candidate;
+}

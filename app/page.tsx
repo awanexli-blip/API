@@ -300,7 +300,8 @@ function Settings({ api, notify }: Props) {
         <h3>Mevcut ürünlerin fiyatı</h3>
         <label className="f" style={{ maxWidth: 520 }}>Trendyol'da zaten olan ürünlerde fiyat nasıl güncellensin?
           <select value={f.existing_price_policy ?? "floor"} onChange={(e) => setF({ ...f, existing_price_policy: e.target.value })}>
-            <option value="floor">Sadece formülün altındaysa yükselt, mevcut fiyatı asla düşürme (önerilen)</option>
+            <option value="smart">Akıllı: zararı yükselt, pahalıyı her çalışmada en fazla %10 düşür, 300 TL eşiğinde 299,90'a in (önerilen)</option>
+            <option value="floor">Sadece formülün altındaysa yükselt, mevcut fiyatı asla düşürme</option>
             <option value="keep">Fiyata dokunma, sadece stok güncelle</option>
             <option value="formula">Her ürünü formül fiyatına eşitle (fiyatlar düşebilir)</option>
           </select>
