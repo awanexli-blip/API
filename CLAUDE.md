@@ -36,7 +36,8 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `worker/sync.ts` | Pazaryerinden bağımsız orkestratör: XML çek, ilanları çek, eşleştir, fiyat hesapla, güncelle/oluştur, CSV yaz, Supabase'e sonuç yaz. Kullanım: `sync.ts <mod> [pazaryeri]` |
 | `worker/marketplaces/` | `types.ts` (Marketplace arayüzü), `index.ts` (kayıt defteri), `trendyol.ts` (API, barkod kuralı, komisyon kaynağı, ürün açma). Yeni pazaryeri = yeni adaptör dosyası + kayıt defterine ekleme |
 | `worker/core/` | Ortak yardımcılar (`util.ts`), XML okuma (`xml.ts`) |
-| `docs/ROADMAP.md` | Çoklu pazaryeri yol haritası ve aşama durumu |
+| `docs/TODO.md` | Yapılacaklar (öncelik sırasıyla) ve pazaryeri zorunlu alanları |
+| `docs/PROGRESS.md` | Gelişme günlüğü. **Her oturumda önce bunu oku, sonunda güncelle** |
 | `worker/pricing.ts` | `calcPrice()` fiyat formülü. Panel de simülasyon için aynı dosyayı import eder (`@/worker/pricing`) |
 | `worker/commissions_by_barcode.json` | Trendyol'daki 18.027 ürünün kendi komisyon oranı (barkod -> oran) |
 | `worker/commissions_by_category.json` | XML kategorisi -> kategorideki en yüksek komisyon (yeni ürünler için güvenli taraf) |
