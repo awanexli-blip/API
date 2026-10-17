@@ -95,6 +95,8 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
       message: safe ? `XML'den kalkan ${gone.length} ürün (${zeroed} varyantın stoğu 0 yapıldı)` : `XML'den kalkan ${gone.length} ürün çok fazla, güvenlik için stokları sıfırlanmadı (XML eksik inmiş olabilir)`,
     });
     console.log(`${sup.code} bitti`, count, { xmlErrors: errors.length, gone: gone.length, zeroed });
+    // Yeni ürünler girdiyse pazaryeri ilanlarını bunlara bağla (iş kuyruğu, aynı içe aktarma için bir kez)
+    if (count.created) await db.from("jobs").insert({ type: "link_listings", marketplace: "trendyol", idempotency_key: `link-after-import-${job.id}`, created_by: actor });
   } catch (e: any) {
     if (dry) throw e;
     await finish({ status: "error", failed: (count.error ?? 0) + errors.length, message: String(e.message).slice(0, 500) });

@@ -53,6 +53,10 @@ export async function GET(req: NextRequest) {
       rejected: sm.newProductApproval?.rejected ?? 0, pendingApproval: sm.newProductApproval?.pendingApproval ?? 0,
     };
   });
+  // Faz 3 ilan tablosu: Trendyol'daki ilanların durumu ve ürün veritabanına bağlı olanlar
+  const lc = (st?: string) => count(st ? db.from("marketplace_listings").select("listing_key", { count: "exact", head: true }).eq("marketplace", "trendyol").eq("status", st) : db.from("marketplace_listings").select("listing_key", { count: "exact", head: true }).eq("marketplace", "trendyol").not("variant_id", "is", null));
+  const [live, pend, closed, linkedN] = await Promise.all([lc("live"), lc("pending_approval"), lc("closed"), lc()]);
+  out.listings = { live, pending: pend, closed, linked: linkedN };
   out.timeline = allRuns.slice(0, 10).map((r) => ({ id: r.id, marketplace: r.marketplace ?? r.summary?.marketplace ?? "trendyol", mode: r.mode, status: r.status, started_at: r.started_at, updated: r.summary?.updated, created: r.summary?.created, skippedRun: r.summary?.skippedRun }));
   out.suppliers = suppliers.data ?? [];
   out.settings = s;

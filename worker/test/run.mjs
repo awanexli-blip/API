@@ -182,8 +182,14 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("üst sınır: csv satırı STOK 0", /STOK 0: fiyat üst sınırı/.test(line("ÖS13-AAA")) || Object.values(s.skipped ?? {}).length > 0);
 }
 
+// 9d) Faz 3: ilan tablosu her senkronda yazılır (preview dahil, pazaryerine yazmadan)
+{
+  const { calls, s } = run("preview");
+  check("ilan tablosu yazıldı", calls.listings > 10000 && s.listingsTable?.written === calls.listings, JSON.stringify({ n: calls.listings, t: s.listingsTable }));
+}
+
 // 10) birim testleri
-for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts"]) {
+for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
 }

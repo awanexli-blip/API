@@ -37,6 +37,7 @@ export default function AppSettings({ api, notify, role, email, theme, setTheme 
 
       {isAdmin && <Users api={api} notify={notify} me={email} />}
       {isAdmin && <General api={api} notify={notify} />}
+      {isAdmin && <Jobs api={api} notify={notify} />}
       {isAdmin && <Health api={api} />}
     </>
   );
@@ -105,6 +106,37 @@ function General({ api, notify }: { api: Api; notify: Notify }) {
         <label className="f">Varsayılan KDV<select value={f.vat_rate} onChange={(e) => setF({ ...f, vat_rate: e.target.value })}>{[20, 10, 1, 0].map((v) => <option key={v} value={v}>%{v}</option>)}</select></label>
       </div>
       <button className="btn primary" style={{ marginTop: 12 }} onClick={save}>Kaydet</button>
+    </div>
+  );
+}
+
+const JOB_TR: Record<string, string> = { queued: "sırada", running: "çalışıyor", done: "tamam", failed: "başarısız", cancelled: "iptal" };
+const JOB_TYPE_TR: Record<string, string> = { link_listings: "İlanları ürünlere bağla" };
+function Jobs({ api, notify }: { api: Api; notify: Notify }) {
+  const [list, setList] = useState<Row[] | null>(null);
+  const load = useCallback(() => api("/api/jobs").then(setList).catch(() => setList([])), [api]);
+  useEffect(() => { load(); }, [load]);
+  async function act(id: number, action: "retry" | "cancel") {
+    try { await api("/api/jobs", { method: "PUT", body: JSON.stringify({ id, action }) }); notify("good", action === "retry" ? "İş yeniden kuyruğa alındı." : "İş iptal edildi."); load(); } catch (e: any) { notify("err", e.message); }
+  }
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: "space-between" }}><h2 style={{ margin: 0 }}>İş kuyruğu</h2><button className="btn" onClick={load}><Icon name="refresh" size={16} />Yenile</button></div>
+      <p className="muted" style={{ fontSize: 13 }}>Arka plan işleri her senkrondan sonra çalışır; hata olursa artan beklemeyle en fazla 5 kez denenir.</p>
+      {!list ? <p className="muted">Yükleniyor...</p> : list.length === 0 ? <p className="muted" style={{ margin: 0 }}>Henüz iş yok.</p> : (
+        <div className="scroll"><table className="cards">
+          <thead><tr><th>İş</th><th>Durum</th><th className="n">Deneme</th><th>Zaman</th><th /></tr></thead>
+          <tbody>{list.map((j) => (
+            <tr key={j.id}>
+              <td data-label="İş">#{j.id} {JOB_TYPE_TR[j.type] ?? j.type}{j.last_error ? <><br /><span style={{ color: "var(--bad)", fontSize: 12 }}>{String(j.last_error).slice(0, 160)}</span></> : null}</td>
+              <td data-label="Durum"><span className={`pill ${j.status === "done" ? "ok" : j.status === "failed" ? "error" : j.status === "cancelled" ? "" : "partial"}`}>{JOB_TR[j.status] ?? j.status}</span></td>
+              <td data-label="Deneme" className="n">{j.attempts}/{j.max_attempts}</td>
+              <td data-label="Zaman" className="muted" style={{ fontSize: 13 }}>{when(j.updated_at)}</td>
+              <td className="n">{(j.status === "failed" || j.status === "cancelled") && <button className="btn" onClick={() => act(j.id, "retry")}>Yeniden dene</button>}{j.status === "queued" && <button className="btn" onClick={() => act(j.id, "cancel")}>İptal</button>}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
     </div>
   );
 }

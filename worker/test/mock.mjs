@@ -104,6 +104,7 @@ globalThis.fetch = async (url, init = {}) => {
     if (t === "sync_runs" && method === "POST") { if (noMig && body?.marketplace) return json({ message: "column marketplace does not exist" }, 400); log.runInsert = body; return json(single ? { id: 1 } : [{ id: 1 }], 201); }
     if (t === "unmapped_categories" && method === "POST") log.unmapped = body;
     if (t === "create_failures" && method === "POST") log.createFailures = body;
+    if (t === "marketplace_listings" && method === "POST") log.listings = (log.listings ?? 0) + body.length;
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });
   }

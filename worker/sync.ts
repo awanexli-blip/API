@@ -10,6 +10,7 @@ import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
+import { snapshotListings } from "./core/listings.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
@@ -319,6 +320,8 @@ async function main() {
     delete summary.batchCheck.failed; // özet şişmesin
   }
   summary.batchIds = summary.batchIds.slice(0, 20);
+  // Faz 3: ilan tablosu (pazaryerinin gördüğü durum, ürün veritabanına bağlantı)
+  if (listings.length) summary.listingsTable = await snapshotListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
   return summary;
 }
 

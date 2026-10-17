@@ -53,7 +53,7 @@ export default function Dashboard({ api, notify, role, go }: { api: Api; notify:
         {isAdmin && ty && <div className="kpi" style={{ cursor: "pointer" }} onClick={() => go("pazaryeri/trendyol/ozet")}>
           <div className="label"><Icon name="store" size={14} />Trendyol ilanları</div>
           <div className="value">{n(ty.listings)}</div>
-          <div className="hint">{n(ty.matched)} XML ile eşleşik · son {ago(ty.last?.started_at)}</div>
+          <div className="hint">{d.listings?.live ? `${n(d.listings.live)} yayında · ${n(d.listings.pending)} onay bekliyor · ${n(d.listings.closed)} kapalı` : `${n(ty.matched)} XML ile eşleşik`} · son {ago(ty.last?.started_at)}</div>
         </div>}
         {isAdmin && <div className="kpi" style={{ cursor: "pointer" }} onClick={() => go("tedarikciler")}>
           <div className="label"><Icon name="truck" size={14} />Tedarikçiler</div>

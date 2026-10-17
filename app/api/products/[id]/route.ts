@@ -15,6 +15,11 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   if (a instanceof NextResponse) return a;
   if (!UUID.test(params.id)) return NextResponse.json({ error: "Geçersiz ürün" }, { status: 400 });
   const db = admin();
+  if (req.nextUrl.searchParams.get("listings")) {
+    const { data, error } = await db.from("marketplace_listings").select("marketplace, listing_key, variant_id, status, price, stock, commission, category_name, seen_at").eq("product_id", params.id).order("marketplace");
+    if (error) return NextResponse.json([]); // tablo yoksa (migration 013 öncesi) boş
+    return NextResponse.json(data);
+  }
   if (req.nextUrl.searchParams.get("audit")) {
     const { data, error } = await db.from("audit_log").select("id, at, actor, action").eq("entity", "product").eq("entity_id", params.id).order("at", { ascending: false }).limit(30);
     if (error) return dbError(error);

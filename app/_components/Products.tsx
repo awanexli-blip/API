@@ -10,6 +10,8 @@ import PricePreview from "./PricePreview";
 
 type Role = "viewer" | "editor" | "admin";
 const STATUS_TR: Record<string, string> = { draft: "Taslak", active: "Aktif", archived: "Arşiv" };
+const LISTING_TR: Record<string, string> = { live: "yayında", pending_approval: "onay bekliyor", rejected: "reddedildi", closed: "kapalı", gone: "kalktı", queued: "sırada", sent: "gönderildi", error: "hata" };
+const LISTING_PILL: Record<string, string> = { live: "ok", pending_approval: "partial", queued: "partial", sent: "info", rejected: "error", closed: "error", error: "error", gone: "" };
 const ACTION_TR: Record<string, string> = { create: "oluşturuldu", update: "güncellendi", archive: "arşivlendi", delete: "silindi" };
 const COLORS = ["Siyah", "Beyaz", "Gri", "Kırmızı", "Mavi", "Lacivert", "Yeşil", "Sarı", "Turuncu", "Pembe", "Mor", "Kahverengi", "Bej", "Gümüş", "Altın", "Çok Renkli", "Şeffaf"];
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "3XL", "Standart"];
@@ -207,6 +209,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   const [uploading, setUploading] = useState(0);
   const [link, setLink] = useState("");
   const [audit, setAudit] = useState<Row[] | null>(null);
+  const [listings, setListings] = useState<Row[] | null>(null);
   const [colors, setColors] = useState<string[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
   const [hasVariants, setHasVariants] = useState(initial.variants.length > 1);
@@ -218,6 +221,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   const err = (k: string) => (errs[k] ? <small style={{ color: "var(--bad)" }}>{errs[k]}</small> : null);
 
   useEffect(() => { if (f.id) api(`/api/products/${f.id}?audit=1`).then(setAudit).catch(() => setAudit([])); }, [api, f.id]);
+  useEffect(() => { if (f.id) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => setListings([])); }, [api, f.id]);
 
   const cat = opts.categories.find((c) => c.name === f.category);
   const ready = useMemo(() => readiness({
@@ -417,6 +421,24 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
           </table></div>
         </>}
       </div>
+
+      {listings && listings.length > 0 && <div className="card">
+        <h2>Pazaryerlerinde</h2>
+        <div className="scroll"><table className="cards">
+          <thead><tr><th>Pazaryeri</th><th>İlan (barkod)</th><th>Durum</th><th className="n">Fiyat</th><th className="n">Stok</th><th>Son görülme</th></tr></thead>
+          <tbody>{listings.map((l) => (
+            <tr key={l.marketplace + l.listing_key}>
+              <td data-label="Pazaryeri">{l.marketplace === "trendyol" ? "Trendyol" : l.marketplace === "hepsiburada" ? "Hepsiburada" : l.marketplace}</td>
+              <td data-label="İlan" style={{ fontSize: 13 }}>{l.listing_key}{l.category_name ? <><br /><span className="muted" style={{ fontSize: 12 }}>{l.category_name}</span></> : null}</td>
+              <td data-label="Durum"><span className={`pill ${LISTING_PILL[l.status] ?? ""}`}>{LISTING_TR[l.status] ?? l.status}</span></td>
+              <td data-label="Fiyat" className="n">{l.price != null ? tl(Number(l.price)) : "-"}</td>
+              <td data-label="Stok" className="n">{l.stock ?? "-"}</td>
+              <td data-label="Son görülme" className="muted" style={{ fontSize: 13 }}>{when(l.seen_at)}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+        <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Durum pazaryerinden okunur (her senkronda); "yayında" yalnızca pazaryeri onaylı ve açık ilan demektir.</p>
+      </div>}
 
       {role === "admin" && <PricePreview api={api} cost={n(f.cost_price) ?? n(f.variants[0]?.cost_price ?? "")} currency={f.currency} vat={Number(f.vat_rate) || 20} category={f.category} brand={f.brand} source={f.source ?? "manual"} stock={f.variants.reduce((t, v) => t + (Number(v.stock) || 0), 0)} />}
 

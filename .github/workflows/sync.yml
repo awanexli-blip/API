@@ -61,6 +61,12 @@ jobs:
           HB_ENV: ${{ vars.HB_ENV }}             # boş = test (SIT), "prod" = canlı
           HB_USER_AGENT: ${{ vars.HB_USER_AGENT }}
         run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ matrix.marketplace }}"
+      - name: İş kuyruğu (Faz 3)
+        if: always() && matrix.marketplace == 'trendyol'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node --experimental-strip-types worker/jobs.ts 240
       - uses: actions/upload-artifact@v7
         if: always()
         with:
