@@ -9,6 +9,7 @@ import Settings from "./_components/Settings";
 import Categories from "./_components/Categories";
 import Overrides from "./_components/Overrides";
 import Upcoming, { UPCOMING } from "./_components/Upcoming";
+import Products from "./_components/Products";
 
 const MARKETS: { id: string; label: string; live: boolean }[] = [
   { id: "trendyol", label: "Trendyol", live: true },
@@ -87,7 +88,9 @@ function Panel({ token, email }: { token: string; email: string }) {
         </div>
       </div>
 
-      <nav className="markets" role="tablist" aria-label="Pazaryeri">
+      <nav className="markets" role="tablist" aria-label="Bölüm">
+        <button role="tab" aria-selected={market === "urunler"} className="market" onClick={() => { setMarket("urunler"); setMsg(null); }}>Ürünler</button>
+        <span className="sep" aria-hidden="true" />
         {MARKETS.map((m) => (
           <button key={m.id} role="tab" aria-selected={market === m.id} className="market" onClick={() => { setMarket(m.id); setSub("ozet"); setMsg(null); }}>
             {m.label}{!m.live && <span className="soon">yakında</span>}
@@ -97,7 +100,7 @@ function Panel({ token, email }: { token: string; email: string }) {
 
       {msg && <div className={`msg ${msg.t}`} role="status">{msg.m}<button className="x" aria-label="Kapat" onClick={() => setMsg(null)}>×</button></div>}
 
-      {info ? <Upcoming info={info} /> : (
+      {market === "urunler" ? <Products api={api} notify={notify} /> : info ? <Upcoming info={info} /> : (
         <>
           <div className="tabs" role="tablist">
             {SUBS.map(([k, label]) => (

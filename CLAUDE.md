@@ -42,6 +42,10 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `kaynaklar/` | Git dışı: PDF/Excel/ekran görüntüleri (repo herkese açık) |
 | `worker/core/classify.ts` | Yeni ürün kategori + komisyon tahmini (benzer başlıklı mevcut ilanlardan, yüksek güvende %95 isabet) |
 | `worker/core/` | Ortak yardımcılar (`util.ts`), XML okuma (`xml.ts`) |
+| `docs/ARCHITECTURE.md` | Merkezi ürün platformu mimarisi, fazlar, Faz 1 kurulum/API |
+| `supabase/migrations/003_products.sql` | Merkezi ürün DB: `products`, `product_variants`, `product_images`, `user_roles`, `audit_log`, `product_save`/`product_delete` (transaction) |
+| `lib/validation/product.ts`, `tests/` | Ürün doğrulama şeması (zod, GTIN), birim testleri (`npm test`) |
+| `app/api/products/`, `app/_components/Products.tsx` | Ürün CRUD API (rol bazlı) ve panel ekranı |
 | `docs/TODO.md` | Yapılacaklar (öncelik sırasıyla) ve pazaryeri zorunlu alanları |
 | `docs/PROGRESS.md` | Gelişme günlüğü. **Her oturumda önce bunu oku, sonunda güncelle** |
 | `worker/pricing.ts` | `calcPrice()` fiyat formülü. Panel de simülasyon için aynı dosyayı import eder (`@/worker/pricing`) |

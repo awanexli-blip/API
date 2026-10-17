@@ -1,5 +1,15 @@
 # Yapılacaklar
 
+## Merkezi ürün platformu (docs/ARCHITECTURE.md)
+
+- [x] Faz 1: DB, rol bazlı yetki, ürün CRUD, doğrulama, testler, panel "Ürünler" (17.10)
+- [ ] Faz 2: CSV/Excel içe aktarma (satır hata raporu), tedarikçi XML içe aktarma (BayilikXML -> products), XML feed dışa aktarma (gizli URL)
+- [ ] Faz 3: iş kuyruğu (idempotent, yeniden deneme, hız sınırı), adaptör arayüzünü DB'ye bağla
+- [ ] Faz 4: Trendyol senkronu XML yerine DB'den
+- [ ] Faz 5: Hepsiburada, Amazon SP-API, N11, ÇiçekSepeti
+- [ ] Faz 6: siparişler, stok rezervasyonu, fiyat kuralları, izleme
+- [ ] (K) Supabase > Auth > leaked password protection aç
+
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Gelişmeler ve kararlar: `docs/PROGRESS.md`.
 

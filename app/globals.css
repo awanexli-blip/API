@@ -82,3 +82,4 @@ pre { margin: 6px 0 0; font-size: 12px; white-space: pre-wrap; word-break: break
 ul { margin: 0 0 8px; padding-left: 20px; }
 ul.cols { columns: 2 260px; }
 td.warn { color: var(--warn); }
+.markets .sep { width: 1px; background: var(--line); margin: 4px 4px; }
