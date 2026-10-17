@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-17 (7) — Akıllı kâr, plan
+- XML içe aktarma hiç çalışmamıştı (import_jobs boş): iş kaydı artık en başta oluşur, XML inmezse nedeni panelde görünür.
+- Akıllı kâr: `worker/pricing-rules.ts` (koşullar: maliyet aralığı, tedarikçi, kategori içeren, marka, stok ≤; etkiler: hedef kâr, en az net kâr TL, kâra ekle), `pricing.ts` `minNetProfit` (analitik `priceForNet`, 299,90 sıkıştırması net kârı tutmuyorsa yapılmaz). `pricing_rules` (migration 010). Worker her XML satırına uygular, özette `pricingRules`. Panel: pazaryeri → Akıllı kâr (kurallar, sıra, önerilen kademeler, simülasyon). Kural yokken davranış aynı. Testler: kural birim testleri + mock entegrasyon.
+- Türkçe küçük harf tuzağı: "BAYILIK".toLocaleLowerCase("tr") = "bayılık"; karşılaştırmada ı→i.
+- docs/TODO.md baştan yazıldı: çizelge (A Panel v2 → B denetim → C Faz 3 → D Faz 4 → E Faz 5 → F Faz 6), öneriler, bekleyen (K) işler.
+
 ## 2026-10-17 (6) — Çoklu tedarikçi
 - `suppliers` (migration 009, uygulandı; BayilikXML kayıtlı: adres GitHub Secret `XML_URL`, gece kapalı). Panel: Ürünler → Tedarikçiler (ekle, XML'i incele, alan eşleme, ayarlar, önizleme, içe aktar, gece işareti).
 - `worker/import-xml.ts` genel: tedarikçi tablosundan okur, `lib/supplier-xml.ts` ile eşler; `import.yml` her gece `nightly` (işaretli tedarikçiler) + elle `supplier` girdisi. Toplu stok sıfırlamada %30 güvenlik sınırı.

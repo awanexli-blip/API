@@ -1,106 +1,92 @@
-# Yapılacaklar
-
-## Merkezi ürün platformu (docs/ARCHITECTURE.md)
-
-- [x] Faz 1: DB, rol bazlı yetki, ürün CRUD, doğrulama, testler, panel "Ürünler" (17.10)
-- [ ] Faz 2: CSV/Excel içe aktarma (satır hata raporu), tedarikçi XML içe aktarma (BayilikXML -> products), XML feed dışa aktarma (gizli URL)
-- [ ] Faz 3: iş kuyruğu (idempotent, yeniden deneme, hız sınırı), adaptör arayüzünü DB'ye bağla
-- [ ] Faz 4: Trendyol senkronu XML yerine DB'den
-- [ ] Faz 5: Hepsiburada, Amazon SP-API, N11, ÇiçekSepeti
-- [ ] Faz 6: siparişler, stok rezervasyonu, fiyat kuralları, izleme
-- [ ] (K) Supabase > Auth > leaked password protection aç
+# Ana plan (yol haritası)
 
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
-Gelişmeler ve kararlar: `docs/PROGRESS.md`.
+Kural: her oturumda önce `docs/PROGRESS.md`, sonra bu dosya okunur; iş bittikçe burada işaretlenir, ayrıntı PROGRESS'e yazılır.
+Son güncelleme: 17.10.2026.
 
-## P0 — Acil: Trendyol V1 kapanışı (15 Ekim 2026) — bitti, canlıda doğrulandı (16.10)
+## Çizelge
 
-Trendyol "Product V1 servisleri 15.10.2026'dan itibaren geçersiz" diyor. Worker V1 kullanıyor.
+| Sıra | Aşama | İçerik | Tahmini süre | Durum |
+|---|---|---|---|---|
+| 0 | Temel | Trendyol V2 senkronu, panel v1, Faz 1 (ürün DB), Faz 2 (CSV/XML içe aktarma, feed), tedarikçiler, markalar, akıllı kâr | — | [x] |
+| A | **Panel v2** | Yeniden tasarım: gece/gündüz, telefon uyumlu, yeni menü, gösterge paneli, ürünler v2 | 2-3 oturum | [ ] ← sıradaki |
+| B | **Uçtan uca denetim** | Her ekran ve düğme, her API, güvenlik, performans; hata raporu ve düzeltmeler | 1 oturum | [ ] |
+| C | Faz 3 | İş kuyruğu + pazaryeri ilan tablosu (`marketplace_listings`), adaptörler DB'den beslenir | 1-2 oturum | [ ] |
+| D | Faz 4 | Trendyol tüm tedarikçilerin ürünlerini DB'den alır; ürün formunda "Pazaryerine gönder" | 2 oturum | [ ] |
+| E | Faz 5 | Hepsiburada canlı (HB testi sonrası), N11, ÇiçekSepeti, Amazon TR | pazaryeri başına 1-2 oturum | [ ] |
+| F | Faz 6 | Siparişler, stok rezervasyonu, bildirimler, kâr raporları | 2-3 oturum | [ ] |
 
-- [x] Ürün listeleme: `GET /product/sellers/{id}/products?size=1000` (V1) → `GET /product/sellers/{id}/products/approved` (V2). Sayfa boyutu en fazla **100**, `page*size` 10.000'i geçemez, sonrası `nextPageToken`. Barkod/fiyat/stok `content[].variants[]` içinde (`price.salePrice`, `stock.quantity`, `commission`, `locked`, `archived`). `category.id` / `brand.id` içerikte.
-- [x] Her isteğe `storeFrontCode` başlığı → belgeye göre gönderilmezse TR. Sadece `TRENDYOL_STOREFRONT` variable ayarlıysa gönderiliyor.
-- [x] Ürün açma: `POST /product/sellers/{id}/products` → `POST /product/sellers/{id}/v2/products`. `listPrice`, `description`, `images`, `attributes` zorunlu. Teslimat: `deliveryOption.deliveryDuration`.
-- [x] Marka: `by-name` V2'de dizi döndürüyor, tam ad eşleşmesi seçiliyor.
-- [x] Stok/fiyat ucu değişmedi (`/inventory/.../price-and-inventory`, 1000'e kadar ürün), sadece `storeFrontCode` eklenecek.
-- [x] Toplu sonuç kontrolü: `GET /product/sellers/{id}/products/batch-requests/{batchRequestId}` → `failureReasons` panele yaz.
-- [x] Kalıcı mock test (`worker/test/run.mjs`, workflow'da her çalışmadan önce).
-- [x] (K) Canlı çalışma (auto, 17.026 güncellendi, hata 0): özette `listingTotals.approved` ≈ mağazadaki ürün sayısı, `matched` ≈ 19.700, hata yok.
-- [x] Canlı komisyon: `variants[].commission` öncelikli, JSON yedek (`commissionSource.urun_canli`). Belgede yüzde mi oran mı net değil: >1 ise /100.
-- [x] Onay bekleyen/reddedilen ürünler (`products/unapproved`) `existing`'e dahil, güncellenmez, yeniden açılmaz.
-- [ ] Bonus: `category.id` → yeni ürün kategori önerisi.
+## Bitenler (özet; ayrıntı PROGRESS.md)
 
-## P1 — Trendyol canlıya alma
+- [x] Trendyol Product V2 geçişi, 15 dk otomatik senkron, canlı komisyon, KDV'li fiyat formülü, fiyat politikaları (floor/smart/...)
+- [x] Panel v1: pazaryeri sekmeleri, Özet, Fiyat ayarları, Kategoriler (öneri + toplu onay), Ürün istisnaları, sistem durumu
+- [x] Yeni ürün açma (Trendyol): kategori tahmini, zorunlu özellik doldurma, ret takibi (49 ürün denendi)
+- [x] Hepsiburada adaptörü + test aracı (SIT), komisyon/kargo tarifesi
+- [x] Faz 1: ürün DB (transaction + denetim), roller, CRUD, zod/GTIN, ürün formu (otomatik SKU/barkod, görsel yükleme, pazaryeri hazırlık listesi)
+- [x] Faz 2: CSV/Excel içe aktarma (satır bazlı hata), tedarikçi XML içe aktarma, XML feed, içe aktarma geçmişi
+- [x] Çoklu tedarikçi: XML inceleme, alan eşleme, önizleme, gece içe aktarma
+- [x] Markalar: yeni ürün markası + geri al, marka dağılımı, Trendyol marka listesi ve formda marka arama
+- [x] Akıllı kâr: kural motoru (maliyet/tedarikçi/kategori/marka/stok → hedef kâr, en az net kâr TL), simülasyon
 
-- [x] İlk `update` yapıldı (17.026, hata 0).
-- [ ] (K) Trendyol panelinden 3-5 ürünü elle doğrula; `preview.csv` artifact'ı ile fiyat artışlarını analiz et → `auto_sync` aç.
-- [x] Kategori tahmini worker'da (classify.ts). [ ] (K) Migration 002 + preview -> panelde öneriler -> orta/düşük güvenli kategorileri onayla. [ ] Trendyol kategori zorunlu özellikleri (attributes) otomatik çekme.
-- [ ] Yeni ürün (~7.380): kategori önerisi (aynı XML kategorisindeki mevcut ürünlerin `category.id`'si + başlık benzerliği), zorunlu özellikler, 50 ürünlük deneme (K), sonra tamamı. `auto_create` kapalı kalır.
-- [ ] Kapalı ~420 ürün: (K) bırak/arşivle kararı; benzer başlıklı yeni ürünleri filtrele.
+## A — Panel v2 (yeniden tasarım)
 
-## P2 — Pazaryeri bazlı veri modeli (Supabase)
+- [ ] A1 Tasarım sistemi: renk değişkenleri (gece/gündüz otomatik + elle seçim, kalıcı), tipografi, aralıklar; ortak bileşenler: düğme, kart, rozet, sekme, tablo (telefonda kart listesine dönüşür), çekmece/modal, bildirim (toast), boş durum, yükleniyor iskeleti, ikonlar (satır içi SVG, ek paket yok)
+- [ ] A2 Yeni yerleşim: masaüstünde sol menü, telefonda alt menü + açılır menü. Bölümler: Gösterge paneli · Ürünler · Tedarikçiler · Pazaryerleri (Trendyol, Hepsiburada, ...: Özet, Fiyat, Akıllı kâr, Markalar, Kategoriler, İstisnalar) · İçe/Dışa aktarma · Ayarlar
+- [ ] A3 Adres çubuğu ile gezinme (yenileyince aynı ekran, geri tuşu çalışır, bağlantı paylaşılabilir)
+- [ ] A4 Gösterge paneli: ürün/stok/tedarikçi/ilan sayıları, son senkron ve içe aktarma durumu, uyarılar (token, reddedilen ürün, marka sorunu, XML hatası), hızlı işlemler
+- [ ] A5 Ürünler v2: filtreler (tedarikçi, kategori, stok, durum, maliyet), toplu işlemler (arşivle, durum, marka), ürün detayında pazaryeri fiyat önizlemesi (akıllı kâr ile)
+- [ ] A6 Ayarlar: kullanıcılar ve roller ekranı, genel ayarlar (kur, varsayılanlar), sistem durumu
+- [ ] A7 Telefon testi (360-430 px), gece/gündüz kontrast kontrolü, klavye ile kullanım
 
-Geriye uyumlu migration (`add column if not exists`, varsayılan `'trendyol'`).
+## B — Uçtan uca denetim
 
-- [ ] `marketplace_settings(marketplace pk, enabled, auto_sync, auto_create, existing_price_policy, commission_rate, shipping_cost, free_shipping_threshold, min_markup, target_profit_rate, vat_rate, extra jsonb)` — `settings` satırı ortak varsayılan kalır, buradaki dolu alanlar onu ezer.
-- [ ] `category_map` → `marketplace` kolonu, PK `(marketplace, xml_category)`. `attributes jsonb` = o kategorinin zorunlu özellikleri için sabit değerler.
-- [ ] `product_overrides` → `marketplace` kolonu (fiyat/gizleme pazaryerine göre).
-- [ ] `category_attributes_cache(marketplace, category_id, attributes jsonb, fetched_at)` — pazaryerinden çekilen zorunlu özellik şeması.
-- [ ] `product_drafts(marketplace, xml_barcode, status, missing jsonb, payload jsonb, error)` — açılmayı bekleyen ürünler ve eksik alanları.
-- [ ] `sync_runs.marketplace` kolonu.
-- [ ] Worker: ayarları pazaryerine göre birleştir, `category_map`/`overrides` filtrele.
+- [ ] B1 Ekran ekran her düğme: beklenen istek gidiyor mu, hata ve boş durum mesajı anlaşılır mı
+- [ ] B2 Her API: yetki (viewer/editor/admin), doğrulama, hata kodları
+- [ ] B3 Canlı akışlar: önizleme, güncelleme, ürün açma, XML içe aktarma, marka listesi, feed, görsel yükleme
+- [ ] B4 Güvenlik: RLS, service_role yalnızca sunucuda, SSRF korumaları, feed token, Supabase advisors
+- [ ] B5 Performans: indeksler (products.source/status/updated_at, import_rows), büyük listeler, Supabase performance advisors
+- [ ] B6 Denetim raporu (bulunanlar, düzeltilenler, kalanlar)
 
-## P3 — Panel: pazaryeri sekmeleri (Vercel) — iskelet bitti (16.10): üst sekmeler, Trendyol alt sekmeleri, yakında sekmeleri, sistem durumu
+## C — Faz 3: iş kuyruğu ve ilan tablosu
 
-Üst seviye sekmeler: **Trendyol · Hepsiburada · N11 · Amazon TR** (+ ortak "Genel": kur, XML, fiyat formülü varsayılanları). Her pazaryeri sekmesinde:
+- [ ] `jobs` (idempotent anahtar, yeniden deneme, bekleme, pazaryeri hız sınırı)
+- [ ] `marketplace_listings` (varyant ↔ pazaryeri ilanı, durum: taslak/gönderildi/onay bekliyor/yayında/reddedildi, son fiyat/stok, hata). Ürün pazaryerinde doğrulanmadan "yayında" sayılmaz.
+- [ ] Adaptör arayüzü DB'den beslenir (`worker/marketplaces/*`)
 
-- [ ] Özet: çalıştır düğmeleri (preview/update/create), son çalışmalar, toplu sonuç hataları.
-- [ ] Ayarlar: komisyon, kargo kuralı, fiyat politikası, auto_sync/auto_create.
-- [ ] Kategori eşleme: XML kategorisi → pazaryeri kategorisi (ağaçtan arama). Seçilince o kategorinin **zorunlu özellikleri** pazaryeri API'sinden çekilir, form olarak gösterilir (liste değerli olanlar açılır menü, serbest olanlar metin). Kaydedilen değerler o kategorideki tüm ürünlere uygulanır.
-- [ ] Yeni ürün kuyruğu: `product_drafts` tablosu, eksik zorunlu alanı olan ürünler kırmızı, satır içi düzenleme, seçilenleri aç.
-- [ ] Ürün istisnaları (pazaryerine göre).
-- [ ] API rotaları: `/api/[mp]/categories`, `/api/[mp]/category-attributes?id=` (pazaryeri API'sine sunucu tarafından vekil). Bunun için pazaryeri kimlik bilgileri **Vercel env**'e de girilecek (K).
-- [ ] `app/page.tsx` tek dosya → sekme başına bileşenlere bölünür.
+## D — Faz 4: Trendyol veritabanından
 
-## P3.5 — Hepsiburada (sıradaki pazaryeri, kullanıcı kararı 16.10)
+- [ ] Senkron kaynağı XML yerine `products` (tüm tedarikçiler); BayilikXML eşleşmesi korunur (ÖS13-/OS13- barkodları)
+- [ ] Ürün başına pazaryeri kategorisi + zorunlu özellikler (kategori önerisi mevcut)
+- [ ] Ürün formunda/listede "Pazaryerine gönder" (tekli ve toplu), durum takibi
 
-Kaynak: resmi doküman (developers.hepsiburada.com) bot korumalı, otomatik okunamıyor. Uçlar açık kaynak kütüphaneden (github.com/bagbaq/hepsiburada-api) + ikincil kaynaklardan; hesap gelince doğrulanacak.
+## E — Faz 5: diğer pazaryerleri
 
-Ortamlar: test (SIT) `mpop-sit.hepsiburada.com`, `listing-external-sit.hepsiburada.com` · canlı `mpop.hepsiburada.com`, `listing-external.hepsiburada.com`. Kimlik: Basic (API kullanıcı adı:şifre), `User-Agent: <merchantId> - <uygulama adı>`.
+- [ ] (K) Hepsiburada test görüşmesi → canlı (HB_ENV=prod), `docs/HEPSIBURADA_TEST.md`
+- [ ] N11, ÇiçekSepeti (hesap + API anahtarı (K))
+- [ ] Amazon TR (GTIN veya muafiyet (K))
 
-| İş | Uç |
-|---|---|
-| Mağaza ilanları | `GET listing-external/listings/merchantid/{id}?offset=&limit=` → `listings[]` (merchantSku, hepsiburadaSku, price, availableStock) |
-| Stok | `POST .../listings/merchantid/{id}/stock-uploads` [{merchantSku, availableStock}] → trackingId, sonuç `GET .../stock-uploads/id/{trackingId}` |
-| Fiyat | `POST .../listings/merchantid/{id}/price-uploads` [{merchantSku, price}] → trackingId, sonuç `GET .../price-uploads/id/{trackingId}` |
-| Ürün açma | `POST mpop/product/api/products/import` (multipart, JSON dosya; ≤100 ürün) → trackingId, durum sorgusu |
-| Kategoriler | `GET mpop/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&page=&size=` |
-| Kategori özellikleri | `GET mpop/product/api/categories/{id}/attributes`, değerler `.../attribute/{attrId}/values` |
-| Katalog ürünleri | `GET mpop/product/api/products/all-products-of-merchant/{id}` |
+## F — Faz 6: operasyon
 
-Adımlar:
-- [ ] H0a (K): HB entegratör hesabı: satıcı paneli > Entegratör bilgileri > "Yeni entegratör ekle" bir entegratör kullanıcı adı istiyor. Kendi entegrasyonumuz için HB geliştirici portalından entegratör kaydı (kullanıcı adı + şifre) alınmalı, sonra bu kullanıcı adı mağazaya eklenmeli. Mağaza ID (merchantId) panelde görünüyor.
-- [ ] H0 (K): Hepsiburada satıcı hesabı aktif mi? Merchant ID, API kullanıcı adı ve şifresi (canlı + test/SIT), uygulama adı (User-Agent). Kategori komisyonları, kargo kuralı (kim öder, eşik, desi tarifesi). "Eco Lounge" markası HB'de kayıtlı/onaylı mı.
-- [x] H1 (kod): P2 veri modeli — migration 002 yazıldı, (K) Supabase'de çalıştırılacak. Eski: (pazaryeri bazlı ayarlar, `category_map`/`product_overrides`/`sync_runs` için `marketplace` kolonu). İkinci pazaryeri için şart. Supabase migration (K çalıştırır).
-- [x] H2 (canlıda doğrulanacak): `worker/marketplaces/hepsiburada.ts`: ilan çekme, eşleştirme (merchantSku = `OS13-` + productCode), stok ve fiyat ayrı isteklerle, trackingId sonuç kontrolü, mock test.
-- [ ] H3: Kategori eşleme aracı: HB kategori ağacında arama + seçilen kategorinin zorunlu özellik formu (panelde). Öneri: Trendyol'daki kategori adına benzeyen HB kategorisi.
-- [x] H4 (canlıda doğrulanacak): Ürün açma: import JSON (merchantSku, VaryantGroupID, Barcode, UrunAdi, UrunAciklamasi, Marka, GarantiSuresi, kg, tax_vat_rate, price, stock, Image1..5 + kategori özellikleri).
-- [x] H5: Workflow: pazaryeri matrisi, secrets `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`, `HB_ENV` (sit|prod).
-- [x] Trendyol komisyonu KDV dahil (Trendyol paneli: "Komisyonlara KDV dahildir", 16.10). `commission_plus_vat` Trendyol için false kalır.
-- [ ] (K) HB kargo: her siparişte satıcı mı ödüyor, müşteri ödediği bir eşik var mı? Hangi kargo firması?
-- [ ] HB kategori eşleme: XML kategorisi -> HB kategori ID + komisyon (commissions.json'dan öneri).
-- [x] HB test aracı + kontrol listesi (docs/HEPSIBURADA_TEST.md).
-- [ ] (K) HB test araması: secrets gir, senaryoları çalıştır, sorulacakları sor.
-- [ ] HB sipariş modülü (testte zorunluysa).
-- [ ] H6: Test ortamında 10 ürün → canlıda 50 ürün → tamamı. `auto_create` kapalı başlar.
+- [ ] Siparişleri çek, tedarikçiye ilet, kargo takibi
+- [ ] Stok rezervasyonu (`reserved` alanı hazır)
+- [ ] Bildirimler (Telegram/e-posta): senkron hatası, XML inmedi, token süresi, stok bitti
+- [ ] Raporlar: gerçek satışlardan net kâr, en çok satan, iade oranı
 
-## P4 — Yeni pazaryeri adaptörleri
+## Öneriler (henüz plana alınmadı, karar (K))
 
-Her biri: hesap/API anahtarı (K) → adaptör (`worker/marketplaces/<ad>.ts`) → preview → stok/fiyat → yeni ürün. Önce mevcut ilanları eşleştirme, sonra açma.
+- Tedarikçi karşılaştırma: aynı barkodlu ürün birden çok tedarikçide → stoklu ve en ucuz olandan sat (otomatik tedarikçi seçimi)
+- Rakip fiyat takibi (Trendyol buybox) → akıllı kâra "rakibin X TL altı, ama en az net kâr Y" kuralı
+- İçerik koruması: yasaklı kelime / tescilli marka filtresi (marka ihlali ve orijinallik uyarılarını azaltır)
+- Denetim kaydından geri yükleme (yanlış toplu değişikliği geri al)
+- GitHub Actions dakika kotası: 15 dk senkron + içe aktarma, repo herkese açık değilse aylık 2.000 dk yetmez
 
-- [ ] **Hepsiburada** (öneri: ilk)
-- [ ] **N11**
-- [ ] **Amazon TR** (en zor, GTIN engeli, aşağıya bak)
-- [ ] Workflow: pazaryeri başına job/matris, ayrı secret seti, ayrı cron.
+## Bekleyen kullanıcı işleri (K)
+
+- [ ] Vercel `GH_TOKEN`: Actions Read and write (önizleme çalıştığına göre tamam görünüyor)
+- [ ] Actions → "Marka listesi" ilk çalıştırma
+- [ ] Tedarikçiler → BayilikXML → İçe aktar (ürün veritabanı şu an boş)
+- [ ] Supabase > Auth > leaked password protection
+- [ ] Trendyol: yeni açılan 49 ürünün onay sonucu, kapalı ~420 ürün kararı
 
 ## Pazaryeri zorunlu alanları (araştırma, 16.10.2026)
 
