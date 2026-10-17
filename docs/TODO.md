@@ -9,9 +9,9 @@ Son güncelleme: 17.10.2026.
 | Sıra | Aşama | İçerik | Tahmini süre | Durum |
 |---|---|---|---|---|
 | 0 | Temel | Trendyol V2 senkronu, panel v1, Faz 1 (ürün DB), Faz 2 (CSV/XML içe aktarma, feed), tedarikçiler, markalar, akıllı kâr | — | [x] |
-| A | **Panel v2** | Yeniden tasarım: gece/gündüz, telefon uyumlu, yeni menü, gösterge paneli, ürünler v2 | 2-3 oturum | [ ] ← sıradaki |
-| B | **Uçtan uca denetim** | Her ekran ve düğme, her API, güvenlik, performans; hata raporu ve düzeltmeler | 1 oturum | [ ] |
-| C | Faz 3 | İş kuyruğu + pazaryeri ilan tablosu (`marketplace_listings`), adaptörler DB'den beslenir | 1-2 oturum | [ ] |
+| A | **Panel v2** | Yeniden tasarım: gece/gündüz, telefon uyumlu, yeni menü, gösterge paneli, ürünler v2 | 2-3 oturum | [x] 17.10 |
+| B | **Uçtan uca denetim** | Her ekran ve düğme, her API, güvenlik, performans, güncel sürümler; hata raporu ve düzeltmeler | 1 oturum | [x] 17.10 (canlı akışlar (K) bekliyor) |
+| C ← sıradaki | Faz 3 | İş kuyruğu + pazaryeri ilan tablosu (`marketplace_listings`), adaptörler DB'den beslenir | 1-2 oturum | [ ] |
 | D | Faz 4 | Trendyol tüm tedarikçilerin ürünlerini DB'den alır; ürün formunda "Pazaryerine gönder" | 2 oturum | [ ] |
 | E | Faz 5 | Hepsiburada canlı (HB testi sonrası), N11, ÇiçekSepeti, Amazon TR | pazaryeri başına 1-2 oturum | [ ] |
 | F | Faz 6 | Siparişler, stok rezervasyonu, bildirimler, kâr raporları | 2-3 oturum | [ ] |
@@ -30,22 +30,23 @@ Son güncelleme: 17.10.2026.
 
 ## A — Panel v2 (yeniden tasarım)
 
-- [ ] A1 Tasarım sistemi: renk değişkenleri (gece/gündüz otomatik + elle seçim, kalıcı), tipografi, aralıklar; ortak bileşenler: düğme, kart, rozet, sekme, tablo (telefonda kart listesine dönüşür), çekmece/modal, bildirim (toast), boş durum, yükleniyor iskeleti, ikonlar (satır içi SVG, ek paket yok)
-- [ ] A2 Yeni yerleşim: masaüstünde sol menü, telefonda alt menü + açılır menü. Bölümler: Gösterge paneli · Ürünler · Tedarikçiler · Pazaryerleri (Trendyol, Hepsiburada, ...: Özet, Fiyat, Akıllı kâr, Markalar, Kategoriler, İstisnalar) · İçe/Dışa aktarma · Ayarlar
-- [ ] A3 Adres çubuğu ile gezinme (yenileyince aynı ekran, geri tuşu çalışır, bağlantı paylaşılabilir)
-- [ ] A4 Gösterge paneli: ürün/stok/tedarikçi/ilan sayıları, son senkron ve içe aktarma durumu, uyarılar (token, reddedilen ürün, marka sorunu, XML hatası), hızlı işlemler
-- [ ] A5 Ürünler v2: filtreler (tedarikçi, kategori, stok, durum, maliyet), toplu işlemler (arşivle, durum, marka), ürün detayında pazaryeri fiyat önizlemesi (akıllı kâr ile)
-- [ ] A6 Ayarlar: kullanıcılar ve roller ekranı, genel ayarlar (kur, varsayılanlar), sistem durumu
-- [ ] A7 Telefon testi (360-430 px), gece/gündüz kontrast kontrolü, klavye ile kullanım
+- [x] A1 Tasarım sistemi: renk değişkenleri (gece/gündüz otomatik + elle seçim, kalıcı), tipografi, aralıklar; ortak bileşenler: düğme, kart, rozet, sekme, tablo (telefonda kart listesine dönüşür), çekmece/modal, bildirim (toast), boş durum, yükleniyor iskeleti, ikonlar (satır içi SVG, ek paket yok)
+- [x] A2 Yeni yerleşim: masaüstünde sol menü, telefonda alt menü + açılır menü. Bölümler: Gösterge paneli · Ürünler · Tedarikçiler · Pazaryerleri (Trendyol, Hepsiburada, ...: Özet, Fiyat, Akıllı kâr, Markalar, Kategoriler, İstisnalar) · İçe/Dışa aktarma · Ayarlar
+- [x] A3 Adres çubuğu ile gezinme (yenileyince aynı ekran, geri tuşu çalışır, bağlantı paylaşılabilir)
+- [x] A4 Gösterge paneli: ürün/stok/tedarikçi/ilan sayıları, son senkron ve içe aktarma durumu, uyarılar (token, reddedilen ürün, marka sorunu, XML hatası), hızlı işlemler
+- [x] A5 Ürünler v2: filtreler (tedarikçi, kategori, stok, durum, maliyet), toplu işlemler (arşivle, durum, marka), ürün detayında pazaryeri fiyat önizlemesi (akıllı kâr ile)
+- [x] A6 Ayarlar: kullanıcılar ve roller ekranı, genel ayarlar (kur, varsayılanlar), sistem durumu
+- [x] A7 Telefon (390 px) ve masaüstü, gece/gündüz: otomatik tarayıcı testi (Playwright, sahte API), konsol hatası ve yatay taşma yok. [ ] Gerçek telefonda kullanıcı denemesi (K)
 
 ## B — Uçtan uca denetim
 
-- [ ] B1 Ekran ekran her düğme: beklenen istek gidiyor mu, hata ve boş durum mesajı anlaşılır mı
-- [ ] B2 Her API: yetki (viewer/editor/admin), doğrulama, hata kodları
-- [ ] B3 Canlı akışlar: önizleme, güncelleme, ürün açma, XML içe aktarma, marka listesi, feed, görsel yükleme
-- [ ] B4 Güvenlik: RLS, service_role yalnızca sunucuda, SSRF korumaları, feed token, Supabase advisors
-- [ ] B5 Performans: indeksler (products.source/status/updated_at, import_rows), büyük listeler, Supabase performance advisors
-- [ ] B6 Denetim raporu (bulunanlar, düzeltilenler, kalanlar)
+- [x] B1 Ekran ekran her düğme: beklenen istek gidiyor mu, hata ve boş durum mesajı anlaşılır mı
+- [x] B2 Her API: yetki (viewer/editor/admin), doğrulama, hata kodları
+- [~] B3 Canlı akışlar (senkron canlıda hatasız; XML içe aktarma, marka listesi, feed ilk çalıştırma (K) bekliyor): önizleme, güncelleme, ürün açma, XML içe aktarma, marka listesi, feed, görsel yükleme
+- [x] B4 Güvenlik: RLS, service_role yalnızca sunucuda, SSRF korumaları, feed token, Supabase advisors
+- [x] B5 Performans (yinelenen indeks `products_status_updated_idx` silinmesi onay bekliyor (K)): indeksler (products.source/status/updated_at, import_rows), büyük listeler, Supabase performance advisors
+- [x] B6 Denetim raporu (PROGRESS 17.10 (8))
+- [x] B7 Güncel sürümler: Next 16.4, React 19.3, zod 4, fast-xml-parser 5, supabase-js 2.118, TypeScript 7, Actions v7, Node 24 (bulunanlar, düzeltilenler, kalanlar)
 
 ## C — Faz 3: iş kuyruğu ve ilan tablosu
 

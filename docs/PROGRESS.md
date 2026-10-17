@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-17 (8) — Panel v2, güncel sürümler, denetim
+- **Panel v2**: `globals.css` baştan (renk değişkenleri, gece/gündüz: sistem + `html[data-theme]`, ilk boyamadan önce `layout.tsx` betiği), sol menü (masaüstü) / üst çubuk + alt menü + çekmece (telefon), hash ile gezinme (`#/urunler`, `#/pazaryeri/trendyol/kar`), bildirim (toast), `Icon.tsx` (satır içi SVG). Yeni: `Dashboard` (`/api/dashboard`: sayılar, uyarılar, son senkron/içe aktarma), `AppSettings` (tema, hesap, kullanıcılar/roller `/api/users` + Supabase davet, kur/KDV, sistem durumu + sürüm), ürünler v2 (filtre: kaynak/durum/stok, toplu durum/marka/kategori `/api/products/bulk` → `product_bulk_update` denetimli, telefonda sıkı kart), ürün detayında pazaryeri fiyat önizlemesi (`PricePreview`, akıllı kâr dahil). Menüde Ürünler/Tedarikçiler/İçe aktar/XML feed ayrı bölümler.
+- Migration 011: `product_bulk_update`, `product_facets` (seçenekler 1000 satır sınırına takılıyordu), indeksler.
+- **Güncel sürümler**: Next 16.4.2 (Turbopack; rota `params` Promise; `turbopack.root`), React 19.3, zod 4 (`{ error }` sözdizimi), fast-xml-parser 5, supabase-js 2.118, TypeScript 7.0, @types/node 24; Actions checkout/setup-node/upload-artifact v7, Node 24. Vercel derlemeleri READY, canlı senkron sonrası hatasız (17.106 güncellendi, hata 0). `next dev` repoya AGENTS.md yazıyor (commit edildi).
+- **Denetim**: tüm API uçları yetki kontrollü (feed bilerek token'lı). Playwright ile 12 ekran × telefon/masaüstü × gece/gündüz + ürün formu/detay/menü: konsol hatası yok, yatay taşma yok. Bulunan ve düzeltilen: marka kutusu beklenmedik yanıtta ürün formunu çökertiyordu; telefonda ürün kartları çok uzundu; zaman çizelgesi rozetleri; menü arka planı; seçenek listesi satır sınırı. Supabase güvenlik: yalnızca bilgi düzeyi (RLS politika yok = bilinçli) + leaked password (K). Performans: yinelenen indeks silme onaya düştü (K).
+- Not: zamanlanmış senkron GitHub yoğunluğunda ~30 dk'da bir başlıyor (15 dk hedef).
+
 ## 2026-10-17 (7) — Akıllı kâr, plan
 - XML içe aktarma hiç çalışmamıştı (import_jobs boş): iş kaydı artık en başta oluşur, XML inmezse nedeni panelde görünür.
 - Akıllı kâr: `worker/pricing-rules.ts` (koşullar: maliyet aralığı, tedarikçi, kategori içeren, marka, stok ≤; etkiler: hedef kâr, en az net kâr TL, kâra ekle), `pricing.ts` `minNetProfit` (analitik `priceForNet`, 299,90 sıkıştırması net kârı tutmuyorsa yapılmaz). `pricing_rules` (migration 010). Worker her XML satırına uygular, özette `pricingRules`. Panel: pazaryeri → Akıllı kâr (kurallar, sıra, önerilen kademeler, simülasyon). Kural yokken davranış aynı. Testler: kural birim testleri + mock entegrasyon.
