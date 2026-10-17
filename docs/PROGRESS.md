@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-17 (9) — Stok/fiyat düzeltmeleri, iade gideri, Faz 3
+- Kullanıcı: Trendyol'da stok yok görünen ama BayilikXML'de olan ürünler → `min_stock` 7'ydi (1-6 stok 0 gidiyordu), 3 yapıldı. `max_price` 60.000'e çıkmıştı, kullanıcı kuralı 10.000'e geri alındı.
+- Kod açığı: fiyat üst sınırını aşan / zarar eden mevcut ilanlar atlanıyordu (eski fiyat ve stokla satışta kalıyordu) → artık stok 0, fiyata dokunulmaz (test 9c).
+- %8 kâr: `min_acceptable_profit_rate` 0.08 ile 299,90 sıkıştırması. Öneri (K onayı bekliyor): eşik 0.12, iade %5 × 180 TL, kademeli kâr kuralları.
+- KDV zaten hesapta (ödenecek KDV = satış KDV − alış/komisyon/kargo KDV); panelde açıklama eklendi. İade gideri yeni: `returnRate × returnCost` hizmet gideri olarak (KDV indirimli) formüle girer; `settings/marketplace_settings.return_rate/return_cost` (migration 012, varsayılan 0 → canlı fiyat değişmedi). Simülasyonda "İade payı".
+- **Faz 3** (migration 013): `marketplace_listings`, `jobs` + `job_claim`/`job_finish`/`listings_link`; `worker/core/listings.ts` (sync sonunda anlık görüntü, özet `listingsTable`), `worker/jobs.ts` (+ sync.yml adımı), XML içe aktarma sonrası `link_listings` işi. Panel: Ayarlar → İş kuyruğu, ürün detayında "Pazaryerlerinde", gösterge panelinde yayında/onay/kapalı. Kuyruk DB testi 7/7 (geri alındı), birim + mock testleri geçti.
+
 ## 2026-10-17 (8) — Panel v2, güncel sürümler, denetim
 - **Panel v2**: `globals.css` baştan (renk değişkenleri, gece/gündüz: sistem + `html[data-theme]`, ilk boyamadan önce `layout.tsx` betiği), sol menü (masaüstü) / üst çubuk + alt menü + çekmece (telefon), hash ile gezinme (`#/urunler`, `#/pazaryeri/trendyol/kar`), bildirim (toast), `Icon.tsx` (satır içi SVG). Yeni: `Dashboard` (`/api/dashboard`: sayılar, uyarılar, son senkron/içe aktarma), `AppSettings` (tema, hesap, kullanıcılar/roller `/api/users` + Supabase davet, kur/KDV, sistem durumu + sürüm), ürünler v2 (filtre: kaynak/durum/stok, toplu durum/marka/kategori `/api/products/bulk` → `product_bulk_update` denetimli, telefonda sıkı kart), ürün detayında pazaryeri fiyat önizlemesi (`PricePreview`, akıllı kâr dahil). Menüde Ürünler/Tedarikçiler/İçe aktar/XML feed ayrı bölümler.
 - Migration 011: `product_bulk_update`, `product_facets` (seçenekler 1000 satır sınırına takılıyordu), indeksler.

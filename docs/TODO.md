@@ -11,8 +11,8 @@ Son güncelleme: 17.10.2026.
 | 0 | Temel | Trendyol V2 senkronu, panel v1, Faz 1 (ürün DB), Faz 2 (CSV/XML içe aktarma, feed), tedarikçiler, markalar, akıllı kâr | — | [x] |
 | A | **Panel v2** | Yeniden tasarım: gece/gündüz, telefon uyumlu, yeni menü, gösterge paneli, ürünler v2 | 2-3 oturum | [x] 17.10 |
 | B | **Uçtan uca denetim** | Her ekran ve düğme, her API, güvenlik, performans, güncel sürümler; hata raporu ve düzeltmeler | 1 oturum | [x] 17.10 (canlı akışlar (K) bekliyor) |
-| C ← sıradaki | Faz 3 | İş kuyruğu + pazaryeri ilan tablosu (`marketplace_listings`), adaptörler DB'den beslenir | 1-2 oturum | [ ] |
-| D | Faz 4 | Trendyol tüm tedarikçilerin ürünlerini DB'den alır; ürün formunda "Pazaryerine gönder" | 2 oturum | [ ] |
+| C | Faz 3 | İş kuyruğu + pazaryeri ilan tablosu (`marketplace_listings`), adaptörler DB'den beslenir | 1-2 oturum | [x] 17.10 |
+| D ← sıradaki | Faz 4 | Trendyol tüm tedarikçilerin ürünlerini DB'den alır; ürün formunda "Pazaryerine gönder" | 2 oturum | [ ] |
 | E | Faz 5 | Hepsiburada canlı (HB testi sonrası), N11, ÇiçekSepeti, Amazon TR | pazaryeri başına 1-2 oturum | [ ] |
 | F | Faz 6 | Siparişler, stok rezervasyonu, bildirimler, kâr raporları | 2-3 oturum | [ ] |
 
@@ -50,9 +50,9 @@ Son güncelleme: 17.10.2026.
 
 ## C — Faz 3: iş kuyruğu ve ilan tablosu
 
-- [ ] `jobs` (idempotent anahtar, yeniden deneme, bekleme, pazaryeri hız sınırı)
-- [ ] `marketplace_listings` (varyant ↔ pazaryeri ilanı, durum: taslak/gönderildi/onay bekliyor/yayında/reddedildi, son fiyat/stok, hata). Ürün pazaryerinde doğrulanmadan "yayında" sayılmaz.
-- [ ] Adaptör arayüzü DB'den beslenir (`worker/marketplaces/*`)
+- [x] `jobs` (idempotent anahtar, kilit `job_claim` SKIP LOCKED, artan beklemeli yeniden deneme `job_finish`, 30 dk kilit kurtarma), `worker/jobs.ts` (sync.yml'de Trendyol senkronundan sonra), panelde Ayarlar → İş kuyruğu (yeniden dene/iptal). [ ] Pazaryeri hız sınırı Faz 4 gönderim işlerinde
+- [x] `marketplace_listings`: her senkronda pazaryerinden okunan durum (live/pending_approval/closed/gone), fiyat, stok, komisyon, kategori; `listings_link` BayilikXML varyantlarına bağlar (ÖS13-/OS13- + SKU). Ürün detayında "Pazaryerlerinde", gösterge panelinde sayılar
+- [ ] Adaptör arayüzü DB'den beslenir (`worker/marketplaces/*`) → Faz 4 ile birlikte
 
 ## D — Faz 4: Trendyol veritabanından
 
