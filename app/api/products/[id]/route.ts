@@ -4,11 +4,13 @@ import { authorize, dbError } from "@/lib/products";
 import { issuesByPath, productSchema } from "@/lib/validation/product";
 
 export const dynamic = "force-dynamic";
-type Ctx = { params: { id: string } };
+// Next 16: rota parametreleri Promise
+type Ctx = { params: Promise<{ id: string }> };
 const UUID = /^[0-9a-f-]{36}$/i;
 
 // Tek ürün (?audit=1 ile son değişiklik geçmişi)
-export async function GET(req: NextRequest, { params }: Ctx) {
+export async function GET(req: NextRequest, ctx: Ctx) {
+  const params = await ctx.params;
   const a = await authorize(req, "viewer");
   if (a instanceof NextResponse) return a;
   if (!UUID.test(params.id)) return NextResponse.json({ error: "Geçersiz ürün" }, { status: 400 });
@@ -25,7 +27,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 }
 
 // Güncelle (tam kayıt: listede olmayan varyant ve görseller silinir)
-export async function PUT(req: NextRequest, { params }: Ctx) {
+export async function PUT(req: NextRequest, ctx: Ctx) {
+  const params = await ctx.params;
   const a = await authorize(req, "editor");
   if (a instanceof NextResponse) return a;
   if (!UUID.test(params.id)) return NextResponse.json({ error: "Geçersiz ürün" }, { status: 400 });
@@ -40,7 +43,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 }
 
 // Silme açık bir işlem: varsayılan arşivle (editor). Kalıcı silme: ?hard=1&confirm=<SKU> (admin).
-export async function DELETE(req: NextRequest, { params }: Ctx) {
+export async function DELETE(req: NextRequest, ctx: Ctx) {
+  const params = await ctx.params;
   const hard = req.nextUrl.searchParams.get("hard") === "1";
   const a = await authorize(req, hard ? "admin" : "editor");
   if (a instanceof NextResponse) return a;

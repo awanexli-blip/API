@@ -33,10 +33,10 @@ jobs:
       group: sync-${{ matrix.marketplace }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
       - run: npm install --prefix worker
       - name: Test (sahte servislerle, canlıya yazmaz)
         run: node worker/test/run.mjs
@@ -61,7 +61,7 @@ jobs:
           HB_ENV: ${{ vars.HB_ENV }}             # boş = test (SIT), "prod" = canlı
           HB_USER_AGENT: ${{ vars.HB_USER_AGENT }}
         run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ matrix.marketplace }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ${{ matrix.marketplace == 'trendyol' && 'preview-csv' || format('preview-{0}', matrix.marketplace) }}

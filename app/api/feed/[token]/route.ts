@@ -10,7 +10,8 @@ export const maxDuration = 300;
 const esc = (s: unknown) => String(s ?? "").replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c]!));
 const cdata = (s: unknown) => `<![CDATA[${String(s ?? "").replace(/]]>/g, "]]]]><![CDATA[>")}]]>`;
 
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+  const params = await ctx.params;
   if (!/^[a-f0-9]{32,64}$/.test(params.token)) return new NextResponse("Bulunamadı", { status: 404 });
   const db = admin();
   const { data: feed } = await db.from("feeds").select("*").eq("token", params.token).maybeSingle();

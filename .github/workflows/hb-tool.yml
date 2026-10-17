@@ -28,10 +28,10 @@ jobs:
       group: sync-hepsiburada
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
       - run: npm install --prefix worker
       - name: Çalıştır
         env:
@@ -46,7 +46,7 @@ jobs:
           CMD: ${{ github.event.inputs.command }}
           ARGS: ${{ github.event.inputs.args }}   # ortam değişkeniyle: kabuk komutu olarak yorumlanmaz
         run: node --experimental-strip-types worker/hb-tool.ts "$CMD" $ARGS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: hb-tool-${{ github.event.inputs.command }}
