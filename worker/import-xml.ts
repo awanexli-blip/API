@@ -38,25 +38,31 @@ export function parseXml(text: string) {
 
 async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
   const source = `xml:${sup.code}`;
-  const url = sup.xml_url || (sup.url_from_env && /^[A-Z0-9_]+$/.test(sup.url_from_env) ? process.env[sup.url_from_env] : "");
-  if (!url) throw new Error(`${sup.name}: XML adresi yok`);
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)" } });
-  if (!res.ok) throw new Error(`${sup.name}: XML indirilemedi (HTTP ${res.status})`);
-  const { items, errors, total, path } = buildItems(parseXml(await res.text()), sup);
-  console.log(`${sup.name}: ${total} ürün (${path}), ${items.length} geçerli, ${errors.length} hatalı`);
-  if (!total) throw new Error(`${sup.name}: XML'de ürün listesi bulunamadı`);
-  if (dry) { console.log(JSON.stringify({ sample: items.slice(0, 2), errors: errors.slice(0, 20) }, null, 1)); return; }
-
-  const { data: job, error: je } = await db.from("import_jobs").insert({ kind: "xml", source, supplier: sup.code, mode: "upsert", created_by: actor, total }).select("id").single();
-  if (je) throw new Error(je.message);
+  // İş kaydı en başta: XML inmezse de panelde "hata" ve nedeni görünür
+  const job = dry ? { id: 0 } : (await db.from("import_jobs").insert({ kind: "xml", source, supplier: sup.code, mode: "upsert", created_by: actor }).select("id").single()).data;
+  if (!job) throw new Error(`${sup.name}: iş kaydı oluşturulamadı`);
+  if (!dry) await db.from("suppliers").update({ last_run_at: new Date().toISOString(), last_status: "running" }).eq("code", sup.code);
   const count: Record<string, number> = {};
-  const rows: any[] = errors.map((e) => ({ job_id: job.id, row_no: e.row, sku: e.sku, status: "error", errors: { _: e.error } }));
+  const rows: any[] = [];
+  let errors: { row: number; sku: string; error: string }[] = [];
   const finish = async (patch: any) => {
     for (const part of chunk(rows, 1000)) await db.from("import_rows").upsert(part);
     await db.from("import_jobs").update({ finished_at: new Date().toISOString(), created: count.created ?? 0, updated: count.updated ?? 0, stock_only: count.stock ?? 0, unchanged: count.unchanged ?? 0, skipped: count.skipped ?? 0, ...patch }).eq("id", job.id);
     await db.from("suppliers").update({ last_run_at: new Date().toISOString(), last_status: patch.status }).eq("code", sup.code);
   };
   try {
+    const url = sup.xml_url || (sup.url_from_env && /^[A-Z0-9_]+$/.test(sup.url_from_env) ? process.env[sup.url_from_env] : "");
+    if (!url) throw new Error(`XML adresi yok${sup.url_from_env ? ` (GitHub Secret ${sup.url_from_env} boş)` : ""}`);
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)" } });
+    if (!res.ok) throw new Error(`XML indirilemedi (HTTP ${res.status})`);
+    const built = buildItems(parseXml(await res.text()), sup);
+    const { items, total, path } = built;
+    errors = built.errors;
+    console.log(`${sup.name}: ${total} ürün (${path}), ${items.length} geçerli, ${errors.length} hatalı`);
+    if (!total) throw new Error("XML'de ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)");
+    if (dry) { console.log(JSON.stringify({ sample: items.slice(0, 2), errors: errors.slice(0, 20) }, null, 1)); return; }
+    rows.push(...errors.map((e) => ({ job_id: job.id, row_no: e.row, sku: e.sku, status: "error", errors: { _: e.error } })));
+    await db.from("import_jobs").update({ total }).eq("id", job.id);
     for (const [n, part] of chunk(items, 200).entries()) {
       const { data, error } = await db.rpc("product_import_batch", { items: part, actor, opts: { mode: "upsert", keep_missing_variants: false, source } });
       if (error) throw new Error(`Toplu kayıt hatası: ${error.message}`);
@@ -90,6 +96,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     });
     console.log(`${sup.code} bitti`, count, { xmlErrors: errors.length, gone: gone.length, zeroed });
   } catch (e: any) {
+    if (dry) throw e;
     await finish({ status: "error", failed: (count.error ?? 0) + errors.length, message: String(e.message).slice(0, 500) });
     throw e;
   }
