@@ -17,31 +17,48 @@ export async function PUT(req: NextRequest) {
   const mp = mpOf(req);
   if (!mp) return bad("Geçersiz pazaryeri");
   const b = await req.json();
-  const xml_category = String(b.xml_category ?? "").trim();
-  const category_id = Number(b.category_id);
-  if (!xml_category || !Number.isInteger(category_id) || category_id <= 0) return bad("Kategori adı ve geçerli kategori ID gerekli");
+  // Tek kayıt veya { items: [...] } ile toplu onay
+  const list: any[] = Array.isArray(b?.items) ? b.items : [b];
+  if (!list.length || list.length > 1000) return bad("Kayıt listesi boş veya çok uzun");
+
+  const rows: any[] = [];
+  for (const it of list) {
+    const r = parseRow(it);
+    if (typeof r === "string") return bad(list.length > 1 ? `${it?.xml_category ?? "?"}: ${r}` : r);
+    rows.push(r);
+  }
+
+  const db = admin();
+  let { error } = await db.from("category_map").upsert(rows.map((r) => ({ ...r, marketplace: mp })));
+  if (error && /category_name/.test(error.message)) // migration 004 öncesi
+    ({ error } = await db.from("category_map").upsert(rows.map(({ category_name, ...r }) => ({ ...r, marketplace: mp }))));
+  if (error && mp === "trendyol") ({ error } = await db.from("category_map").upsert(rows.map(({ category_name, ...r }) => r))); // migration 002 öncesi
+  if (error) return bad(error.message);
+  const names = rows.map((r) => r.xml_category);
+  const del = await db.from("unmapped_categories").delete().in("xml_category", names).eq("marketplace", mp);
+  if (del.error && mp === "trendyol") await db.from("unmapped_categories").delete().in("xml_category", names);
+  return NextResponse.json({ ok: true, saved: rows.length });
+}
+
+function parseRow(b: any) {
+  const xml_category = String(b?.xml_category ?? "").trim();
+  const category_id = Number(b?.category_id);
+  if (!xml_category || !Number.isInteger(category_id) || category_id <= 0) return "Kategori adı ve geçerli kategori ID gerekli";
 
   const opt = (v: unknown) => (v === "" || v == null ? null : Number(v));
   const commission_rate = opt(b.commission_rate);
   const vat_rate = opt(b.vat_rate);
-  if (commission_rate != null && !(commission_rate >= 0 && commission_rate < 0.6)) return bad("Komisyon 0 ile 0,6 arasında olmalı (örn. 0,15)");
-  if (vat_rate != null && !(vat_rate >= 0 && vat_rate <= 100)) return bad("Geçersiz KDV");
+  if (commission_rate != null && !(commission_rate >= 0 && commission_rate < 0.6)) return "Komisyon 0 ile 0,6 arasında olmalı (örn. 0,15)";
+  if (vat_rate != null && !(vat_rate >= 0 && vat_rate <= 100)) return "Geçersiz KDV";
 
   let attributes: unknown = [];
   if (b.attributes) {
     try { attributes = typeof b.attributes === "string" ? JSON.parse(b.attributes) : b.attributes; }
-    catch { return bad("Özellikler (attributes) geçerli JSON olmalı"); }
-    if (!Array.isArray(attributes)) return bad("Özellikler bir liste olmalı");
+    catch { return "Özellikler (attributes) geçerli JSON olmalı"; }
+    if (!Array.isArray(attributes)) return "Özellikler bir liste olmalı";
   }
-
-  const db = admin();
-  const row = { xml_category, category_id, commission_rate, vat_rate, attributes };
-  let { error } = await db.from("category_map").upsert({ ...row, marketplace: mp });
-  if (error && mp === "trendyol") ({ error } = await db.from("category_map").upsert(row)); // migration 002 öncesi
-  if (error) return bad(error.message);
-  const del = await db.from("unmapped_categories").delete().eq("xml_category", xml_category).eq("marketplace", mp);
-  if (del.error && mp === "trendyol") await db.from("unmapped_categories").delete().eq("xml_category", xml_category);
-  return NextResponse.json({ ok: true });
+  const category_name = b.category_name ? String(b.category_name).slice(0, 200) : null;
+  return { xml_category, category_id, category_name, commission_rate, vat_rate, attributes };
 }
 
 export async function DELETE(req: NextRequest) {

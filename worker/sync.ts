@@ -100,6 +100,16 @@ async function main() {
     if (l?.categoryId && l.status !== "pending") examples.push({ title: l.title || String(r.name ?? ""), xmlCategory: String(r.category ?? ""), categoryId: l.categoryId, categoryName: l.categoryName ?? "", commission: l.commission, ref: l.id });
   }
   const predict = examples.length >= 50 ? buildClassifier(examples) : null;
+
+  // Panelde ID yerine ad görünsün: adı boş eşleşmelere ilanlardaki kategori adını yaz (migration 004 yoksa sessizce geç)
+  const catNames = new Map<string, string>();
+  for (const l of listings) if (l.categoryId && l.categoryName) catNames.set(String(l.categoryId), l.categoryName);
+  const named = [...catMap.values()].filter((c) => !c.category_name && catNames.has(String(c.category_id)));
+  for (const c of named) {
+    let u = db.from("category_map").update({ category_name: catNames.get(String(c.category_id)) }).eq("xml_category", c.xml_category);
+    if (mpColumns) u = u.eq("marketplace", marketplaceId);
+    if ((await u).error) break;
+  }
   const predCount: Record<string, number> = {};
   // Mevcut ürünlerde fiyat politikası: keep = fiyata dokunma, floor = sadece formülün altındaysa yükselt, formula = formüle eşitle
   const policy: string = s.update_prices === false ? "keep" : String(s.existing_price_policy ?? "floor");
