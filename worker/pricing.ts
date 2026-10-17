@@ -18,6 +18,7 @@ export interface PricingConfig {
   serviceVatRate?: number;       // komisyon/kargo faturası KDV'si, varsayılan 0.20
   commissionPlusVat?: boolean;   // komisyon oranı "+KDV" mi (fatura = oran x satış + KDV). Hepsiburada: evet
   shippingVatIncluded?: boolean; // kargo ücreti KDV dahil mi girildi (varsayılan evet). Hepsiburada tarifesi: hayır
+  minNetProfit?: number;         // sipariş başı en az net kâr (TL). Ucuz üründe oran tek başına yetmez (kâr kuralları)
 }
 
 export const defaultConfig: PricingConfig = {
@@ -89,6 +90,17 @@ function targetPrice(cost: number, cfg: PricingConfig, commission: number, withS
   return den > 0 ? (a * cost + b * (ship + cfg.fixedCost)) / den : Infinity;
 }
 
+// Net kârı tam N TL yapan fiyat: net = a(P - maliyet) - b(cP + kargo + sabit)  =>  P = (N + a·maliyet + b(kargo + sabit)) / (a - b·c)
+function priceForNet(cost: number, cfg: PricingConfig, commission: number, withShipping: boolean, n: number): number {
+  if (!(n > 0)) return 0;
+  const sv = svatOf(cfg);
+  const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + sv);
+  const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);
+  const ship = withShipping ? cfg.shippingCost * (cfg.shippingVatIncluded === false ? 1 + sv : 1) : 0;
+  const den = a - b * c;
+  return den > 0 ? (n + a * cost + b * (ship + cfg.fixedCost)) / den : Infinity;
+}
+
 export function calcPrice(
   cost: number,
   cfg: PricingConfig = defaultConfig,
@@ -104,19 +116,20 @@ export function calcPrice(
   const T = cfg.freeShippingThreshold;
 
   // 1) Kargo ödemiyormuşuz gibi hesapla (fiyat < 300 senaryosu)
-  let price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, false), floor));
+  const minNet = cfg.minNetProfit ?? 0;
+  let price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, false), priceForNet(cost, cfg, commissionRate, false, minNet), floor));
   let note: string | undefined;
 
   if (price >= T) {
     // 2) 300 TL ve üstü: kargo (90 TL) senin. Önce 299.90'a sıkıştırmayı dene.
     const squeezed = roundUpPsych(T - 0.2); // 299.90
     const sq = profitOf(squeezed, cost, cfg, commissionRate);
-    if (squeezed < T && squeezed >= floor && sq.rate >= cfg.minAcceptableProfitRate) {
+    if (squeezed < T && squeezed >= floor && sq.rate >= cfg.minAcceptableProfitRate && sq.net >= minNet) {
       price = squeezed;
       note = "299,90'a sabitlendi (kargo alıcıda, kâr hedefin biraz altında)";
     } else {
       // 3) Kargoyu maliyete ekleyerek yeniden hesapla
-      price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, true), floor));
+      price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, true), priceForNet(cost, cfg, commissionRate, true, minNet), floor));
     }
   }
 

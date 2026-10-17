@@ -9,6 +9,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./pricing.ts";
+import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
@@ -79,6 +80,10 @@ async function main() {
 
   const catMap = new Map<string, any>((await mpRows("category_map")).map((c: any) => [c.xml_category, c]));
   const ovMap = new Map<string, any>((await mpRows("product_overrides")).map((o: any) => [o.barcode, o]));
+  // Akıllı kâr kuralları (panel: Kâr kuralları). Tablo yoksa (migration 010 öncesi) kuralsız devam
+  const pr = await db.from("pricing_rules").select("*");
+  const rules = rulesFor((pr.error ? [] : pr.data ?? []) as PricingRule[], marketplaceId);
+  const ruleCount: Record<string, number> = {};
 
   const raw = await loadXml();
   {
@@ -154,7 +159,9 @@ async function main() {
     const vatRate = lsVat > 0 ? lsVat / 100 : cat?.vat_rate != null ? Number(cat.vat_rate) / 100 : defaultVat;
     vatCount[String(Math.round(vatRate * 100))] = (vatCount[String(Math.round(vatRate * 100))] ?? 0) + 1;
     const desi = Math.max(1, Math.ceil(num(r.desi) || defaultDesi));
-    const pcfg: PricingConfig = { ...cfg, vatRate, ...(byDesi ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };
+    const base: PricingConfig = { ...cfg, vatRate, ...(byDesi ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };
+    const { cfg: pcfg, applied } = rules.length ? applyRules(base, rules, { cost, supplier: "bayilik", category, brand: String(r.brand ?? ""), stock: num(r.quantity) }) : { cfg: base, applied: [] as string[] };
+    for (const a of applied) ruleCount[a] = (ruleCount[a] ?? 0) + 1;
     const calc = calcPrice(cost, pcfg, comm);
 
     let price: number, sellerPays = false, net = 0, rateOut = 0;
@@ -226,7 +233,7 @@ async function main() {
   const summary: any = {
     marketplace: mp.id,
     xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount, vatRates: vatCount, categoryPrediction: { examples: examples.length, ...predCount },
-    update: toUpdate.length, create: toCreate.length, skipped,
+    update: toUpdate.length, create: toCreate.length, skipped, pricingRules: ruleCount,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };
   Object.assign(summary, mp.diagnostics?.(raw, matched));

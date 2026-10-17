@@ -166,8 +166,16 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("araç: eksik argüman anlaşılır hata", bad.code === 1 && /kullanım: send/.test(JSON.stringify(bad.o.steps)), bad.titles);
 }
 
+// 9b) akıllı kâr kuralları: Trendyol'a ait ve "all" kurallar uygulanır, başka pazaryerininki uygulanmaz
+{
+  const { s } = run("preview", { MOCK_RULES: "1" });
+  check("kâr kuralı uygulandı", s.pricingRules?.["Test kuralı"] > 0, JSON.stringify(s.pricingRules));
+  check("başka pazaryerinin kuralı uygulanmadı", !s.pricingRules?.["Başka pazaryeri"], JSON.stringify(s.pricingRules));
+  check("kuralsız çalışmada sayaç boş", Object.keys(run("preview").s.pricingRules ?? {}).length === 0);
+}
+
 // 10) birim testleri
-for (const f of ["pricing.test.ts", "classify.test.ts"]) {
+for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
 }

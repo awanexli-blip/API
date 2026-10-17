@@ -98,6 +98,7 @@ globalThis.fetch = async (url, init = {}) => {
       if (t === "marketplace_settings") return json(single ? hbSettings : [hbSettings]);
       if (t === "category_map") return json(catMap);
       if (t === "product_overrides") return json([]);
+      if (t === "pricing_rules") return json(process.env.MOCK_RULES === "1" ? [{ name: "Test kuralı", enabled: true, position: 1, marketplace: "all", cond: { cost_max: 1000000 }, min_net_profit: 400 }, { name: "Başka pazaryeri", enabled: true, position: 2, marketplace: "hepsiburada", cond: {}, target_profit_rate: 0.5 }] : []);
       if (t === "create_failures") return json([{ barcode: "OS13-FAILED1" }]);
     }
     if (t === "sync_runs" && method === "POST") { if (noMig && body?.marketplace) return json({ message: "column marketplace does not exist" }, 400); log.runInsert = body; return json(single ? { id: 1 } : [{ id: 1 }], 201); }

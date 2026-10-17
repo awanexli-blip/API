@@ -8,6 +8,7 @@ import Overview from "./_components/Overview";
 import Settings from "./_components/Settings";
 import Categories from "./_components/Categories";
 import Brands from "./_components/Brands";
+import ProfitRules from "./_components/ProfitRules";
 import Overrides from "./_components/Overrides";
 import Upcoming, { UPCOMING } from "./_components/Upcoming";
 import Products from "./_components/Products";
@@ -18,10 +19,11 @@ const MARKETS: { id: string; label: string; live: boolean }[] = [
   ...UPCOMING.filter((u) => u.id !== "hepsiburada").map((u) => ({ id: u.id, label: u.label, live: false })),
 ];
 
-type Sub = "ozet" | "ayarlar" | "markalar" | "kategoriler" | "ozel";
+type Sub = "ozet" | "ayarlar" | "kar" | "markalar" | "kategoriler" | "ozel";
 const SUBS: [Sub, string][] = [
   ["ozet", "Özet"],
   ["ayarlar", "Fiyat ayarları"],
+  ["kar", "Akıllı kâr"],
   ["markalar", "Markalar"],
   ["kategoriler", "Kategoriler"],
   ["ozel", "Ürün istisnaları"],
@@ -112,6 +114,7 @@ function Panel({ token, email }: { token: string; email: string }) {
           <div key={market}>
             {sub === "ozet" && <Overview {...props} />}
             {sub === "ayarlar" && <Settings {...props} />}
+            {sub === "kar" && <ProfitRules {...props} />}
             {sub === "markalar" && <Brands {...props} />}
             {sub === "kategoriler" && <Categories {...props} />}
             {sub === "ozel" && <Overrides {...props} />}
