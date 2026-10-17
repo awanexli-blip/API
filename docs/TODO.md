@@ -64,7 +64,7 @@ Son güncelleme: 17.10.2026.
 
 - [ ] (K) Hepsiburada test görüşmesi → canlı (HB_ENV=prod), `docs/HEPSIBURADA_TEST.md`
 - [ ] N11, ÇiçekSepeti (hesap + API anahtarı (K))
-- [ ] Amazon TR (GTIN veya muafiyet (K))
+- [x] Amazon TR adaptörü (SP-API, 17.10): giriş, ilan raporu, stok/fiyat feed'i, var olan ASIN'e teklif, ASIN eşleştirme ekranı, test aracı; sahte servis testleri 12/12. [ ] (K) SP-API kaydı + GitHub Secrets → `ping` testi → panelde aç. [ ] (K) GTIN muafiyeti / Marka Kaydı → yeni ürün açma (ürün tipi şeması). [ ] Varyant gruplama (parent/child)
 
 ## F — Faz 6: operasyon
 

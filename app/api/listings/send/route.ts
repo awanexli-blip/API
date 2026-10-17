@@ -6,7 +6,8 @@ import { authorize, dbError } from "@/lib/products";
 export const dynamic = "force-dynamic";
 const UUID = /^[0-9a-f-]{36}$/i;
 // worker/core/db-products.ts listingKeyOf ile aynı: BayilikXML ürünleri "OS13-" + SKU, diğerleri varyant barkodu
-const keyOf = (source: string, v: { sku: string; barcode: string | null }) => (source === "xml:bayilik" ? `OS13-${v.sku}` : v.barcode ?? "");
+// Amazon: SKU = varyant SKU'su (worker/marketplaces/amazon.ts listingKeyFor)
+const keyOf = (source: string, v: { sku: string; barcode: string | null }, mp: string) => (mp === "amazon" ? v.sku : source === "xml:bayilik" ? `OS13-${v.sku}` : v.barcode ?? "");
 
 // "Pazaryerine gönder": { product_ids: [...], marketplace, now?: true }
 // Ürünler kuyruğa (jobs: send_products:<pazaryeri>) ve ilan tablosuna "sırada" olarak yazılır; gönderimi bir sonraki senkron yapar.
@@ -17,7 +18,11 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const marketplace = String(b.marketplace ?? "trendyol");
   if (!MARKETPLACES.includes(marketplace)) return NextResponse.json({ error: "Geçersiz pazaryeri" }, { status: 400 });
-  if (marketplace !== "trendyol") return NextResponse.json({ error: "Şimdilik yalnızca Trendyol'a gönderilebilir (Hepsiburada canlı test sonrası)" }, { status: 400 });
+  if (marketplace === "hepsiburada") return NextResponse.json({ error: "Hepsiburada'ya gönderim canlı test sonrası açılacak" }, { status: 400 });
+  if (marketplace === "amazon") {
+    const { data: ms } = await admin().from("marketplace_settings").select("enabled").eq("marketplace", "amazon").maybeSingle();
+    if (!ms?.enabled) return NextResponse.json({ error: "Amazon kapalı: kimlik bilgilerini girip Amazon → Fiyat ayarları'ndan aç (docs/AMAZON_KURULUM.md)" }, { status: 400 });
+  }
   const ids: string[] = [...new Set<string>((Array.isArray(b.product_ids) ? b.product_ids : []).filter((x: unknown) => typeof x === "string" && UUID.test(x)))];
   if (!ids.length || ids.length > 200) return NextResponse.json({ error: "1-200 ürün seç" }, { status: 400 });
 
@@ -30,7 +35,7 @@ export async function POST(req: NextRequest) {
   for (const p of products ?? []) {
     if (p.status !== "active") { problems.push(`${p.title}: aktif değil`); continue; }
     for (const v of p.product_variants ?? []) {
-      const key = keyOf(p.source, v);
+      const key = keyOf(p.source, v, marketplace);
       if (!key) { problems.push(`${p.title}: barkod yok`); continue; }
       rows.push({ marketplace, listing_key: key, variant_id: v.id, product_id: p.id, status: "queued", title: p.title, last_error: null, updated_at: now });
     }

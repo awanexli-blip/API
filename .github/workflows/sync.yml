@@ -16,7 +16,7 @@ on:
       marketplace:
         description: "Pazaryeri"
         type: choice
-        options: [trendyol, hepsiburada]
+        options: [trendyol, hepsiburada, amazon]
         default: "trendyol"
 
 jobs:
@@ -28,7 +28,8 @@ jobs:
       matrix:
         # Zamanlanmış çalışmada hepsi, elle tetiklemede seçilen pazaryeri.
         # Kimlik bilgisi tanımlı olmayan veya panelde kapalı pazaryeri kendiliğinden atlanır.
-        marketplace: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', github.event.inputs.marketplace) || '["trendyol","hepsiburada"]') }}
+        # Zamanlı çalışmadaki pazaryerleri: GitHub Variable SYNC_MARKETPLACES (örn. ["trendyol","hepsiburada","amazon"]); boşsa Trendyol + Hepsiburada
+        marketplace: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', github.event.inputs.marketplace) || vars.SYNC_MARKETPLACES || '["trendyol","hepsiburada"]') }}
     concurrency:
       group: sync-${{ matrix.marketplace }}
       cancel-in-progress: false
@@ -60,6 +61,10 @@ jobs:
           HB_PASSWORD: ${{ secrets.HB_PASSWORD }}
           HB_ENV: ${{ vars.HB_ENV }}             # boş = test (SIT), "prod" = canlı
           HB_USER_AGENT: ${{ vars.HB_USER_AGENT }}
+          AMAZON_LWA_CLIENT_ID: ${{ secrets.AMAZON_LWA_CLIENT_ID }}
+          AMAZON_LWA_CLIENT_SECRET: ${{ secrets.AMAZON_LWA_CLIENT_SECRET }}
+          AMAZON_REFRESH_TOKEN: ${{ secrets.AMAZON_REFRESH_TOKEN }}
+          AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
         run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ matrix.marketplace }}"
       - name: İş kuyruğu (Faz 3)
         if: always() && matrix.marketplace == 'trendyol'

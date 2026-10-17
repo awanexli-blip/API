@@ -120,6 +120,36 @@ globalThis.fetch = async (url, init = {}) => {
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });
   }
+  // ---- Amazon SP-API (sahte) ----
+  if (u.host === "api.amazon.com" && u.pathname === "/auth/o2/token") {
+    const b = new URLSearchParams(String(init.body ?? ""));
+    if (b.get("refresh_token") !== "amz-refresh") return json({ error: "invalid_grant", error_description: "bad token" }, 400);
+    return json({ access_token: "amz-access", expires_in: 3600 });
+  }
+  if (u.host === "sellingpartnerapi-eu.amazon.com") {
+    if (new Headers(init.headers).get("x-amz-access-token") !== "amz-access") return json({ errors: [{ message: "Unauthorized" }] }, 403);
+    const pth = u.pathname;
+    if (pth === "/reports/2021-06-30/reports" && method === "POST") return json({ reportId: "R1" });
+    if (pth === "/reports/2021-06-30/reports/R1") return json({ processingStatus: "DONE", reportDocumentId: "RD1" });
+    if (pth === "/reports/2021-06-30/documents/RD1") return json({ url: "https://amz-docs.local/RD1" });
+    if (pth === "/feeds/2021-06-30/documents" && method === "POST") { const id = "D" + ((log.amzDocs = (log.amzDocs ?? 0) + 1)); return json({ feedDocumentId: id, url: "https://amz-docs.local/upload/" + id }); }
+    if (pth === "/feeds/2021-06-30/feeds" && method === "POST") { const id = "F" + ((log.amzFeedN = (log.amzFeedN ?? 0) + 1)); log.amzFeedCreate = [...(log.amzFeedCreate ?? []), { id, ...body }]; return json({ feedId: id }); }
+    if (/^\/feeds\/2021-06-30\/feeds\/F\d+$/.test(pth)) return json({ processingStatus: "DONE", resultFeedDocumentId: "RES-" + pth.split("/").pop() });
+    if (/^\/feeds\/2021-06-30\/documents\/RES-F\d+$/.test(pth)) return json({ url: "https://amz-docs.local/" + pth.split("/").pop() });
+    if (pth === "/catalog/2022-04-01/items") {
+      log.amzCatalog = [...(log.amzCatalog ?? []), Object.fromEntries(u.searchParams)];
+      if (u.searchParams.get("identifiers") === "8690000000012") return json({ items: [{ asin: "B0EANMATCH", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Eslesen Urun", brand: "Marka" }], images: [] }] });
+      if (u.searchParams.get("keywords")) return json({ items: [{ asin: "B0CAND1", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Aday 1" }] }, { asin: "B0CAND2", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Aday 2" }] }] });
+      return json({ items: [] });
+    }
+    return json({ errors: [{ message: "bilinmeyen uç " + pth }] }, 404);
+  }
+  if (u.host === "amz-docs.local") {
+    if (u.pathname.startsWith("/upload/") && method === "PUT") { log.amzFeeds = [...(log.amzFeeds ?? []), JSON.parse(String(init.body))]; return new Response(null, { status: 200 }); }
+    if (u.pathname === "/RD1") return new Response(["item-name\tlisting-id\tseller-sku\tprice\tquantity\tasin1\tstatus", "Urun A\tL1\tAAA\t120.00\t3\tB0AAA\tActive", "Yetim Amz\tL2\tORPHAN-AMZ\t50\t4\tB0ORPH\tActive", "Eksik\tL3\tEKSIK\t\t0\t\tIncomplete"].join("\n"), { status: 200 });
+    if (u.pathname.startsWith("/RES-")) return json({ header: {}, issues: [{ messageId: 1, code: "90220", message: "Fiyat hatalı", severity: "ERROR" }], summary: { errors: 1 } });
+    return new Response("yok", { status: 404 });
+  }
   if (u.host === "oms-external-sit.hepsiburada.com") return json({ items: [], totalCount: 0 });
   if (u.host === "listing-external-sit.hepsiburada.com" || u.host === "mpop-sit.hepsiburada.com") {
     const p = u.pathname;

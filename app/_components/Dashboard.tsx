@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { statusTr, when, type Api, type Notify, type Row } from "./shared";
 
-const MP: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada" };
+const MP: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada", amazon: "Amazon TR" };
 const MODE: Record<string, string> = { preview: "Önizleme", update: "Güncelleme", create: "Ürün açma", auto: "Otomatik" };
 const ago = (s?: string) => {
   if (!s) return "-";

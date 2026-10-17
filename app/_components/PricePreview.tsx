@@ -5,7 +5,7 @@ import { breakdown, calcPrice, defaultConfig, type PricingConfig } from "@/worke
 import { applyRules, rulesFor, type PricingRule } from "@/worker/pricing-rules";
 import { tl, type Api, type Row } from "./shared";
 
-const MARKETS = [["trendyol", "Trendyol"], ["hepsiburada", "Hepsiburada"]] as const;
+const MARKETS = [["trendyol", "Trendyol"], ["hepsiburada", "Hepsiburada"], ["amazon", "Amazon TR"]] as const;
 
 // Ürün detayında: her pazaryerinin fiyat ayarları + akıllı kâr kurallarıyla tahmini satış fiyatı ve net kâr
 // (varsayılan komisyonla; canlıda ilanın kendi komisyonu kullanılır)

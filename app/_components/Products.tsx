@@ -93,12 +93,13 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
 }
 
 // "Trendyol'a gönder": kuyruğa al; yönetici isterse senkronu hemen başlat
-async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmin: boolean) {
-  const now = isAdmin && confirm(`${ids.length} ürün Trendyol'a gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
+async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmin: boolean, marketplace: "trendyol" | "amazon" = "trendyol") {
+  const label = marketplace === "amazon" ? "Amazon" : "Trendyol";
+  const now = isAdmin && confirm(`${ids.length} ürün ${label}'a gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
   try {
-    const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace: "trendyol", now }) });
+    const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace, now }) });
     const extra = r.problems?.length ? ` Atlananlar: ${r.problems.slice(0, 3).join("; ")}${r.problems.length > 3 ? " ..." : ""}` : "";
-    notify("good", `${r.products} ürün (${r.queued} varyant) Trendyol'a gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${extra}`);
+    notify("good", `${r.products} ürün (${r.queued} varyant) ${label}'a gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${extra}`);
     return true;
   } catch (e: any) { notify("err", e.message); return false; }
 }
@@ -163,6 +164,7 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
           <button className="btn" onClick={() => runBulk({ status: "draft" }, "taslağa al")}>Taslağa al</button>
           <button className="btn" onClick={() => runBulk({ status: "archived" }, "arşivle")}>Arşivle</button>
           <button className="btn primary" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin)) setSel(new Set()); }}><Icon name="store" size={16} />Trendyol'a gönder</button>
+          <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin, "amazon")) setSel(new Set()); }}><Icon name="store" size={16} />Amazon'a gönder</button>
           <button className="btn" onClick={() => setBulk({ kind: "brand", value: opts.defaultBrand })}>Marka değiştir</button>
           <button className="btn" onClick={() => setBulk({ kind: "category", value: "" })}>Kategori değiştir</button>
           <button className="btn ghost" onClick={() => setSel(new Set())}>Seçimi kaldır</button>
@@ -222,6 +224,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   const [link, setLink] = useState("");
   const [audit, setAudit] = useState<Row[] | null>(null);
   const [listings, setListings] = useState<Row[] | null>(null);
+  const [matchKey, setMatchKey] = useState(0);
   const [colors, setColors] = useState<string[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
   const [hasVariants, setHasVariants] = useState(initial.variants.length > 1);
@@ -452,6 +455,8 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
         <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Durum pazaryerinden okunur (her senkronda); "yayında" yalnızca pazaryeri onaylı ve açık ilan demektir.</p>
       </div>}
 
+      {!isNew && <AmazonMatches key={matchKey} api={api} notify={notify} productId={f.id!} variants={f.variants} canEdit={canEdit} />}
+
       {role === "admin" && <PricePreview api={api} cost={n(f.cost_price) ?? n(f.variants[0]?.cost_price ?? "")} currency={f.currency} vat={Number(f.vat_rate) || 20} category={f.category} brand={f.brand} source={f.source ?? "manual"} stock={f.variants.reduce((t, v) => t + (Number(v.stock) || 0), 0)} />}
 
       <div className="card">
@@ -502,6 +507,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
           <button className="btn primary" disabled={busy || uploading > 0} onClick={() => save(isNew ? "close" : undefined)}>{busy ? "Kaydediliyor..." : isNew ? "Kaydet" : "Değişiklikleri kaydet"}</button>
           {isNew && <button className="btn" disabled={busy || uploading > 0} onClick={() => save("new")}>Kaydet ve yeni ekle</button>}
           {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Trendyol'a gönder</button>}
+          {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin", "amazon")) { api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); setMatchKey((k) => k + 1); } }}><Icon name="store" size={16} />Amazon'a gönder</button>}
           {!isNew && <button className="btn" onClick={() => onCopy(f)}>Kopyasını oluştur</button>}
           {!isNew && f.status !== "archived" && <button className="btn" onClick={archive}>Arşivle</button>}
           {role === "admin" && !isNew && <button className="btn danger" onClick={hardDelete}>Kalıcı sil</button>}
@@ -515,5 +521,57 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
       </div>}
     </fieldset>
     </>
+  );
+}
+
+// Amazon: var olan Amazon ürünü (ASIN) eşleşmesi. Gönderim EAN ile tek sonuç bulursa otomatik onaylar; başlıkla bulunan adaylar burada onaylanır.
+function AmazonMatches({ api, notify, productId, variants, canEdit }: { api: Api; notify: Notify; productId: string; variants: VariantForm[]; canEdit: boolean }) {
+  const [list, setList] = useState<Row[] | null>(null);
+  const [manual, setManual] = useState<Record<string, string>>({});
+  const load = useCallback(() => api(`/api/matches?product=${productId}`).then(setList).catch(() => setList([])), [api, productId]);
+  useEffect(() => { load(); }, [load]);
+  async function decide(body: Record<string, unknown>, ok: string) {
+    try { await api("/api/matches", { method: "PUT", body: JSON.stringify(body) }); notify("good", ok); load(); } catch (e: any) { notify("err", e.message); }
+  }
+  const amz = (list ?? []).filter((m) => m.marketplace === "amazon");
+  if (!list || (!amz.length && !canEdit)) return null;
+  return (
+    <div className="card">
+      <h2>Amazon eşleşmesi</h2>
+      <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+        Amazon'da yeni ürün açmak için gerçek barkod (GTIN) veya muafiyet gerekir. O zamana kadar ürünün Amazon'da zaten satılan aynısına (ASIN) teklif verilir.
+        "Amazon'a gönder" adayları bulur; doğru olanı onayla, sonra tekrar gönder. Doğru ürünü biliyorsan ASIN'i elle yazabilirsin.
+      </p>
+      {variants.filter((v) => v.id).map((v) => {
+        const mine = amz.filter((m) => m.variant_id === v.id);
+        const ok = mine.find((m) => m.status === "confirmed");
+        return (
+          <div key={v.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 10, marginTop: 10 }}>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>{v.sku}{v.attrs ? ` · ${v.attrs}` : ""}{v.barcode ? ` · barkod ${v.barcode}` : ""}</div>
+            {ok ? <div className="row"><span className="pill ok">eşleşti</span><b>{ok.external_id}</b><span>{ok.title}</span><span className="muted" style={{ fontSize: 12 }}>({ok.matched_by === "ean" ? "barkodla" : ok.matched_by === "manual" ? "elle" : "başlıkla"}, {ok.decided_by})</span>
+              {canEdit && <button className="btn ghost" onClick={() => decide({ id: ok.id, status: "rejected" }, "Eşleşme kaldırıldı.")}>Kaldır</button>}</div>
+              : mine.filter((m) => m.status === "suggested").length ? (
+                <div className="grid">{mine.filter((m) => m.status === "suggested").map((m) => (
+                  <div key={m.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, display: "flex", gap: 10 }}>
+                    {m.image ? <img src={m.image} alt="" width={56} height={56} style={{ objectFit: "contain", borderRadius: 6, background: "#fff" }} /> : null}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{m.title || m.external_id}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>{m.external_id}{m.brand ? ` · ${m.brand}` : ""}</div>
+                      {canEdit && <div className="row" style={{ marginTop: 6 }}>
+                        <button className="btn primary" style={{ minHeight: 30, padding: "2px 10px" }} onClick={() => decide({ id: m.id, status: "confirmed" }, "Eşleşme onaylandı. Şimdi Amazon'a gönderebilirsin.")}>Bu ürün</button>
+                        <button className="btn" style={{ minHeight: 30, padding: "2px 10px" }} onClick={() => decide({ id: m.id, status: "rejected" }, "Aday reddedildi.")}>Değil</button>
+                      </div>}
+                    </div>
+                  </div>
+                ))}</div>
+              ) : <span className="muted" style={{ fontSize: 13 }}>Henüz aday yok. "Amazon'a gönder" ile aranır.</span>}
+            {canEdit && !ok && <div className="row" style={{ marginTop: 8 }}>
+              <input type="text" placeholder="ASIN'i biliyorsan yaz (B0...)" value={manual[v.id!] ?? ""} onChange={(e) => setManual({ ...manual, [v.id!]: e.target.value })} style={{ maxWidth: 240 }} />
+              <button className="btn" disabled={!(manual[v.id!] ?? "").trim()} onClick={() => decide({ variant_id: v.id, product_id: productId, marketplace: "amazon", external_id: manual[v.id!], status: "confirmed" }, "ASIN kaydedildi.")}>Kaydet</button>
+            </div>}
+          </div>
+        );
+      })}
+    </div>
   );
 }

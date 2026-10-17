@@ -45,7 +45,7 @@ export const unauthorized = () => {
 };
 export const bad = (error: string) => NextResponse.json({ error }, { status: 400 });
 
-export const MARKETPLACES = ["trendyol", "hepsiburada"]; // worker/marketplaces/index.ts ile aynı tutulur
+export const MARKETPLACES = ["trendyol", "hepsiburada", "amazon"]; // worker/marketplaces/index.ts ile aynı tutulur
 export const mpOf = (req: NextRequest) => {
   const m = req.nextUrl.searchParams.get("mp") ?? "trendyol";
   return MARKETPLACES.includes(m) ? m : null;

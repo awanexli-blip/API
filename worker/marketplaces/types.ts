@@ -10,6 +10,7 @@ export interface Listing {
   categoryId?: string;   // pazaryeri kategori ID (yeni ürün kategori tahmini için örnek)
   categoryName?: string;
   commission?: number;   // ilanın komisyon oranı (0-1)
+  asin?: string;         // Amazon: ilanın bağlı olduğu ASIN
   // active: güncellenir · closed: pazaryeri kapatmış (kilitli/arşiv), dokunulmaz · pending: onay bekliyor/reddedildi, dokunulmaz ama yeniden açılmaz
   status?: "active" | "closed" | "pending";
 }
@@ -38,6 +39,7 @@ export interface NewProduct {
   images: string[];
   cat: any;             // category_map satırı (category_id tahminden de gelebilir)
   refs?: string[];      // benzer mevcut ilanlar (zorunlu özellikleri kopyalamak için)
+  asin?: string;        // Amazon: var olan ürüne teklif (LISTING_OFFER_ONLY) için eşleşen ASIN
   price: number;
   qty: number;
 }
@@ -68,6 +70,14 @@ export interface Marketplace {
   shippingCost?(desi: number, carrier?: string): number;
   /** İsteğe bağlı: gönderilen toplu isteklerin ürün bazlı sonucu */
   checkBatches?(ids: string[]): Promise<BatchCheck>;
+  /** Yeni ürün açmak için pazaryeri kategorisi şart mı (Trendyol/HB evet, Amazon teklif modunda hayır) */
+  requiresCategory?: boolean;
+  /** Panelden gönderimde pazaryerindeki anahtar (varsayılan: BayilikXML "OS13-"+SKU, diğerleri barkod) */
+  listingKeyFor?(source: string, variant: { sku: string; barcode: string | null }): string;
+  /** Amazon: barkoddan (EAN/GTIN) veya başlıktan katalog eşleşmesi */
+  findCatalogMatches?(q: { ean?: string | null; title?: string }): Promise<CatalogMatch[]>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */
   diagnostics?(xml: any[], linkedCount: number): Record<string, unknown>;
 }
+
+export interface CatalogMatch { asin: string; title: string; brand?: string; image?: string; by: "ean" | "keyword" }

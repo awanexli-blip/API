@@ -6,6 +6,7 @@ import { calcPrice, existingPrice, type PricingConfig } from "../pricing.ts";
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle } from "./util.ts";
+import { isRealGtin } from "../marketplaces/amazon.ts";
 
 export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
@@ -76,6 +77,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     return knownBrand.get(b)!;
   }
 
+  const keyFor = (source: string, v: any) => (ctx.mp.listingKeyFor ? ctx.mp.listingKeyFor(source, v) : listingKeyOf(source, v));
+  const needsCategory = ctx.mp.requiresCategory !== false;
+
   for (const job of jobs as any[]) {
     out.jobs++;
     const now = new Date().toISOString();
@@ -86,30 +90,50 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
       const { data: products, error: pe } = await ctx.db.from("products").select("*, product_variants(*), product_images(url, position)").in("id", ids);
       if (pe) throw new Error(pe.message);
       const groups = new Map<string, NewProduct[]>(); // marka -> ürünler (adaptör çağrısı başına tek marka)
+      // Katalog eşleşmesi gereken pazaryeri (Amazon): onaylı eşleşmeler
+      const confirmed = new Map<string, string>();
+      if (ctx.mp.findCatalogMatches) {
+        const vids = (products ?? []).flatMap((p: any) => (p.product_variants ?? []).map((v: any) => v.id));
+        const m = vids.length ? await ctx.db.from("marketplace_matches").select("variant_id, external_id").eq("marketplace", ctx.marketplaceId).eq("status", "confirmed").in("variant_id", vids) : { data: [] };
+        for (const r of m.data ?? []) confirmed.set(r.variant_id, r.external_id);
+      }
       for (const p of products ?? []) {
         const images = [...(p.product_images ?? [])].sort((a: any, b: any) => a.position - b.position).map((i: any) => i.url);
         const pred = ctx.predict ? ctx.predict(p.title, p.category ?? "") : null;
         const categoryId = ctx.catMap.get(p.category)?.category_id ?? (pred?.level === "yuksek" ? pred.categoryId : null);
         for (const v of [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position)) {
-          const key = listingKeyOf(p.source, v);
+          const key = keyFor(p.source, v);
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
           if (ctx.existing.has(key)) { rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: ctx.lsBy.get(key)?.status === "pending" ? "pending_approval" : "live", updated_at: now }); continue; }
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
           if (ctx.lsTitles.has(normTitle(p.title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
           if (!images.length) { fail(key, p, v, "Görsel yok"); continue; }
-          if (!categoryId) { fail(key, p, v, `${ctx.mp.label} kategorisi yok: Kategoriler sekmesinde "${p.category || "kategorisiz"}" eşleştirilmeli`); continue; }
+          if (needsCategory && !categoryId) { fail(key, p, v, `${ctx.mp.label} kategorisi yok: Kategoriler sekmesinde "${p.category || "kategorisiz"}" eşleştirilmeli`); continue; }
+          // Amazon: var olan ürüne teklif için ASIN (onaylı eşleşme > EAN ile tek sonuç > başlıkla adaylar -> panelde onay)
+          let asin: string | undefined;
+          if (ctx.mp.findCatalogMatches) {
+            asin = confirmed.get(v.id);
+            if (!asin) {
+              const byEan = isRealGtin(v.barcode) ? await ctx.mp.findCatalogMatches({ ean: v.barcode }).catch(() => []) : [];
+              const cands = byEan.length ? byEan : await ctx.mp.findCatalogMatches({ title: p.title }).catch(() => []);
+              const auto = byEan.length === 1;
+              if (cands.length) await ctx.db.from("marketplace_matches").upsert(cands.map((c) => ({ marketplace: ctx.marketplaceId, variant_id: v.id, product_id: p.id, external_id: c.asin, title: c.title?.slice(0, 300), brand: c.brand ?? null, image: c.image ?? null, matched_by: c.by, status: auto ? "confirmed" : "suggested", decided_by: auto ? "otomatik (EAN)" : null, updated_at: now })), { onConflict: "marketplace,variant_id,external_id", ignoreDuplicates: false });
+              if (auto) asin = byEan[0].asin;
+              else { fail(key, p, v, cands.length ? `${ctx.mp.label} eşleşmesi onay bekliyor: ürün detayında doğru ürünü seç (${cands.length} aday)` : `${ctx.mp.label}'da eşleşen ürün bulunamadı (gerçek EAN yok; yeni ürün açmak için GTIN muafiyeti gerekir)`); continue; }
+            }
+          }
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
           const pr = priceFor(ctx, p, v, null, avail);
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
             id: key, name: p.title, detail: p.description || p.title, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
-            refs: pred?.refs, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000),
+            refs: pred?.refs, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
           const brand = (await brandOk(p.brand)) ? p.brand : "";
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
-          rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title: p.title, price: pr.price, stock: np.qty, category_id: String(categoryId), last_error: null, updated_at: now });
+          rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title: p.title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
           out.keys.set(key, job.id);
         }
       }

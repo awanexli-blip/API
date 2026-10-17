@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-17 (11) — Amazon TR
+- Kullanıcı: Amazon TR hesabı var, SP-API yok; marka/GTIN durumunu bilmiyor; yöntem "ikisi birden" (önce var olan ürünlere teklif, muafiyet gelince kendi ürünleri).
+- `worker/marketplaces/amazon.ts`: LWA token, SP-API EU, TR `A33AVAJ2PDY3EV` (resmi dokümandan doğrulandı), `GET_MERCHANT_LISTINGS_ALL_DATA` raporu (TSV, GZIP), `JSON_LISTINGS_FEED` PATCH (stok/fiyat, 5000 mesaj/feed), teklif `UPDATE` + `LISTING_OFFER_ONLY` + `merchant_suggested_asin`, feed sonuç raporundan ürün bazlı hata, katalog araması (EAN / kelime). `isRealGtin` ("2" ile başlayan iç kodlar hariç). Bekleme süreleri `AMAZON_POLL_MS/GAP_MS` (test).
+- Arayüz genelleşti: `Marketplace.requiresCategory`, `listingKeyFor`, `findCatalogMatches`; `processSendJobs` Amazon'da kategori istemez, ASIN çözer (onaylı eşleşme > EAN ile tek sonuç otomatik > başlıkla adaylar → panelde onay). `marketplace_matches` + Amazon ayar satırı (kapalı, %15, eşik 0) migration 014.
+- Panel: Amazon sekmesi canlı (Özet, Fiyat, Akıllı kâr, İstisnalar), ürün detayında "Amazon eşleşmesi" (Bu ürün / Değil / elle ASIN), "Amazon'a gönder" (tekli/toplu), fiyat önizlemesinde Amazon. `/api/matches`, `/api/listings/send` Amazon'a açık (ayar kapalıysa anlaşılır hata).
+- sync.yml: zamanlı pazaryerleri `vars.SYNC_MARKETPLACES` (boşsa trendyol+hepsiburada; Actions dakikası boşa gitmesin), Amazon secrets. `amazon-tool.yml` (ping, search, listings, offer, stock, price, feed). Kılavuz `docs/AMAZON_KURULUM.md`.
+- Testler: Amazon mock 12/12 (giriş, rapor, PATCH, %50 güvenlik, Incomplete atlama, feed hatası, EAN teklifi, aday bekleme, yanlış token).
+
 ## 2026-10-17 (10) — Fiyat ayarları uygulandı, Faz 4
 - (K onayıyla) `return_rate` 0.05, `return_cost` 180, `min_acceptable_profit_rate` 0.12; Trendyol için 5 kademeli kâr kuralı açık (az stok kuralı kapalı). Politika "smart": düşüşler çalışma başına en fazla %10.
 - **Faz 4**: `worker/core/db-products.ts`: `dbInventory` (ilan tablosunda varyanta bağlı, BayilikXML dışı ilanların stok/fiyatı veritabanından; `linked`e eklenir → zero_missing sıfırlamaz), `processSendJobs` (kuyruk `send_products:<pazaryeri>`, yalnızca update/auto/create modunda; anahtar: BayilikXML ürününde `OS13-`+SKU, diğerlerinde varyant barkodu; doğrulama: aktif, barkod, görsel, kategori (eşleşme veya yüksek güvenli tahmin), aynı başlık; marka `marketplace_brands`'ta varsa ürün markası; ilan `sent`/`error`; toplu sonuçta ret → `rejected` + neden). `listings.ts`: "gone" yalnızca live/pending/closed ilanlara (sırada/gönderildi silinmesin). Panel: `/api/listings/send` (idempotent saatlik anahtar, yönetici için "hemen" senkron), ürün detayı ve toplu işlemde "Trendyol'a gönder", ilan satırında hata/ret nedeni. Mock testleri 9/9 (sıfırlanmama, fiyat, gönderim, kategorisiz hata, zaten var, önizlemede gönderim yok).

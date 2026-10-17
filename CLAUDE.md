@@ -36,6 +36,7 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `worker/sync.ts` | Pazaryerinden bağımsız orkestratör: XML çek, ilanları çek, eşleştir, fiyat hesapla, güncelle/oluştur, CSV yaz, Supabase'e sonuç yaz. Kullanım: `sync.ts <mod> [pazaryeri]` |
 | `worker/marketplaces/` | `types.ts` (Marketplace arayüzü), `index.ts` (kayıt defteri), `trendyol.ts` (API, barkod kuralı, komisyon kaynağı, ürün açma). Yeni pazaryeri = yeni adaptör dosyası + kayıt defterine ekleme |
 | `worker/marketplaces/hepsiburada.ts` | Hepsiburada adaptörü (SIT varsayılan, `HB_ENV=prod`), uçlar canlıda doğrulanmadı |
+| `worker/marketplaces/amazon.ts`, `worker/amazon-tool.ts`, `.github/workflows/amazon-tool.yml`, `app/api/matches` | Amazon TR (SP-API): LWA, ilan raporu, JSON_LISTINGS_FEED stok/fiyat, var olan ASIN'e teklif (LISTING_OFFER_ONLY), ASIN eşleştirme (`marketplace_matches`, migration 014). Kurulum `docs/AMAZON_KURULUM.md` |
 | `worker/hb-tool.ts`, `.github/workflows/hb-tool.yml` | Hepsiburada test aracı (Actions'tan: ping, categories, suggest, attributes, send, status, stock, price, orders, raw). Kılavuz: `docs/HEPSIBURADA_TEST.md` |
 | `worker/data/hepsiburada/` | `commissions.json` (kategori komisyonu, +KDV), `cargo.json` (desi kargo tarifesi, KDV hariç) |
 | `supabase/migrations/002_marketplaces.sql` | Pazaryeri bazlı ayarlar ve `marketplace` kolonları |
@@ -145,6 +146,8 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - **Node:** worker `node --experimental-strip-types` ile TypeScript'i doğrudan çalıştırır (Node 22+). `worker/` kendi `package.json`'una sahip (`@supabase/supabase-js`, `fast-xml-parser`).
 
 ## 8. Ortam değişkenleri (sadece adlar)
+
+**Amazon TR (GitHub Secrets):** `AMAZON_LWA_CLIENT_ID`, `AMAZON_LWA_CLIENT_SECRET`, `AMAZON_REFRESH_TOKEN`, `AMAZON_SELLER_ID`; Variable: `SYNC_MARKETPLACES` (zamanlı senkrondaki pazaryerleri, JSON dizi). Kurulum: `docs/AMAZON_KURULUM.md`.
 
 **Hepsiburada (GitHub Secrets):** `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`; Variables: `HB_ENV` (boş=SIT, `prod`), `HB_USER_AGENT`.
 

@@ -1,0 +1,45 @@
+name: Amazon test aracı
+
+# Amazon TR bağlantı testi ve tek ürün denemeleri. Ayrıntı: worker/amazon-tool.ts ve docs/AMAZON_KURULUM.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Komut"
+        type: choice
+        options: [ping, search, listings, offer, stock, price, feed]
+        default: ping
+      args:
+        description: "Argümanlar (search: 8690000000000 veya kelimeler · offer: SKU ASIN fiyat adet · stock: SKU adet · price: SKU fiyat · feed: feedId)"
+        default: ""
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: sync-amazon
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm install --prefix worker
+      - name: Çalıştır
+        env:
+          AMAZON_LWA_CLIENT_ID: ${{ secrets.AMAZON_LWA_CLIENT_ID }}
+          AMAZON_LWA_CLIENT_SECRET: ${{ secrets.AMAZON_LWA_CLIENT_SECRET }}
+          AMAZON_REFRESH_TOKEN: ${{ secrets.AMAZON_REFRESH_TOKEN }}
+          AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
+          CMD: ${{ github.event.inputs.command }}
+          ARGS: ${{ github.event.inputs.args }}   # ortam değişkeniyle: kabuk komutu olarak yorumlanmaz
+        run: node --experimental-strip-types worker/amazon-tool.ts "$CMD" $ARGS
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: amazon-tool-${{ github.event.inputs.command }}
+          path: amazon_tool_output.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -24,7 +24,8 @@ type Role = "viewer" | "editor" | "admin";
 const MARKETS: { id: string; label: string; live: boolean }[] = [
   { id: "trendyol", label: "Trendyol", live: true },
   { id: "hepsiburada", label: "Hepsiburada", live: true },
-  ...UPCOMING.filter((u) => u.id !== "hepsiburada").map((u) => ({ id: u.id, label: u.label, live: false })),
+  { id: "amazon", label: "Amazon TR", live: true },
+  ...UPCOMING.filter((u) => u.id !== "hepsiburada" && u.id !== "amazon").map((u) => ({ id: u.id, label: u.label, live: false })),
 ];
 const SUBS: [string, string][] = [
   ["ozet", "Özet"], ["fiyat", "Fiyat ayarları"], ["kar", "Akıllı kâr"], ["markalar", "Markalar"], ["kategoriler", "Kategoriler"], ["istisnalar", "Ürün istisnaları"],
@@ -160,7 +161,7 @@ function Panel({ token, email }: { token: string; email: string }) {
     page = info ? <Upcoming info={info} /> : (
       <>
         <div className="tabs" role="tablist">
-          {SUBS.map(([k, label]) => <button key={k} role="tab" aria-selected={sub === k} className="tab" onClick={() => nav(`pazaryeri/${mp}/${k}`)}>{label}</button>)}
+          {SUBS.filter(([k]) => mp !== "amazon" || !["markalar", "kategoriler"].includes(k)).map(([k, label]) => <button key={k} role="tab" aria-selected={sub === k} className="tab" onClick={() => nav(`pazaryeri/${mp}/${k}`)}>{label}</button>)}
         </div>
         <div key={mp + sub}>
           {sub === "ozet" && <Overview {...props} />}
