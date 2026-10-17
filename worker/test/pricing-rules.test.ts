@@ -66,5 +66,17 @@ const check = (name: string, cond: boolean, info: unknown = "") => { console.log
   check("iade: oran 0 iken fiyat değişmez", calcPrice(100, { ...cfg, returnRate: 0, returnCost: 180 }, 0.18).price === a.price);
 }
 
+// 299,90 sıkıştırması: TL tabanı (yüzde eşiği ve kural TL şartı yerine)
+{
+  const live = { ...cfg, minAcceptableProfitRate: 0.12, returnRate: 0.05, returnCost: 180 };
+  const tiers = rulesFor(SUGGESTED_RULES.map((r) => ({ ...r, marketplace: "all" })), "trendyol");
+  const at = (cost: number, sq: number | null) => calcPrice(cost, { ...applyRules(live, tiers, { cost }).cfg, squeezeMinNet: sq }, 0.18);
+  const old = at(210, null), neu = at(210, 15); // 210 TL: 299,90 net ~22 TL (%9) — yüzde eşiği (%12) reddederdi
+  check("sıkıştırma: TL tabanı yokken 210 TL maliyet kargolu fiyata fırlar", old.price > 400, old);
+  check("sıkıştırma: en az 15 TL ile 299,90'a döner", neu.price === 299.9 && neu.netProfit >= 15, neu);
+  check("sıkıştırma: 15 TL'yi tutmuyorsa yapılmaz", at(260, 15).price > 300, at(260, 15));
+  check("sıkıştırma: ucuz üründe etkisi yok", at(80, 15).price === at(80, null).price);
+}
+
 if (fails) { console.log(`\n${fails} kural testi başarısız`); process.exit(1); }
 console.log("\nKâr kuralı testleri geçti");

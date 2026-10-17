@@ -19,6 +19,7 @@ export interface PricingConfig {
   commissionPlusVat?: boolean;   // komisyon oranı "+KDV" mi (fatura = oran x satış + KDV). Hepsiburada: evet
   shippingVatIncluded?: boolean; // kargo ücreti KDV dahil mi girildi (varsayılan evet). Hepsiburada tarifesi: hayır
   minNetProfit?: number;         // sipariş başı en az net kâr (TL). Ucuz üründe oran tek başına yetmez (kâr kuralları)
+  squeezeMinNet?: number | null; // 300 TL eşiğinin altına (299,90) çekerken kabul edilen en az net kâr (TL). Doluysa yüzde eşiği ve kural TL şartı yerine geçer
   returnRate?: number;           // iade oranı (0.05 = siparişlerin %5'i iade)
   returnCost?: number;           // iade başına maliyet (KDV dahil TL: iade kargosu, gidiş kargosu, paketleme/hasar payı)
 }
@@ -130,7 +131,9 @@ export function calcPrice(
     // 2) 300 TL ve üstü: kargo (90 TL) senin. Önce 299.90'a sıkıştırmayı dene.
     const squeezed = roundUpPsych(T - 0.2); // 299.90
     const sq = profitOf(squeezed, cost, cfg, commissionRate);
-    if (squeezed < T && squeezed >= floor && sq.rate >= cfg.minAcceptableProfitRate && sq.net >= minNet) {
+    // Kabul: net kâr "299,90 için en az TL" ayarını karşılıyorsa (doluysa); değilse eski kural (yüzde eşiği + kural TL şartı)
+    const squeezeOk = cfg.squeezeMinNet != null && cfg.squeezeMinNet >= 0 ? sq.net >= cfg.squeezeMinNet && sq.net > 0 : sq.rate >= cfg.minAcceptableProfitRate && sq.net >= minNet;
+    if (squeezed < T && squeezed >= floor && squeezeOk) {
       price = squeezed;
       note = "299,90'a sabitlendi (kargo alıcıda, kâr hedefin biraz altında)";
     } else {

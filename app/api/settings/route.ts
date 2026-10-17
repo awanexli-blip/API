@@ -22,7 +22,10 @@ const NUM: Record<string, [number, number, boolean]> = {
   default_desi: [0, 1000, false],
   return_rate: [0, 0.5, false],
   return_cost: [0, 2000, false],
+  squeeze_min_net: [0, 1000, false],
 };
+// Boş bırakılabilen (null) sayısal alanlar
+const OPTIONAL = ["squeeze_min_net"];
 const BOOL = ["auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
 const POLICIES = ["keep", "floor", "formula", "smart"];
 // Yalnızca ortak (settings) tablosunda olanlar
@@ -58,6 +61,7 @@ export async function PUT(req: NextRequest) {
   const patch: Record<string, number | boolean | string> = {};
   for (const [k, [min, max, int]] of Object.entries(NUM)) {
     if (!(k in body)) continue;
+    if (body[k] === null && OPTIONAL.includes(k)) { (patch as any)[k] = null; continue; }
     const v = Number(body[k]);
     if (!Number.isFinite(v) || v < min || v > max || (int && !Number.isInteger(v))) return bad(`Geçersiz değer: ${k}`);
     patch[k] = v;

@@ -8,7 +8,7 @@ import cargo from "@/worker/data/hepsiburada/cargo.json";
 const tariff = cargo as { carriers: string[]; byDesi: Record<string, number[]> };
 const cargoPrice = (desi: number, carrier: string) => tariff.byDesi[String(Math.min(60, Math.max(0, Math.ceil(desi))))]?.[Math.max(0, tariff.carriers.indexOf(carrier))] ?? NaN;
 
-type Field = { key: string; label: string; kind: "pct" | "num" | "int"; hint?: string; advanced?: boolean };
+type Field = { key: string; label: string; kind: "pct" | "num" | "int"; hint?: string; advanced?: boolean; optional?: boolean };
 const FIELDS: Field[] = [
   { key: "target_profit_rate", label: "Hedef net kâr (%)", kind: "pct", hint: "Satış fiyatının yüzdesi" },
   { key: "commission_rate", label: "Varsayılan komisyon (%)", kind: "pct", hint: "Kategoriye özel oranı Kategoriler sekmesinde girebilirsin" },
@@ -18,7 +18,8 @@ const FIELDS: Field[] = [
   { key: "fixed_cost", label: "Ürün başı sabit gider (TL)", kind: "num", hint: "Paketleme vb." },
   { key: "return_rate", label: "İade oranı (%)", kind: "pct", hint: "Siparişlerin yüzde kaçı iade geliyor (ör. 5)" },
   { key: "return_cost", label: "İade başına maliyet (TL)", kind: "num", hint: "İade kargosu + gidiş kargosu + hasar payı, KDV dahil (ör. 180)" },
-  { key: "min_acceptable_profit_rate", label: "Eşik altına çekmede en düşük kâr (%)", kind: "pct", hint: "Fiyat 299,90'a sabitlenirse kabul edilen en düşük kâr" },
+  { key: "squeeze_min_net", label: "299,90'a çekerken en az net kâr (TL)", kind: "num", optional: true, hint: "Doluysa: kargo alıcıda kalsın diye 299,90'a çekmede yalnızca bu tutara bakılır (yüzde eşiği ve kural şartı yerine). Boş = yüzde eşiği" },
+  { key: "min_acceptable_profit_rate", label: "Eşik altına çekmede en düşük kâr (%)", kind: "pct", hint: "299,90 için TL tutarı boşsa kullanılır" },
   { key: "max_price", label: "En yüksek satış fiyatı (TL)", kind: "num", hint: "Bunun üstündeki ürünler atlanır" },
   { key: "min_stock", label: "Minimum stok", kind: "int", hint: "Bunun altındaysa Trendyol'a 0 gönderilir" },
   { key: "vat_rate", label: "Varsayılan KDV (%)", kind: "num", hint: "Yeni ürün açarken", advanced: true },
@@ -38,7 +39,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
   const toForm = (d: Row) => {
     const o: Row = { ...d };
     for (const x of FIELDS) if (x.kind === "pct") o[x.key] = String(Math.round(Number(d[x.key]) * 10000) / 100);
-    for (const x of FIELDS) if (x.kind !== "pct") o[x.key] = String(d[x.key]);
+    for (const x of FIELDS) if (x.kind !== "pct") o[x.key] = x.optional && d[x.key] == null ? "" : String(d[x.key]);
     if (d.update_prices === false) o.existing_price_policy = "keep";
     return o;
   };
@@ -54,6 +55,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     minMarkup: num("min_markup"), fixedCost: num("fixed_cost"),
     minAcceptableProfitRate: num("min_acceptable_profit_rate") / 100, maxPrice: num("max_price"),
     returnRate: num("return_rate") / 100, returnCost: num("return_cost"),
+    squeezeMinNet: String(f.squeeze_min_net ?? "").trim() === "" ? null : num("squeeze_min_net"),
     vatRate: simVat / 100,
     commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false,
   };
@@ -61,7 +63,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
   if (byDesi) cfg.shippingCost = cargoPrice(simDesi, f.cargo_carrier || "hepsiJET");
   const label = marketplace === "trendyol" ? "Trendyol" : marketplace === "hepsiburada" ? "Hepsiburada" : marketplace;
   // Yalnızca sayısal alanlar kontrol edilir (true/false ayarlar Number.isFinite'te hep geçersiz sayılıyordu)
-  const badFields = FIELDS.filter((x) => !Number.isFinite(num(x.key))).map((x) => x.label);
+  const badFields = FIELDS.filter((x) => !(x.optional && String(f[x.key] ?? "").trim() === "") && !Number.isFinite(num(x.key))).map((x) => x.label);
   if (byDesi && !Number.isFinite(cfg.shippingCost)) badFields.push("Desi kargo tarifesi");
   const sumOk = cfg.commissionRate + cfg.targetProfitRate < 1;
   const valid = badFields.length === 0 && sumOk;
@@ -69,6 +71,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
   async function save() {
     const body: Row = {};
     for (const x of FIELDS) {
+      if (x.optional && String(f![x.key] ?? "").trim() === "") { body[x.key] = null; continue; }
       const v = Number(String(f![x.key]).replace(",", "."));
       body[x.key] = x.kind === "pct" ? v / 100 : v;
     }
