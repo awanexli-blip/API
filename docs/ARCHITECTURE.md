@@ -1,6 +1,6 @@
 # Merkezi Ürün ve Pazaryeri Platformu — Mimari
 
-Durum: Faz 1 (ürün veritabanı, yetki, CRUD, doğrulama, arayüz). Mevcut XML → pazaryeri senkronu (`worker/`) değişmeden çalışmaya devam eder; Faz 2'de kaynağını merkezi veritabanına çevirir.
+Durum: Faz 1 ve Faz 2 (içe/dışa aktarma) tamam. Mevcut XML → pazaryeri senkronu (`worker/`) değişmeden çalışmaya devam eder; Faz 2'de kaynağını merkezi veritabanına çevirir.
 
 ## Bugünkü sistem (incelendi, 17.10.2026)
 
@@ -44,7 +44,7 @@ Kurallar: PostgreSQL tek doğru kaynak; XML yalnızca içe/dışa aktarma biçim
 
 Yazma işlemleri tek transaction içinde Postgres fonksiyonlarıyla yapılır (`product_save`, `product_delete`): ürün + varyantlar + görseller + denetim kaydı ya hep birlikte yazılır ya hiç.
 
-Sonraki fazların tabloları (henüz yok): `import_jobs`/`import_rows` (Faz 2), `feeds` (Faz 2), `jobs` (Faz 3), `marketplace_listings`, `marketplace_category_map`, `marketplace_prices` (Faz 4–5), `orders`, `stock_reservations` (Faz 6).
+Faz 2 tabloları: `import_jobs`, `import_rows`, `feeds`, `products.source_hash`. Sonraki fazlar (henüz yok): `jobs` (Faz 3), `marketplace_listings`, `marketplace_category_map`, `marketplace_prices` (Faz 4–5), `orders`, `stock_reservations` (Faz 6).
 
 ## Doğrulama (`lib/validation/product.ts`, zod)
 
@@ -56,8 +56,8 @@ Sonraki fazların tabloları (henüz yok): `import_jobs`/`import_rows` (Faz 2), 
 
 ## Fazlar
 
-1. **Depo, yetki, migration, ürün CRUD** ← şimdi
-2. CSV/Excel içe aktarma (satır hata raporu), XML feed içe/dışa aktarma (BayilikXML → `products`)
+1. Depo, yetki, migration, ürün CRUD ✓
+2. **CSV/Excel içe aktarma (satır hata raporu), XML feed içe/dışa aktarma (BayilikXML → `products`)** ✓
 3. Adaptör arayüzü (mevcut `worker/marketplaces` genişletilir), iş kuyruğu, test altyapısı
 4. Trendyol (Product V2, mevcut adaptör veritabanından beslenir)
 5. Hepsiburada, Amazon SP-API, N11, ÇiçekSepeti
@@ -89,3 +89,27 @@ Hata kodları: 401 giriş yok/rol yok, 403 rol yetmiyor, 409 SKU/barkod çakış
 **Testler**: `npm test` = `tests/*.test.ts` (doğrulama, 8 test) + `worker/test/run.mjs` (senkron ve pazaryeri testleri). Veritabanı fonksiyonları geri alınan transaction içinde test edildi: oluşturma, güncelleme, varyantsız ret, tekrar eden SKU'da atomik geri alma, http görsel reddi, arşiv, kalıcı silme, denetim kaydı (8/8).
 
 **Panel**: üstte "Ürünler" sekmesi: liste, arama, filtre, sayfalama; ürün formu (genel, fiyat/vergi, varyantlar, görseller, özellikler), arşivle, kalıcı sil (admin, SKU onayı), değişiklik geçmişi. Form, sunucuyla aynı şemayla anında doğrulanır.
+
+## Faz 2 — içe ve dışa aktarma
+
+**Migration**: `supabase/migrations/008_import_feeds.sql` (uygulandı 17.10.2026). Yeni ortam değişkeni yok; XML içe aktarma GitHub Secrets'taki `XML_URL`, `SUPABASE_*` kullanır.
+
+**CSV / Excel** (panel: Ürünler → İçe aktar)
+- Dosya tarayıcıda okunur (`lib/import.ts`, Excel için SheetJS). Sütun adları otomatik eşlenir (Türkçe/İngilizce eşanlamlılar), elle değiştirilebilir. Şablon panelden indirilir.
+- Her satır bir varyant; aynı model kodlu satırlar tek ürün. SKU/barkod boşsa otomatik.
+- Var olan üründe dosyada olmayan sütunlar korunur (ör. yalnızca "Model kodu + Stok" ile stok güncellenir). Dosyada olmayan varyantlar silinmez.
+- Modlar: ekle+güncelle (upsert), sadece ekle, sadece güncelle. Önce "Kontrol et" (hiçbir şey yazmaz, satır bazlı hata), sonra "İçe aktar". Hatalı satır diğerlerini bozmaz.
+- `POST /api/import/csv` (editor): istek başına ≤1000 satır, `dry_run`, `job_id` ile parçalı gönderim.
+
+**BayilikXML → ürünler** (panel düğmesi veya Actions "XML içe aktarma", `worker/import-xml.ts`)
+- SKU = productCode (ASCII), tek varyant, barkod = XML barcode (geçerli ve tekrarsızsa), marka = Eco Lounge, kaynak `xml:bayilik`.
+- İçerik özeti (`source_hash`, stok hariç) aynıysa yalnızca stok güncellenir (denetim kaydı yazılmaz); fiyat/içerik değişikliği denetim kaydına yazılır.
+- XML'den kalkan ürünler silinmez, stokları 0 olur. Gece çalışması ilk kontrol sonrası açılacak (`import.yml` içinde yorum satırı).
+
+**Veritabanı**: `product_import(payload, actor, opts)` tek ürün (kısmi birleştirme, SKU ile varyant eşleme, mod kuralları), `product_import_batch` her satırı ayrı alt transaction'da çalıştırır. Test (geri alınan transaction): oluşturma, yalnızca stok, değişmeyen, kısmi güncelleme (diğer alanlar korunur), varyant ekleme, mod kuralları, barkod çakışmasında atomik satır hatası, denetim kaydı sayısı — 8/8.
+
+**XML feed** (panel: Ürünler → XML feed, admin)
+- `GET /api/feed/<token>`: aktif ürünler, varyant, stok (rezerve düşülmüş), görseller, özellikler. Fiyat: yok / alış / formül (Trendyol ayarları, varsayılan komisyon). Kaynak ve "sadece stoktakiler" filtresi. 5 dk önbellek.
+- Token 48 hex; "Yeni adres" eskisini geçersiz kılar. Erişim sayısı ve son okunma tutulur.
+
+**Testler**: `tests/import.test.ts` (CSV ayrıştırma, başlık eşleme, gruplama, kısmi dosya, XML eşleme, stok değişince özet sabit).

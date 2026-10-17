@@ -1,0 +1,37 @@
+name: XML içe aktarma
+
+on:
+  # İlk içe aktarma panelden elle yapılıp kontrol edildikten sonra gece çalışması açılacak:
+  # schedule:
+  #   - cron: "40 2 * * *"   # her gece 05:40 TR
+  workflow_dispatch:
+    inputs:
+      actor:
+        description: "Başlatan (panelden gelir)"
+        default: "elle"
+
+concurrency:
+  group: import-xml
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --prefix worker
+      - name: Test (sahte servislerle)
+        run: node worker/test/run.mjs
+      - name: XML -> ürünler
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          XML_URL: ${{ secrets.XML_URL }}
+          TRENDYOL_BRAND_NAME: ${{ vars.TRENDYOL_BRAND_NAME }}
+          ACTOR: ${{ github.event.inputs.actor || 'zamanlı' }}
+        run: node --experimental-strip-types worker/import-xml.ts
