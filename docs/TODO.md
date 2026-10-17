@@ -12,8 +12,8 @@ Son güncelleme: 17.10.2026.
 | A | **Panel v2** | Yeniden tasarım: gece/gündüz, telefon uyumlu, yeni menü, gösterge paneli, ürünler v2 | 2-3 oturum | [x] 17.10 |
 | B | **Uçtan uca denetim** | Her ekran ve düğme, her API, güvenlik, performans, güncel sürümler; hata raporu ve düzeltmeler | 1 oturum | [x] 17.10 (canlı akışlar (K) bekliyor) |
 | C | Faz 3 | İş kuyruğu + pazaryeri ilan tablosu (`marketplace_listings`), adaptörler DB'den beslenir | 1-2 oturum | [x] 17.10 |
-| D ← sıradaki | Faz 4 | Trendyol tüm tedarikçilerin ürünlerini DB'den alır; ürün formunda "Pazaryerine gönder" | 2 oturum | [ ] |
-| E | Faz 5 | Hepsiburada canlı (HB testi sonrası), N11, ÇiçekSepeti, Amazon TR | pazaryeri başına 1-2 oturum | [ ] |
+| D | Faz 4 | Trendyol tüm tedarikçilerin ürünlerini DB'den alır; ürün formunda "Pazaryerine gönder" | 2 oturum | [x] 17.10 (canlı ilk gönderim (K)) |
+| E ← sıradaki | Faz 5 | Hepsiburada canlı (HB testi sonrası), N11, ÇiçekSepeti, Amazon TR | pazaryeri başına 1-2 oturum | [ ] |
 | F | Faz 6 | Siparişler, stok rezervasyonu, bildirimler, kâr raporları | 2-3 oturum | [ ] |
 
 ## Bitenler (özet; ayrıntı PROGRESS.md)
@@ -56,9 +56,9 @@ Son güncelleme: 17.10.2026.
 
 ## D — Faz 4: Trendyol veritabanından
 
-- [ ] Senkron kaynağı XML yerine `products` (tüm tedarikçiler); BayilikXML eşleşmesi korunur (ÖS13-/OS13- barkodları)
-- [ ] Ürün başına pazaryeri kategorisi + zorunlu özellikler (kategori önerisi mevcut)
-- [ ] Ürün formunda/listede "Pazaryerine gönder" (tekli ve toplu), durum takibi
+- [x] Veritabanından gönderilen ilanlar (tüm tedarikçiler) her senkronda stok/fiyatını `products`tan alır (`worker/core/db-products.ts` `dbInventory`); XML'den kalkmış sayılıp sıfırlanmaz. BayilikXML ilanları XML akışında kalır (ÖS13-/OS13-)
+- [x] Kategori: Kategoriler sekmesi eşleşmesi > yüksek güvenli tahmin; zorunlu özellikler adaptörde (benzer ilan / nötr değer). [ ] Ürün başına kategori seçimi (formda)
+- [x] "Trendyol'a gönder" (ürün detayı + toplu), `/api/listings/send` → `jobs` `send_products:trendyol` → senkronda `processSendJobs` (marka Trendyol'da varsa ürün markası, yoksa varsayılan; aynı başlık koruması; akıllı kâr fiyatı). İlan durumu: sırada → gönderildi → onay bekliyor/yayında/reddedildi (+ neden). Yönetici "hemen" seçerse senkron başlatılır
 
 ## E — Faz 5: diğer pazaryerleri
 

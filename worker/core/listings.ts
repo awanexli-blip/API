@@ -29,7 +29,7 @@ export async function snapshotListings(db: any, marketplace: string, listings: L
   // Bu çalışmada görülmeyen ilanlar pazaryerinden kalkmış (yalnızca liste tam geldiyse)
   let gone = 0;
   if (rows.length > 0) {
-    const r = await db.from("marketplace_listings").update({ status: "gone", updated_at: now }).eq("marketplace", marketplace).lt("seen_at", now).neq("status", "gone").select("listing_key");
+    const r = await db.from("marketplace_listings").update({ status: "gone", updated_at: now }).eq("marketplace", marketplace).lt("seen_at", now).in("status", ["live", "pending_approval", "closed"]).select("listing_key");
     gone = r.data?.length ?? 0;
   }
   const link = await db.rpc("listings_link", { mp: marketplace });

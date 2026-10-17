@@ -111,7 +111,7 @@ function General({ api, notify }: { api: Api; notify: Notify }) {
 }
 
 const JOB_TR: Record<string, string> = { queued: "sırada", running: "çalışıyor", done: "tamam", failed: "başarısız", cancelled: "iptal" };
-const JOB_TYPE_TR: Record<string, string> = { link_listings: "İlanları ürünlere bağla" };
+const JOB_TYPE_TR: Record<string, string> = { link_listings: "İlanları ürünlere bağla", "send_products:trendyol": "Trendyol'a ürün gönder" };
 function Jobs({ api, notify }: { api: Api; notify: Notify }) {
   const [list, setList] = useState<Row[] | null>(null);
   const load = useCallback(() => api("/api/jobs").then(setList).catch(() => setList([])), [api]);

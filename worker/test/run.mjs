@@ -188,6 +188,32 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("ilan tablosu yazıldı", calls.listings > 10000 && s.listingsTable?.written === calls.listings, JSON.stringify({ n: calls.listings, t: s.listingsTable }));
 }
 
+// 9e) Faz 4: veritabanından gönderilmiş ilan XML'de yok diye sıfırlanmaz, stok/fiyatı veritabanından gelir
+{
+  const { calls, s } = run("update", { MOCK_ZERO: "1", MOCK_BULK: "50", MOCK_DB: "1" });
+  const items = calls.trendyolWrites.flatMap((w) => w.body.items ?? []).filter((i) => i.barcode === "ORPHAN-1");
+  check("faz4: veritabanı ilanı sıfırlanmadı", items.length === 1 && items[0].quantity === 20, JSON.stringify(items));
+  check("faz4: fiyat maliyetten hesaplandı (≥ 30×1,3)", items[0]?.salePrice >= 39, JSON.stringify(items));
+  check("faz4: özet", s.dbProducts?.updated === 1, JSON.stringify(s.dbProducts));
+}
+// 9f) Faz 4: "Pazaryerine gönder" kuyruğu: geçerli ürün açılır, kategorisiz hata, mevcut ilan "zaten var"
+{
+  const { calls, s } = run("update", { MOCK_BULK: "50", MOCK_SEND: "1" });
+  const created = calls.trendyolWrites.filter((w) => /\/v2\/products$/.test(w.path)).flatMap((w) => w.body.items);
+  const mine = created.find((i) => i.barcode === "8690000000012");
+  check("faz4: ürün gönderildi (barkod, kategori 3, görsel)", !!mine && mine.categoryId === 3 && mine.images?.[0]?.url === "https://i/x.jpg", JSON.stringify(created.map((i) => i.barcode)));
+  check("faz4: kategorisiz ürün gönderilmedi", !created.some((i) => i.barcode === "2000000000017"));
+  const rows = Object.fromEntries((calls.listingRows ?? []).map((r) => [r.listing_key, r]));
+  check("faz4: ilan durumları (sent / error / zaten var)", rows["8690000000012"]?.status === "sent" && rows["2000000000017"]?.status === "error" && /kategori/i.test(rows["2000000000017"]?.last_error ?? "") && rows["OS13-NEWPC1"]?.status === "live", JSON.stringify(rows));
+  check("faz4: iş tamamlandı", calls.jobFinish?.[0]?.job_id === 77 && calls.jobFinish?.[0]?.ok === true, JSON.stringify(calls.jobFinish));
+  check("faz4: özet sendJobs", s.sendJobs?.sent === 1 && s.sendJobs?.errors === 1, JSON.stringify(s.sendJobs));
+}
+// 9g) preview: kuyruk işlenmez (pazaryerine yazmaz)
+{
+  const { calls } = run("preview", { MOCK_BULK: "50", MOCK_SEND: "1" });
+  check("faz4: önizlemede gönderim yok", !calls.trendyolWrites.some((w) => /\/v2\/products$/.test(w.path)) && !calls.jobFinish);
+}
+
 // 10) birim testleri
 for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }

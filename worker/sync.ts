@@ -11,6 +11,7 @@ import { writeFileSync } from "node:fs";
 import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings } from "./core/listings.ts";
+import { dbInventory, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
@@ -266,6 +267,19 @@ async function main() {
     if (error) await db.from("unmapped_categories").insert(part.map(({ suggested_category_id, suggested_category_name, suggested_share, suggested_commission, ...rest }: any) => rest));
   }
 
+  // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
+  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, skip, defaultVatRate: Number(s.vat_rate ?? 20) };
+  const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
+  summary.dbProducts = dbInv.stats;
+  if (doUpdate) toUpdate.push(...dbInv.items);
+  summary.update = toUpdate.length;
+  // Paneldeki "Pazaryerine gönder" kuyruğu (yalnızca yazma modlarında)
+  let sendRes: Awaited<ReturnType<typeof processSendJobs>> | null = null;
+  if (doUpdate || mode === "create") {
+    sendRes = await processSendJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => { summary.sendJobsError = String(e?.message ?? e); return null; });
+    if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
+  }
+
   if (doUpdate) {
     const r = await mp.pushInventory(toUpdate);
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
@@ -317,6 +331,10 @@ async function main() {
     const rows = (summary.batchCheck.failed ?? []).filter((f: any) => created.has(f.id)).map((f: any) => ({ marketplace: marketplaceId, barcode: f.id, reason: f.reason, last_at: new Date().toISOString() }));
     for (const part of chunk(rows, 500)) await db.from("create_failures").upsert(part);
     summary.createRejected = rows.length;
+    // Panelden gönderilen ürünlerin reddi: ilan "rejected" + neden (ürün detayında görünür)
+    const sentFails = (summary.batchCheck.failed ?? []).filter((f: any) => sendRes?.keys.has(f.id));
+    for (const f of sentFails) await db.from("marketplace_listings").update({ status: "rejected", last_error: String(f.reason ?? "").slice(0, 500), updated_at: new Date().toISOString() }).eq("marketplace", marketplaceId).eq("listing_key", f.id);
+    if (sentFails.length) summary.sendRejected = sentFails.length;
     delete summary.batchCheck.failed; // özet şişmesin
   }
   summary.batchIds = summary.batchIds.slice(0, 20);

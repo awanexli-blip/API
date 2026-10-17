@@ -48,6 +48,7 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `app/api/products/`, `app/_components/Products.tsx` | Ürün CRUD API (rol bazlı), görsel yükleme (`products/images`, Storage `product-images`), form seçenekleri; panel ekranı (otomatik SKU/barkod, pazaryeri hazırlık listesi `lib/marketplace-readiness.ts`) |
 | `lib/import.ts`, `app/api/import/`, `worker/import-xml.ts`, `.github/workflows/import.yml`, `app/_components/Import.tsx` | Faz 2: CSV/Excel ve tedarikçi XML içe aktarma (`product_import_batch`, migration 008) |
 | `lib/supplier-xml.ts`, `app/api/suppliers/`, `app/_components/Suppliers.tsx` | Çoklu tedarikçi: XML adresi + alan eşlemesi (`suppliers`, migration 009), XML inceleme/önizleme |
+| `worker/core/db-products.ts`, `worker/core/listings.ts`, `worker/jobs.ts`, `app/api/listings/send`, `app/api/jobs` | Faz 3-4: ilan tablosu (`marketplace_listings`), iş kuyruğu (`jobs`), veritabanından pazaryerine gönderim ve stok/fiyat (migration 013) |
 | `app/api/feed/[token]`, `app/api/feeds`, `app/_components/Feeds.tsx` | Faz 2: XML feed dışa aktarma (gizli token adresi) |
 | `app/_components/Brands.tsx`, `BrandInput.tsx`, `app/api/brands/`, `worker/brands.ts`, `.github/workflows/brands.yml` | Markalar sekmesi (yeni ürün markası + geri al, marka dağılımı), marka arama (Trendyol marka listesi haftalık `marketplace_brands`) |
 | `docs/TODO.md` | Yapılacaklar (öncelik sırasıyla) ve pazaryeri zorunlu alanları |

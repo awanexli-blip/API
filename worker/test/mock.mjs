@@ -98,13 +98,25 @@ globalThis.fetch = async (url, init = {}) => {
       if (t === "marketplace_settings") return json(single ? hbSettings : [hbSettings]);
       if (t === "category_map") return json(catMap);
       if (t === "product_overrides") return json([]);
+      // Faz 4: veritabanından gönderilmiş ilan (XML'de yok) ve gönderilecek ürünler
+      if (t === "marketplace_listings" && process.env.MOCK_DB === "1") return json(Number(u.searchParams.get("offset") ?? 0) > 0 ? [] : [{ listing_key: "ORPHAN-1", product_variants: { stock: 20, reserved: 0, cost_price: null }, products: { source: "xml:toptanci", status: "active", cost_price: 30, currency: "TRY", vat_rate: 20, category: "Cat1", brand: "X" } }]);
+      if (t === "products" && process.env.MOCK_SEND === "1") return json([
+        { id: "p1", sku: "TD-1", title: "Gonderilecek Urun Yepyeni", description: "aciklama", brand: "Eco Lounge", category: "Cat3", vat_rate: 20, desi: 2, cost_price: 100, currency: "TRY", status: "active", source: "xml:toptanci",
+          product_variants: [{ id: "v1", sku: "TD-1", barcode: "8690000000012", stock: 9, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/x.jpg", position: 0 }] },
+        { id: "p2", sku: "TD-2", title: "Kategorisi Olmayan Urun", description: "", brand: "", category: "Yok", vat_rate: 20, desi: 1, cost_price: 50, currency: "TRY", status: "active", source: "manual",
+          product_variants: [{ id: "v2", sku: "TD-2", barcode: "2000000000017", stock: 5, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/y.jpg", position: 0 }] },
+        { id: "p3", sku: "AAA", title: "Urun A Kopya", description: "", brand: "", category: "Cat1", vat_rate: 20, desi: 1, cost_price: 50, currency: "TRY", status: "active", source: "xml:bayilik",
+          product_variants: [{ id: "v3", sku: "NEWPC1", barcode: "BX3", stock: 5, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/z.jpg", position: 0 }] },
+      ]);
       if (t === "pricing_rules") return json(process.env.MOCK_RULES === "1" ? [{ name: "Test kuralı", enabled: true, position: 1, marketplace: "all", cond: { cost_max: 1000000 }, min_net_profit: 400 }, { name: "Başka pazaryeri", enabled: true, position: 2, marketplace: "hepsiburada", cond: {}, target_profit_rate: 0.5 }] : []);
       if (t === "create_failures") return json([{ barcode: "OS13-FAILED1" }]);
     }
     if (t === "sync_runs" && method === "POST") { if (noMig && body?.marketplace) return json({ message: "column marketplace does not exist" }, 400); log.runInsert = body; return json(single ? { id: 1 } : [{ id: 1 }], 201); }
     if (t === "unmapped_categories" && method === "POST") log.unmapped = body;
     if (t === "create_failures" && method === "POST") log.createFailures = body;
-    if (t === "marketplace_listings" && method === "POST") log.listings = (log.listings ?? 0) + body.length;
+    if (t === "marketplace_listings" && method === "POST") { log.listings = (log.listings ?? 0) + body.length; log.listingRows = [...(log.listingRows ?? []), ...body.filter((r) => r.variant_id)]; }
+    if (t === "job_claim" && method === "POST") { const first = !log.claimed; log.claimed = true; return json(process.env.MOCK_SEND === "1" && first ? [{ id: 77, type: "send_products:trendyol", marketplace: "trendyol", payload: { product_ids: ["p1", "p2", "p3"] }, attempts: 1 }] : []); }
+    if (t === "job_finish" && method === "POST") { log.jobFinish = [...(log.jobFinish ?? []), body]; return json(null); }
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });
   }

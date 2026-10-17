@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-17 (10) — Fiyat ayarları uygulandı, Faz 4
+- (K onayıyla) `return_rate` 0.05, `return_cost` 180, `min_acceptable_profit_rate` 0.12; Trendyol için 5 kademeli kâr kuralı açık (az stok kuralı kapalı). Politika "smart": düşüşler çalışma başına en fazla %10.
+- **Faz 4**: `worker/core/db-products.ts`: `dbInventory` (ilan tablosunda varyanta bağlı, BayilikXML dışı ilanların stok/fiyatı veritabanından; `linked`e eklenir → zero_missing sıfırlamaz), `processSendJobs` (kuyruk `send_products:<pazaryeri>`, yalnızca update/auto/create modunda; anahtar: BayilikXML ürününde `OS13-`+SKU, diğerlerinde varyant barkodu; doğrulama: aktif, barkod, görsel, kategori (eşleşme veya yüksek güvenli tahmin), aynı başlık; marka `marketplace_brands`'ta varsa ürün markası; ilan `sent`/`error`; toplu sonuçta ret → `rejected` + neden). `listings.ts`: "gone" yalnızca live/pending/closed ilanlara (sırada/gönderildi silinmesin). Panel: `/api/listings/send` (idempotent saatlik anahtar, yönetici için "hemen" senkron), ürün detayı ve toplu işlemde "Trendyol'a gönder", ilan satırında hata/ret nedeni. Mock testleri 9/9 (sıfırlanmama, fiyat, gönderim, kategorisiz hata, zaten var, önizlemede gönderim yok).
+- Not: çok varyantlı ürünlerin varyantları Trendyol'da şimdilik ayrı ürün olarak açılır (productMainId = barkod); varyant gruplama Faz 4.1.
+
 ## 2026-10-17 (9) — Stok/fiyat düzeltmeleri, iade gideri, Faz 3
 - Kullanıcı: Trendyol'da stok yok görünen ama BayilikXML'de olan ürünler → `min_stock` 7'ydi (1-6 stok 0 gidiyordu), 3 yapıldı. `max_price` 60.000'e çıkmıştı, kullanıcı kuralı 10.000'e geri alındı.
 - Kod açığı: fiyat üst sınırını aşan / zarar eden mevcut ilanlar atlanıyordu (eski fiyat ve stokla satışta kalıyordu) → artık stok 0, fiyata dokunulmaz (test 9c).

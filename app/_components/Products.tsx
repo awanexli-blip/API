@@ -89,10 +89,21 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
 
   if (editing) return <Editor key={key} api={api} notify={notify} role={role} initial={editing} opts={opts}
     onClose={() => { setEditing(null); loadOpts(); }} onNew={() => { loadOpts(); open(); }} onCopy={copy} />;
-  return <List api={api} notify={notify} canEdit={canEdit} onOpen={open} opts={opts} />;
+  return <List api={api} notify={notify} canEdit={canEdit} onOpen={open} opts={opts} isAdmin={role === "admin"} />;
 }
 
-function List({ api, notify, canEdit, onOpen, opts }: { api: Api; notify: Notify; canEdit: boolean; onOpen: (id?: string) => void; opts: Options }) {
+// "Trendyol'a gönder": kuyruğa al; yönetici isterse senkronu hemen başlat
+async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmin: boolean) {
+  const now = isAdmin && confirm(`${ids.length} ürün Trendyol'a gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
+  try {
+    const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace: "trendyol", now }) });
+    const extra = r.problems?.length ? ` Atlananlar: ${r.problems.slice(0, 3).join("; ")}${r.problems.length > 3 ? " ..." : ""}` : "";
+    notify("good", `${r.products} ürün (${r.queued} varyant) Trendyol'a gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${extra}`);
+    return true;
+  } catch (e: any) { notify("err", e.message); return false; }
+}
+
+function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notify: Notify; canEdit: boolean; onOpen: (id?: string) => void; opts: Options; isAdmin: boolean }) {
   // Filtreler bu oturumda hatırlanır (bölümler arası gidip gelince kaybolmasın)
   const saved = (() => { try { return JSON.parse(sessionStorage.getItem("productFilters") ?? "{}"); } catch { return {}; } })();
   const [q, setQ] = useState<string>(saved.q ?? "");
@@ -151,6 +162,7 @@ function List({ api, notify, canEdit, onOpen, opts }: { api: Api; notify: Notify
           <button className="btn" onClick={() => runBulk({ status: "active" }, "aktif yap")}>Aktif yap</button>
           <button className="btn" onClick={() => runBulk({ status: "draft" }, "taslağa al")}>Taslağa al</button>
           <button className="btn" onClick={() => runBulk({ status: "archived" }, "arşivle")}>Arşivle</button>
+          <button className="btn primary" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin)) setSel(new Set()); }}><Icon name="store" size={16} />Trendyol'a gönder</button>
           <button className="btn" onClick={() => setBulk({ kind: "brand", value: opts.defaultBrand })}>Marka değiştir</button>
           <button className="btn" onClick={() => setBulk({ kind: "category", value: "" })}>Kategori değiştir</button>
           <button className="btn ghost" onClick={() => setSel(new Set())}>Seçimi kaldır</button>
@@ -430,7 +442,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
             <tr key={l.marketplace + l.listing_key}>
               <td data-label="Pazaryeri">{l.marketplace === "trendyol" ? "Trendyol" : l.marketplace === "hepsiburada" ? "Hepsiburada" : l.marketplace}</td>
               <td data-label="İlan" style={{ fontSize: 13 }}>{l.listing_key}{l.category_name ? <><br /><span className="muted" style={{ fontSize: 12 }}>{l.category_name}</span></> : null}</td>
-              <td data-label="Durum"><span className={`pill ${LISTING_PILL[l.status] ?? ""}`}>{LISTING_TR[l.status] ?? l.status}</span></td>
+              <td data-label="Durum"><span className={`pill ${LISTING_PILL[l.status] ?? ""}`}>{LISTING_TR[l.status] ?? l.status}</span>{l.last_error ? <><br /><span style={{ color: "var(--bad)", fontSize: 12 }}>{String(l.last_error).slice(0, 200)}</span></> : null}</td>
               <td data-label="Fiyat" className="n">{l.price != null ? tl(Number(l.price)) : "-"}</td>
               <td data-label="Stok" className="n">{l.stock ?? "-"}</td>
               <td data-label="Son görülme" className="muted" style={{ fontSize: 13 }}>{when(l.seen_at)}</td>
@@ -489,6 +501,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
         {canEdit && <>
           <button className="btn primary" disabled={busy || uploading > 0} onClick={() => save(isNew ? "close" : undefined)}>{busy ? "Kaydediliyor..." : isNew ? "Kaydet" : "Değişiklikleri kaydet"}</button>
           {isNew && <button className="btn" disabled={busy || uploading > 0} onClick={() => save("new")}>Kaydet ve yeni ekle</button>}
+          {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Trendyol'a gönder</button>}
           {!isNew && <button className="btn" onClick={() => onCopy(f)}>Kopyasını oluştur</button>}
           {!isNew && f.status !== "archived" && <button className="btn" onClick={archive}>Arşivle</button>}
           {role === "admin" && !isNew && <button className="btn danger" onClick={hardDelete}>Kalıcı sil</button>}

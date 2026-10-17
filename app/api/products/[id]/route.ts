@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   if (!UUID.test(params.id)) return NextResponse.json({ error: "Geçersiz ürün" }, { status: 400 });
   const db = admin();
   if (req.nextUrl.searchParams.get("listings")) {
-    const { data, error } = await db.from("marketplace_listings").select("marketplace, listing_key, variant_id, status, price, stock, commission, category_name, seen_at").eq("product_id", params.id).order("marketplace");
+    const { data, error } = await db.from("marketplace_listings").select("marketplace, listing_key, variant_id, status, price, stock, commission, category_name, last_error, seen_at").eq("product_id", params.id).order("marketplace");
     if (error) return NextResponse.json([]); // tablo yoksa (migration 013 öncesi) boş
     return NextResponse.json(data);
   }
