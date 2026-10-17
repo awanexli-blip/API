@@ -1,0 +1,59 @@
+import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
+import { admin } from "@/lib/server";
+import { authorize } from "@/lib/products";
+
+export const dynamic = "force-dynamic";
+
+const BUCKET = "product-images"; // migration 005, herkese açık okuma
+const MAX = 10 * 1024 * 1024;
+const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+
+// Görsel yükle: FormData "file" (birden çok) veya JSON { url } (başka sitedeki görseli kendi depomuza kopyala).
+// Dönüş: { urls: [...] } kalıcı https adresleri; pazaryerleri görseli buradan indirir.
+export async function POST(req: NextRequest) {
+  const a = await authorize(req, "editor");
+  if (a instanceof NextResponse) return a;
+
+  const files: { type: string; data: ArrayBuffer }[] = [];
+  if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    const form = await req.formData();
+    for (const f of form.getAll("file")) if (f instanceof Blob) files.push({ type: f.type, data: await f.arrayBuffer() });
+  } else {
+    const { url } = await req.json().catch(() => ({}));
+    const r = await fetchImage(String(url ?? ""));
+    if (typeof r === "string") return NextResponse.json({ error: r }, { status: 400 });
+    files.push(r);
+  }
+  if (!files.length || files.length > 20) return NextResponse.json({ error: "1-20 görsel gönder" }, { status: 400 });
+
+  const db = admin();
+  const urls: string[] = [];
+  for (const f of files) {
+    if (!EXT[f.type]) return NextResponse.json({ error: `Desteklenmeyen dosya türü (${f.type || "bilinmiyor"}). JPG, PNG veya WEBP yükle.` }, { status: 400 });
+    if (f.data.byteLength > MAX) return NextResponse.json({ error: "Görsel en fazla 10 MB olmalı" }, { status: 400 });
+    const path = `${new Date().toISOString().slice(0, 7)}/${randomUUID()}.${EXT[f.type]}`;
+    const { error } = await db.storage.from(BUCKET).upload(path, f.data, { contentType: f.type, upsert: false });
+    if (error) return NextResponse.json({ error: `Yükleme hatası: ${error.message}` }, { status: 500 });
+    urls.push(db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl);
+  }
+  return NextResponse.json({ urls });
+}
+
+async function fetchImage(url: string) {
+  let u: URL;
+  try { u = new URL(url); } catch { return "Geçerli bir adres değil"; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return "Adres http(s) ile başlamalı";
+  if (/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[)/.test(u.hostname)) return "Bu adrese erişilemez";
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(u, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)" } });
+    if (!r.ok) return `Görsel indirilemedi (HTTP ${r.status}). Görsele sağ tıklayıp "Resim adresini kopyala" ile doğrudan adresi al.`;
+    const type = (r.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!EXT[type]) return `Bu adres bir görsel değil (${type || "tür yok"}). Sayfa adresi değil, görselin kendi adresini yapıştır.`;
+    const data = await r.arrayBuffer();
+    return { type, data };
+  } catch { return "Görsel 15 saniyede indirilemedi"; }
+  finally { clearTimeout(t); }
+}

@@ -21,7 +21,8 @@ export function useApi(token: string): Api {
         const res = await fetch(path, {
           ...init,
           signal: ctrl.signal,
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          // FormData (görsel yükleme) için tarayıcı kendi Content-Type'ını koyar
+          headers: init?.body instanceof FormData ? { Authorization: `Bearer ${token}` } : { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error ?? `Sunucu hatası ${res.status}`);

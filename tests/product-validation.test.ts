@@ -1,7 +1,8 @@
 // Ürün doğrulama birim testleri. npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { barcodeError, isValidGtin, issuesByPath, productSchema } from "../lib/validation/product.ts";
+import { barcodeError, generateEan13, generateSku, isValidGtin, issuesByPath, productSchema, SKU_RE } from "../lib/validation/product.ts";
+import { readiness } from "../lib/marketplace-readiness.ts";
 
 const base = { sku: "URUN-1", title: "Deneme Ürün", variants: [{ sku: "URUN-1-A" }] };
 const parse = (p: unknown) => productSchema.safeParse(p);
@@ -74,4 +75,24 @@ test("varyant SKU ve barkodu ürün içinde tekrarsız", () => {
   const e = errs({ ...base, variants: [{ sku: "A-1", barcode: "8690000000012" }, { sku: "a-1", barcode: "8690000000012" }] });
   assert.match(e["variants.1.sku"], /tekrar/);
   assert.match(e["variants.1.barcode"], /tekrar/);
+});
+
+test("otomatik barkod ve SKU geçerli", () => {
+  for (let i = 0; i < 200; i++) {
+    const b = generateEan13();
+    assert.match(b, /^2\d{12}$/);
+    assert.equal(isValidGtin(b), true);
+  }
+  assert.match(generateSku("Bambu Kesme Tahtası 3'lü Set", () => 0), /^BAMBU-KESME-2222$/);
+  assert.match(generateSku("", () => 0), /^URN-/);
+  assert.equal(SKU_RE.test(generateSku("Çiçekli Şık Ürün")), true);
+});
+
+test("pazaryeri hazırlık: eksikler ve Amazon GTIN", () => {
+  const p = { title: "Bambu Kesme Tahtası Seti", description: "x".repeat(40), brand: "Eco Lounge", category: "Mutfak", desi: 2, cost_price: 100, images: ["https://a/b.jpg"], variants: [{ barcode: generateEan13(), stock: 5, cost_price: null }] };
+  const r = readiness(p, ["trendyol"]);
+  assert.equal(r.find((m) => m.id === "trendyol")!.ready, true);
+  assert.equal(r.find((m) => m.id === "hepsiburada")!.ready, false); // kategori eşleşmemiş
+  assert.equal(r.find((m) => m.id === "amazon")!.checks.some((c) => !c.ok && /GTIN/.test(c.text)), true);
+  assert.equal(readiness({ ...p, images: [] }, ["trendyol"])[0].ready, false);
 });

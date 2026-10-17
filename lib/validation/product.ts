@@ -18,6 +18,26 @@ export function isValidGtin(code: string): boolean {
   return (10 - (sum % 10)) % 10 === check;
 }
 
+// Otomatik barkod: "2" ile başlayan EAN-13 (GS1'in mağaza içi kullanıma ayırdığı aralık, gerçek bir ürünle çakışmaz).
+// Trendyol, Hepsiburada, N11, ÇiçekSepeti kabul eder. Amazon gerçek GTIN veya muafiyet ister.
+export function generateEan13(rand: () => number = Math.random): string {
+  let body = "2";
+  while (body.length < 12) body += Math.floor(rand() * 10);
+  const sum = body.split("").map(Number).reverse().reduce((t, d, i) => t + d * (i % 2 === 0 ? 3 : 1), 0);
+  return body + ((10 - (sum % 10)) % 10);
+}
+export const isInternalEan = (b: string | null | undefined) => !!b && /^2\d{12}$/.test(b);
+
+// Otomatik SKU: başlıktan kısa kök + rastgele ek (örn. "BAMBU-KESME-7K3Q")
+export function generateSku(title = "", rand: () => number = Math.random): string {
+  const map: Record<string, string> = { ç: "C", ğ: "G", ı: "I", i: "I", ö: "O", ş: "S", ü: "U" };
+  const root = title.toLocaleLowerCase("tr").replace(/[çğıiöşü]/g, (c) => map[c]).toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ").trim().split(" ").filter((w) => w.length > 1).slice(0, 2).join("-").slice(0, 20);
+  let tail = "";
+  while (tail.length < 4) tail += "23456789ABCDEFGHJKMNPQRSTUVWXYZ"[Math.floor(rand() * 31)];
+  return (root ? root + "-" : "URN-") + tail;
+}
+
 // Boş = barkod yok. Yalnızca rakamsa GTIN olmalı, değilse iç kod kuralı.
 export function barcodeError(b: string | null | undefined): string | null {
   if (!b) return null;

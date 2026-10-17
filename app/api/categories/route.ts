@@ -21,12 +21,16 @@ export async function PUT(req: NextRequest) {
   const list: any[] = Array.isArray(b?.items) ? b.items : [b];
   if (!list.length || list.length > 1000) return bad("Kayıt listesi boş veya çok uzun");
 
+  // Toplu onayda geçersiz satır (örn. adı boş XML kategorisi) atlanır, diğerleri kaydedilir
   const rows: any[] = [];
+  let skipped = 0;
   for (const it of list) {
     const r = parseRow(it);
-    if (typeof r === "string") return bad(list.length > 1 ? `${it?.xml_category ?? "?"}: ${r}` : r);
-    rows.push(r);
+    if (typeof r !== "string") rows.push(r);
+    else if (list.length === 1) return bad(r);
+    else skipped++;
   }
+  if (!rows.length) return bad("Kaydedilecek geçerli kayıt yok");
 
   const db = admin();
   let { error } = await db.from("category_map").upsert(rows.map((r) => ({ ...r, marketplace: mp })));
@@ -37,7 +41,7 @@ export async function PUT(req: NextRequest) {
   const names = rows.map((r) => r.xml_category);
   const del = await db.from("unmapped_categories").delete().in("xml_category", names).eq("marketplace", mp);
   if (del.error && mp === "trendyol") await db.from("unmapped_categories").delete().in("xml_category", names);
-  return NextResponse.json({ ok: true, saved: rows.length });
+  return NextResponse.json({ ok: true, saved: rows.length, skipped });
 }
 
 function parseRow(b: any) {

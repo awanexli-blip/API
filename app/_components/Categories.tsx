@@ -21,7 +21,7 @@ export default function Categories({ api, notify, marketplace }: Props) {
   useEffect(() => { load(); }, [load]);
 
   const waiting = unmapped.reduce((s, u) => s + Number(u.product_count || 0), 0);
-  const strong = unmapped.filter((u) => u.suggested_category_id && Number(u.suggested_share) >= STRONG);
+  const strong = unmapped.filter((u) => u.xml_category?.trim() && u.suggested_category_id && Number(u.suggested_share) >= STRONG);
   const shown = useMemo(() => {
     const t = q.trim().toLocaleLowerCase("tr");
     return t ? mapped.filter((c) => `${c.xml_category} ${c.category_name ?? ""} ${c.category_id}`.toLocaleLowerCase("tr").includes(t)) : mapped;
@@ -122,16 +122,16 @@ export default function Categories({ api, notify, marketplace }: Props) {
               const s = Number(u.suggested_share);
               return (
                 <tr key={u.xml_category}>
-                  <td>{u.xml_category}</td>
+                  <td>{u.xml_category?.trim() || <span className="muted">(XML'de kategorisi boş ürünler, eşleştirilemez)</span>}</td>
                   <td className="n">{u.product_count}</td>
                   <td>{u.suggested_category_id ? <>
                     {u.suggested_category_name} <span className={`pill ${s >= STRONG ? "ok" : "partial"}`}>{s >= STRONG ? "güçlü" : "zayıf"}</span>
                     <div className="muted" style={{ fontSize: 12 }}>benzer ürünlerin %{Math.round(s * 100)}'i bu kategoride{u.suggested_commission ? ` · komisyon ${pct(u.suggested_commission)}` : ""}</div>
                   </> : <span className="muted">Öneri yok, elle eşleştir</span>}</td>
-                  <td className="n"><div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                    {u.suggested_category_id && <button className="btn primary" onClick={() => approve(u)} disabled={busy}>Onayla</button>}
+                  <td className="n">{u.xml_category?.trim() && <div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                    {u.suggested_category_id &&<button className="btn primary" onClick={() => approve(u)} disabled={busy}>Onayla</button>}
                     <button className="btn" onClick={() => edit(u.suggested_category_id ? fromSuggestion(u) : { xml_category: u.xml_category })}>{u.suggested_category_id ? "Değiştir" : "Eşleştir"}</button>
-                  </div></td>
+                  </div>}</td>
                 </tr>
               );
             })}</tbody>
