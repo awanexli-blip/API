@@ -18,6 +18,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
   const [busy, setBusy] = useState("");
   const [toggling, setToggling] = useState(false);
   const [health, setHealth] = useState<Row | null>(null);
+  const [watchUntil, setWatchUntil] = useState(0); // düğmeye basınca iş görünene kadar sık yenile
 
   // Ayarlar ve geçmiş birbirini beklemeden yüklenir
   const loadSettings = useCallback(async () => {
@@ -38,18 +39,18 @@ export default function Overview({ api, notify, marketplace }: Props) {
   // 1 saatten eski "running" kayıtlar yarıda kalmış sayılır
   const running = runs.some((r) => r.status === "running" && Date.now() - new Date(r.started_at).getTime() < 3600_000);
   useEffect(() => {
-    if (!running) return;
-    const t = setInterval(loadRuns, 8000);
+    if (!running && !watchUntil) return;
+    const t = setInterval(() => { if (watchUntil && Date.now() > watchUntil) setWatchUntil(0); loadRuns(); }, 8000);
     return () => clearInterval(t);
-  }, [running, loadRuns]);
+  }, [running, watchUntil, loadRuns]);
 
   async function start(mode: string, confirmText?: string) {
     if (confirmText && !confirm(confirmText)) return;
     setBusy(mode);
     try {
       await api("/api/run", { method: "POST", body: JSON.stringify({ mode, marketplace }) });
-      notify("good", "İş başlatıldı. GitHub Actions başlayınca aşağıdaki listede görünür (1-2 dakika).");
-      setTimeout(loadRuns, 15000);
+      notify("good", "İş başlatıldı. GitHub Actions başlayınca aşağıdaki listede görünür (genelde 1-2 dakika, liste kendiliğinden yenilenir).");
+      setWatchUntil(Date.now() + 4 * 60_000);
     } catch (e: any) { notify("err", e.message); }
     setBusy("");
   }
@@ -130,7 +131,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
           <div className="scroll">
             <table>
               <thead><tr><th>Zaman</th><th>Mod</th><th>Durum</th><th>Sonuç</th></tr></thead>
-              <tbody>{runs.filter((r) => (r.summary?.marketplace ?? "trendyol") === marketplace).map((r) => <RunRow key={r.id} r={r} />)}</tbody>
+              <tbody>{runs.filter((r) => (r.marketplace ?? r.summary?.marketplace ?? "trendyol") === marketplace).map((r) => <RunRow key={r.id} r={r} />)}</tbody>
             </table>
           </div>
         )}
