@@ -101,7 +101,14 @@ Hata kodları: 401 giriş yok/rol yok, 403 rol yetmiyor, 409 SKU/barkod çakış
 - Modlar: ekle+güncelle (upsert), sadece ekle, sadece güncelle. Önce "Kontrol et" (hiçbir şey yazmaz, satır bazlı hata), sonra "İçe aktar". Hatalı satır diğerlerini bozmaz.
 - `POST /api/import/csv` (editor): istek başına ≤1000 satır, `dry_run`, `job_id` ile parçalı gönderim.
 
-**BayilikXML → ürünler** (panel düğmesi veya Actions "XML içe aktarma", `worker/import-xml.ts`)
+**Tedarikçi XML'leri → ürünler** (panel: Ürünler → Tedarikçiler; Actions "XML içe aktarma", `worker/import-xml.ts <kod|all|nightly>`)
+- Çoklu tedarikçi: `suppliers` tablosu (migration 009): XML adresi (yalnızca sunucuda, panelde maskeli; BayilikXML için `url_from_env = XML_URL`), alan eşlemesi, SKU öneki, KDV dahil/hariç, sabit marka, gece içe aktarma.
+- "XML'i incele" (`POST /api/suppliers/inspect`): XML'i indirir, ürün listesini bulur, alanları (doluluk + örnek) çıkarır, eşanlamlılarla eşlemeyi önerir, ilk ürünlerin önizlemesini gösterir. Ortak kod `lib/supplier-xml.ts` (panel + worker).
+- Aynı model kodlu XML ürünleri tek ürünün varyantları olur (CSV ile aynı gruplama). Kaynak `xml:<kod>`.
+- XML'den kalkan ürün sayısı mevcutların %30'unu aşarsa (bozuk/eksik indirme) stok sıfırlama yapılmaz.
+- Gece çalışması (05:40 TR) yalnızca "Gece" işaretli tedarikçileri alır.
+
+BayilikXML ayrıntıları:
 - SKU = productCode (ASCII), tek varyant, barkod = XML barcode (geçerli ve tekrarsızsa), marka = Eco Lounge, kaynak `xml:bayilik`.
 - İçerik özeti (`source_hash`, stok hariç) aynıysa yalnızca stok güncellenir (denetim kaydı yazılmaz); fiyat/içerik değişikliği denetim kaydına yazılır.
 - XML'den kalkan ürünler silinmez, stokları 0 olur. Gece çalışması ilk kontrol sonrası açılacak (`import.yml` içinde yorum satırı).

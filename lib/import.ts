@@ -13,21 +13,21 @@ export const FIELD_LABEL: Record<Field, string> = {
 
 // Başlık eşanlamlıları (küçük harf, Türkçe harfler sadeleştirilmiş, boşluk/altçizgi yok)
 const ALIASES: Record<Field, string[]> = {
-  model: ["modelkodu", "model", "urunkodu", "productcode", "stokkodu", "stockcode", "anasku", "productmainid", "sku"],
+  model: ["modelkodu", "model", "urunkodu", "productcode", "stokkodu", "stockcode", "anasku", "productmainid", "sku", "modelcode", "itemcode", "urunkod", "kod", "code", "productid", "urunid", "groupcode"],
   variant_sku: ["varyantsku", "variantsku", "varyantkodu", "saticistokkodu", "varyantstokkodu"],
-  title: ["urunadi", "baslik", "title", "name", "urunismi", "ad", "productname"],
-  description: ["aciklama", "description", "detail", "detay", "urunaciklamasi"],
+  title: ["urunadi", "baslik", "title", "name", "urunismi", "ad", "productname", "urun", "label", "isim"],
+  description: ["aciklama", "description", "detail", "detay", "urunaciklamasi", "longdescription", "aciklamasi", "details"],
   brand: ["marka", "brand"],
-  category: ["kategori", "category", "kategoriadi"],
+  category: ["kategori", "category", "kategoriadi", "categorypath", "categoryname", "kategoriyolu", "maincategory"],
   vat_rate: ["kdv", "kdvorani", "vat", "vatrate", "tax"],
   desi: ["desi", "dimensionalweight"],
-  cost_price: ["alisfiyati", "maliyet", "cost", "costprice", "fiyat", "price", "alis", "bayifiyati"],
-  currency: ["parabirimi", "currency", "doviz", "kur"],
-  barcode: ["barkod", "barcode", "ean", "gtin"],
+  cost_price: ["alisfiyati", "maliyet", "cost", "costprice", "fiyat", "price", "alis", "bayifiyati", "bayifiyat", "alisfiyat", "dealerprice", "buyingprice"],
+  currency: ["parabirimi", "currency", "doviz", "kur", "currencytype", "parabirim"],
+  barcode: ["barkod", "barcode", "ean", "gtin", "barkodno", "barcodeno"],
   color: ["renk", "color", "colour"],
   size: ["beden", "size", "numara", "olcu"],
-  stock: ["stok", "stock", "adet", "quantity", "miktar"],
-  images: ["gorsel", "gorseller", "resim", "resimler", "image", "images", "foto", "fotograf", "imageurl", "gorsel1", "resim1", "image1"],
+  stock: ["stok", "stock", "adet", "quantity", "miktar", "stokmiktari", "stockquantity", "qty", "amount", "stockamount"],
+  images: ["gorsel", "gorseller", "resim", "resimler", "image", "images", "foto", "fotograf", "imageurl", "gorsel1", "resim1", "image1", "picture", "pictures", "photo", "photos", "imageurl", "resimurl"],
   attributes: ["ozellikler", "attributes", "ozellik"],
   status: ["durum", "status"],
 };
@@ -38,7 +38,7 @@ export function mapHeaders(headers: string[]): (Field | null)[] {
   const used = new Set<Field>();
   return headers.map((h) => {
     const n = norm(h);
-    if (/^(gorsel|resim|image|foto|fotograf)\d+$/.test(n)) return "images";
+    if (/^(gorsel|resim|image|foto|fotograf|picture|photo|img)\d+(url)?$/.test(n)) return "images";
     for (const [f, list] of Object.entries(ALIASES) as [Field, string[]][]) {
       if (f !== "images" && used.has(f)) continue;
       if (list.includes(n)) { used.add(f); return f; }

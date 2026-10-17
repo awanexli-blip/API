@@ -81,11 +81,6 @@ export default function Import({ api, notify, isAdmin, onDone }: { api: Api; not
     finally { setProgress(""); }
   }
 
-  async function startXml() {
-    if (!confirm("BayilikXML'deki tüm ürünler ürün veritabanına aktarılsın mı? (Var olanlar güncellenir, XML'den kalkanların stoğu 0 olur, hiçbir şey silinmez.) Pazaryerlerine bir şey gönderilmez.")) return;
-    try { await api("/api/import", { method: "POST" }); notify("good", "XML içe aktarma başlatıldı (GitHub Actions). İlk seferde 5-10 dakika sürebilir; aşağıdaki geçmişte görünür."); setTimeout(loadJobs, 20000); }
-    catch (e: any) { notify("err", e.message); }
-  }
   async function openJob(id: number) {
     if (jobRows?.id === id) return setJobRows(null);
     try { setJobRows({ id, rows: await api(`/api/import?job=${id}`) }); } catch (e: any) { notify("err", e.message); }
@@ -151,14 +146,6 @@ export default function Import({ api, notify, isAdmin, onDone }: { api: Api; not
         </div>}
       </div>
 
-      {isAdmin && <div className="card">
-        <h2>BayilikXML'den içe aktar</h2>
-        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Tedarikçi XML'indeki ~25 bin ürünü ürün veritabanına alır (kaynak: xml:bayilik). Tekrar çalıştırınca yalnızca değişenler yazılır, stoklar güncellenir;
-          XML'den kalkan ürünlerin stoğu 0 olur, silinmez. Pazaryerlerine bir şey gönderilmez; mevcut Trendyol senkronu aynen çalışmaya devam eder.
-        </p>
-        <button className="btn primary" onClick={startXml} disabled={running}>{running ? "Bir içe aktarma sürüyor..." : "XML'i şimdi içe aktar"}</button>
-      </div>}
 
       <div className="card">
         <div className="row" style={{ justifyContent: "space-between" }}><h2 style={{ margin: 0 }}>İçe aktarma geçmişi</h2><button className="btn" onClick={loadJobs}>Yenile</button></div>
@@ -167,7 +154,7 @@ export default function Import({ api, notify, isAdmin, onDone }: { api: Api; not
           <tbody>{jobs.map((j) => <Fragment key={j.id}>
             <tr onClick={() => openJob(j.id)} style={{ cursor: "pointer" }}>
               <td className="muted" style={{ fontSize: 13 }}>{when(j.started_at)}</td>
-              <td>{j.kind === "xml" ? "BayilikXML" : j.source || "dosya"}<br /><span className="muted" style={{ fontSize: 12 }}>{j.created_by}</span></td>
+              <td>{j.kind === "xml" ? `XML: ${j.supplier ?? j.source.replace(/^xml:/, "")}` : j.source || "dosya"}<br /><span className="muted" style={{ fontSize: 12 }}>{j.created_by}</span></td>
               <td><span className={`pill ${j.status === "ok" ? "ok" : j.status === "error" ? "error" : "partial"}`}>{JOB_TR[j.status] ?? j.status}</span></td>
               <td className="n">{j.created}</td><td className="n">{j.updated}</td><td className="n">{j.stock_only}</td><td className="n">{j.unchanged}</td>
               <td className="n" style={{ color: j.failed ? "var(--bad)" : undefined }}>{j.failed} / {j.skipped}</td>

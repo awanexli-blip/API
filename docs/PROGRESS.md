@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-17 (6) — Çoklu tedarikçi
+- `suppliers` (migration 009, uygulandı; BayilikXML kayıtlı: adres GitHub Secret `XML_URL`, gece kapalı). Panel: Ürünler → Tedarikçiler (ekle, XML'i incele, alan eşleme, ayarlar, önizleme, içe aktar, gece işareti).
+- `worker/import-xml.ts` genel: tedarikçi tablosundan okur, `lib/supplier-xml.ts` ile eşler; `import.yml` her gece `nightly` (işaretli tedarikçiler) + elle `supplier` girdisi. Toplu stok sıfırlamada %30 güvenlik sınırı.
+- tsconfig `allowImportingTsExtensions` (lib ↔ Node testleri). Panele `fast-xml-parser` eklendi. Testler 16/16.
+- Pazaryerine gönderim hâlâ yalnızca BayilikXML üzerinden (sync.ts XML'i doğrudan okuyor). Diğer tedarikçilerin ürünlerini pazaryerlerine göndermek Faz 3-4 (adaptörler veritabanından beslenecek).
+
 ## 2026-10-17 (5) — Markalar, Faz 2
 - Özet: iş başlatılınca liste 4 dk boyunca 8 sn'de bir yenilenir (önizleme çalışmıştı ama liste tek seferlik 15 sn yenilemeyle kaçırıyordu).
 - Trendyol dokümanı: onaylı üründe `brandId` değiştirilemez (content-bulk-update). Mevcut ürünlerin markası değişmez.

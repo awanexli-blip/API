@@ -7,6 +7,7 @@ import { tl, when, type Api, type Notify, type Row } from "./shared";
 import BrandInput from "./BrandInput";
 import Import from "./Import";
 import Feeds from "./Feeds";
+import Suppliers from "./Suppliers";
 
 type Role = "viewer" | "editor" | "admin";
 const STATUS_TR: Record<string, string> = { draft: "Taslak", active: "Aktif", archived: "Arşiv" };
@@ -70,7 +71,7 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
   const [editing, setEditing] = useState<Form | null>(null);
   const [opts, setOpts] = useState<Options>({ brands: [], defaultBrand: "", categories: [] });
   const [key, setKey] = useState(0); // yeni formda bileşeni sıfırlamak için
-  const [view, setView] = useState<"liste" | "ice" | "feed">("liste");
+  const [view, setView] = useState<"liste" | "ice" | "tedarik" | "feed">("liste");
   const [listKey, setListKey] = useState(0);
   useEffect(() => { api("/api/me").then((m) => setRole(m.role)).catch(() => {}); }, [api]);
   const loadOpts = useCallback(() => api("/api/products/options").then(setOpts).catch(() => {}), [api]);
@@ -89,7 +90,7 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
 
   if (editing) return <Editor key={key} api={api} notify={notify} role={role} initial={editing} opts={opts}
     onClose={() => { setEditing(null); loadOpts(); }} onNew={() => { loadOpts(); open(); }} onCopy={copy} />;
-  const views: ["liste" | "ice" | "feed", string, boolean][] = [["liste", "Ürün listesi", true], ["ice", "İçe aktar", canEdit], ["feed", "XML feed", role === "admin"]];
+  const views: ["liste" | "ice" | "tedarik" | "feed", string, boolean][] = [["liste", "Ürün listesi", true], ["ice", "İçe aktar", canEdit], ["tedarik", "Tedarikçiler (XML)", role === "admin"], ["feed", "XML feed", role === "admin"]];
   return (
     <>
       <div className="row" style={{ marginBottom: 12, gap: 6 }}>
@@ -97,6 +98,7 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
       </div>
       {view === "liste" && <List key={listKey} api={api} notify={notify} canEdit={canEdit} onOpen={open} />}
       {view === "ice" && <Import api={api} notify={notify} isAdmin={role === "admin"} onDone={() => { setListKey((k) => k + 1); loadOpts(); }} />}
+      {view === "tedarik" && <Suppliers api={api} notify={notify} />}
       {view === "feed" && <Feeds api={api} notify={notify} />}
     </>
   );
