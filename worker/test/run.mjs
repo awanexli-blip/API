@@ -174,6 +174,14 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("kuralsız çalışmada sayaç boş", Object.keys(run("preview").s.pricingRules ?? {}).length === 0);
 }
 
+// 9c) fiyat üst sınırını aşan mevcut ilan: atlanmaz, stok 0 gönderilir (eski fiyattan satılmasın)
+{
+  const { s, line } = run("update", { MOCK_MAX_PRICE: "150" });
+  const k = Object.keys(s.skipped ?? {}).find((x) => x.includes("mevcut ilan: stok 0"));
+  check("üst sınır: mevcut ilan stok 0 sayıldı", !!k && s.skipped[k] > 0, JSON.stringify(s.skipped));
+  check("üst sınır: csv satırı STOK 0", /STOK 0: fiyat üst sınırı/.test(line("ÖS13-AAA")) || Object.values(s.skipped ?? {}).length > 0);
+}
+
 // 10) birim testleri
 for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }

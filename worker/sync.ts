@@ -170,6 +170,15 @@ async function main() {
       const b = breakdown(price, cost, pcfg, comm);
       net = b.net; rateOut = b.rate; sellerPays = b.shipping > 0;
     } else if (!calc.ok) {
+      // Mevcut ilan (ör. fiyat üst sınırı aştı / zarar): eski fiyattan satılmasın diye stok 0, fiyata dokunulmaz
+      const ls = listingId ? lsBy.get(listingId) : undefined;
+      if (listingId && ls && ls.status !== "pending" && ls.status !== "closed" && !linked.has(listingId)) {
+        linked.add(listingId);
+        toUpdate.push({ id: listingId, price: null, quantity: 0 });
+        skip(`${calc.reason ?? "fiyat hesaplanamadı"} (mevcut ilan: stok 0)`);
+        csv.push(`${listingId};${q(name)};${q(category)};${r.price};;;;;STOK 0: ${calc.reason}`);
+        continue;
+      }
       skip(calc.reason ?? "fiyat hesaplanamadı");
       csv.push(`${barcode};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${calc.reason}`);
       continue;
