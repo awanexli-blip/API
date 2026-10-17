@@ -170,18 +170,18 @@ function List({ api, notify, canEdit, onOpen, opts }: { api: Api; notify: Notify
         {!res ? <div><div className="skeleton" style={{ marginBottom: 10 }} /><div className="skeleton" style={{ width: "80%", marginBottom: 10 }} /><div className="skeleton" style={{ width: "60%" }} /></div> : res.rows.length === 0 ? (
           <div className="empty"><Icon name="box" size={32} /><p>{filtered ? "Filtreye uyan ürün yok." : "Henüz ürün yok."}</p>{!filtered && canEdit && <p className="muted" style={{ fontSize: 13 }}>"+ Yeni ürün" ile ekle, "İçe aktar"dan dosya yükle veya "Tedarikçiler"den XML al.</p>}</div>
         ) : (
-          <div className="scroll"><table className="cards">
+          <div className="scroll"><table className="cards compact">
             <thead><tr>{canEdit && <th style={{ width: 32 }}><input type="checkbox" aria-label="Tümünü seç" checked={all} onChange={() => setSel(all ? new Set() : new Set(res.rows.map((r) => r.id)))} /></th>}<th /><th>Ürün</th><th>Kaynak</th><th className="n">Stok</th><th className="n">Maliyet</th><th>Durum</th><th>Güncelleme</th></tr></thead>
             <tbody>{res.rows.map((p) => (
               <tr key={p.id} onClick={() => onOpen(p.id)} style={{ cursor: "pointer" }}>
                 {canEdit && <td onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label="Seç" checked={sel.has(p.id)} onChange={() => toggle(p.id)} /></td>}
                 <td style={{ width: 52 }}>{p.image ? <img src={p.image} alt="" width={44} height={44} loading="lazy" style={{ objectFit: "cover", borderRadius: 8, display: "block" }} /> : <div style={{ width: 44, height: 44, borderRadius: 8, background: "var(--panel-2)", display: "grid", placeItems: "center", color: "var(--muted)" }}><Icon name="box" size={18} /></div>}</td>
-                <td data-label="Ürün"><b style={{ fontWeight: 600 }}>{p.title}</b><br /><span className="muted" style={{ fontSize: 12 }}>{p.sku}{p.brand ? ` · ${p.brand}` : ""}{p.category ? ` · ${String(p.category).slice(0, 60)}` : ""}</span>{p.variants > 1 && <span className="pill" style={{ marginLeft: 6 }}>{p.variants} seçenek</span>}</td>
-                <td data-label="Kaynak" style={{ fontSize: 13 }}>{srcLabel(p.source)}</td>
-                <td data-label="Stok" className="n" style={{ color: p.stock > 0 ? undefined : "var(--bad)" }}>{p.stock}</td>
-                <td data-label="Maliyet" className="n">{p.cost_price == null ? "-" : p.currency && p.currency !== "TRY" ? `${p.cost_price} ${p.currency}` : tl(Number(p.cost_price))}</td>
-                <td data-label="Durum"><span className={`pill ${p.status === "active" ? "ok" : p.status === "archived" ? "error" : "partial"}`}>{STATUS_TR[p.status]}</span></td>
-                <td data-label="Güncelleme" className="muted" style={{ fontSize: 13 }}>{when(p.updated_at)}</td>
+                <td data-label="Ürün" className="main"><b style={{ fontWeight: 600 }}>{p.title}</b><br /><span className="muted" style={{ fontSize: 12 }}>{p.sku}{p.brand ? ` · ${p.brand}` : ""}{p.category ? ` · ${String(p.category).slice(0, 60)}` : ""}</span>{p.variants > 1 && <span className="pill" style={{ marginLeft: 6 }}>{p.variants} seçenek</span>}</td>
+                <td data-label="Kaynak" className="meta" style={{ fontSize: 13 }}>{srcLabel(p.source)}</td>
+                <td data-label="Stok" className="n meta" style={{ color: p.stock > 0 ? undefined : "var(--bad)" }}>{p.stock}</td>
+                <td data-label="Maliyet" className="n meta">{p.cost_price == null ? "-" : p.currency && p.currency !== "TRY" ? `${p.cost_price} ${p.currency}` : tl(Number(p.cost_price))}</td>
+                <td data-label="Durum" className="meta"><span className={`pill ${p.status === "active" ? "ok" : p.status === "archived" ? "error" : "partial"}`}>{STATUS_TR[p.status]}</span></td>
+                <td data-label="Güncelleme" className="muted hide-sm" style={{ fontSize: 13 }}>{when(p.updated_at)}</td>
               </tr>
             ))}</tbody>
           </table></div>

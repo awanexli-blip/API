@@ -20,7 +20,7 @@ export default function BrandInput({ api, value, onChange, placeholder, local = 
     const q = value.trim();
     if (q.length < 2) { setHits([]); setExact({}); return; }
     const t = setTimeout(() => {
-      api(`/api/brands/search?q=${encodeURIComponent(q)}`).then((r) => { setHits(r.results); setExact(r.exact); }).catch(() => {});
+      api(`/api/brands/search?q=${encodeURIComponent(q)}`).then((r) => { setHits(Array.isArray(r?.results) ? r.results : []); setExact(r?.exact ?? {}); }).catch(() => {});
     }, 250);
     return () => clearTimeout(t);
   }, [api, value]);
