@@ -16,6 +16,8 @@ const FIELDS: Field[] = [
   { key: "free_shipping_threshold", label: "Kargo eşiği (TL)", kind: "num", hint: "Bu fiyat ve üstünde kargoyu sen ödersin" },
   { key: "min_markup", label: "En düşük çarpan", kind: "num", hint: "Fiyat en az maliyet × bu değer olur", advanced: true },
   { key: "fixed_cost", label: "Ürün başı sabit gider (TL)", kind: "num", hint: "Paketleme vb." },
+  { key: "return_rate", label: "İade oranı (%)", kind: "pct", hint: "Siparişlerin yüzde kaçı iade geliyor (ör. 5)" },
+  { key: "return_cost", label: "İade başına maliyet (TL)", kind: "num", hint: "İade kargosu + gidiş kargosu + hasar payı, KDV dahil (ör. 180)" },
   { key: "min_acceptable_profit_rate", label: "Eşik altına çekmede en düşük kâr (%)", kind: "pct", hint: "Fiyat 299,90'a sabitlenirse kabul edilen en düşük kâr" },
   { key: "max_price", label: "En yüksek satış fiyatı (TL)", kind: "num", hint: "Bunun üstündeki ürünler atlanır" },
   { key: "min_stock", label: "Minimum stok", kind: "int", hint: "Bunun altındaysa Trendyol'a 0 gönderilir" },
@@ -51,6 +53,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     shippingCost: num("shipping_cost"), freeShippingThreshold: num("free_shipping_threshold"),
     minMarkup: num("min_markup"), fixedCost: num("fixed_cost"),
     minAcceptableProfitRate: num("min_acceptable_profit_rate") / 100, maxPrice: num("max_price"),
+    returnRate: num("return_rate") / 100, returnCost: num("return_cost"),
     vatRate: simVat / 100,
     commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false,
   };
@@ -168,11 +171,11 @@ export default function Settings({ api, notify, marketplace }: Props) {
         {valid ? (
           <div className="scroll">
             <table className="sim">
-              <thead><tr><th className="n">Maliyet</th><th className="n">Satış fiyatı</th><th className="n">Komisyon</th><th className="n">Kargo</th><th className="n">Ödenecek KDV</th><th className="n">Net kâr</th><th className="n">Kâr oranı</th></tr></thead>
+              <thead><tr><th className="n">Maliyet</th><th className="n">Satış fiyatı</th><th className="n">Komisyon</th><th className="n">Kargo</th><th className="n">İade payı</th><th className="n">Ödenecek KDV</th><th className="n">Net kâr</th><th className="n">Kâr oranı</th></tr></thead>
               <tbody>
                 {[30, 60, 100, 150, 200, 250, 300, 400, 600, 1000, 2500].map((c) => {
                   const r = calcPrice(c, cfg as any);
-                  if (!r.ok) return <tr key={c}><td className="n">{tl(c)}</td><td colSpan={6} className="warn">Atlanır: {r.reason}</td></tr>;
+                  if (!r.ok) return <tr key={c}><td className="n">{tl(c)}</td><td colSpan={7} className="warn">Atlanır: {r.reason}</td></tr>;
                   const b = breakdown(r.price, c, cfg as any);
                   return (
                     <tr key={c} title={r.note ?? ""}>
@@ -180,6 +183,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
                       <td className="n"><strong>{tl(r.price)}</strong></td>
                       <td className="n">−{tl(b.commission)}</td>
                       <td className="n">{b.shipping ? "−" + tl(b.shipping) : <span className="muted">alıcı öder</span>}</td>
+                      <td className="n">{b.returns ? "−" + tl(b.returns) : <span className="muted">-</span>}</td>
                       <td className="n">{b.vatDue >= 0 ? "−" + tl(b.vatDue) : "+" + tl(-b.vatDue)}</td>
                       <td className="n"><strong>{tl(b.net)}</strong></td>
                       <td className="n">%{(b.rate * 100).toFixed(1)}{r.note ? " *" : ""}</td>
@@ -189,6 +193,11 @@ export default function Settings({ api, notify, marketplace }: Props) {
               </tbody>
             </table>
             <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>* 299,90 TL'ye sabitlendi: kargo alıcıda kalsın diye kâr hedefin biraz altında. Ödenecek KDV eksi çıkarsa (+) devreden KDV'dir.</p>
+            <p className="muted" style={{ fontSize: 13 }}>
+              <b>KDV nasıl hesaplanıyor?</b> Satış fiyatındaki KDV'den; alış faturasındaki, komisyon faturasındaki ve kargo faturasındaki KDV düşülür, kalan "Ödenecek KDV" devlete gider ve net kârdan çıkarılır.
+              <b> İade payı</b> = iade oranı × iade başına maliyet; her siparişe beklenen gider olarak eklenir (iade kargosunun KDV'si de indirilir).
+              Net kâr = satış − alış − komisyon − kargo − sabit gider − iade payı − ödenecek KDV.
+            </p>
           </div>
         ) : <p className="muted">Geçerli değerler girince tablo görünür.</p>}
       </div>

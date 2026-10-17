@@ -20,6 +20,8 @@ const NUM: Record<string, [number, number, boolean]> = {
   fx_usd: [0, 1000, false],
   fx_eur: [0, 1000, false],
   default_desi: [0, 1000, false],
+  return_rate: [0, 0.5, false],
+  return_cost: [0, 2000, false],
 };
 const BOOL = ["auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
 const POLICIES = ["keep", "floor", "formula", "smart"];

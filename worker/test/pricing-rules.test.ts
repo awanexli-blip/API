@@ -1,6 +1,6 @@
 // Akıllı kâr kuralları ve en az net kâr birim testleri.
 // node --experimental-strip-types worker/test/pricing-rules.test.ts
-import { calcPrice, breakdown, defaultConfig as cfg } from "../pricing.ts";
+import { calcPrice, breakdown, defaultConfig as cfg, returnsOf } from "../pricing.ts";
 import { applyRules, rulesFor, matches, SUGGESTED_RULES, describeCond, type PricingRule } from "../pricing-rules.ts";
 
 let fails = 0;
@@ -48,6 +48,22 @@ const check = (name: string, cond: boolean, info: unknown = "") => { console.log
     const r = calcPrice(cost, applyRules(cfg, tr, { cost }).cfg, 0.18);
     check(`kademe ${cost} TL: kârlı ve net ≥ 20 TL`, r.ok && r.netProfit >= 20, r);
   }
+}
+
+// İade gideri: oran × maliyet her siparişe eklenir, hedef kâr korunur, KDV indirimi dahil
+{
+  const ret = { ...cfg, returnRate: 0.05, returnCost: 180 };
+  check("iade: sipariş başı pay 9 TL", returnsOf(ret) === 9, returnsOf(ret));
+  const a = calcPrice(100, cfg, 0.18), b = calcPrice(100, ret, 0.18);
+  check("iade: fiyat yükselir", b.price > a.price, { a: a.price, b: b.price });
+  check("iade: hedef kâr korunur", b.profitRate >= 0.15, b);
+  const bd = breakdown(b.price, 100, ret, 0.18);
+  check("iade: kırılımda iade payı", bd.returns === 9, bd);
+  // net = satış - alış - hizmetler - KDV farkı; iade payı hizmetlere girer
+  const v = 0.2, services = bd.commission + bd.shipping + bd.fixed + bd.returns;
+  const vat = (b.price - 100) * v / (1 + v) - services * v / (1 + v);
+  check("iade: net kâr formülü (KDV indirimi dahil)", Math.abs(bd.net - (b.price - 100 - services - vat)) < 0.02, { bd, vat });
+  check("iade: oran 0 iken fiyat değişmez", calcPrice(100, { ...cfg, returnRate: 0, returnCost: 180 }, 0.18).price === a.price);
 }
 
 if (fails) { console.log(`\n${fails} kural testi başarısız`); process.exit(1); }

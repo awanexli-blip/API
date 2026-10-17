@@ -19,6 +19,8 @@ export interface PricingConfig {
   commissionPlusVat?: boolean;   // komisyon oranı "+KDV" mi (fatura = oran x satış + KDV). Hepsiburada: evet
   shippingVatIncluded?: boolean; // kargo ücreti KDV dahil mi girildi (varsayılan evet). Hepsiburada tarifesi: hayır
   minNetProfit?: number;         // sipariş başı en az net kâr (TL). Ucuz üründe oran tek başına yetmez (kâr kuralları)
+  returnRate?: number;           // iade oranı (0.05 = siparişlerin %5'i iade)
+  returnCost?: number;           // iade başına maliyet (KDV dahil TL: iade kargosu, gidiş kargosu, paketleme/hasar payı)
 }
 
 export const defaultConfig: PricingConfig = {
@@ -53,10 +55,14 @@ export function roundUpPsych(x: number): number {
 }
 
 const vatOf = (cfg: PricingConfig) => cfg.vatRate ?? 0.2;
+// Sipariş başı beklenen iade gideri: iade oranı × iade başına maliyet (kargo faturası gibi KDV'li hizmet sayılır)
+export const returnsOf = (cfg: PricingConfig) => r2((cfg.returnRate ?? 0) * (cfg.returnCost ?? 0));
+const fixedOf = (cfg: PricingConfig) => cfg.fixedCost + returnsOf(cfg);
 const svatOf = (cfg: PricingConfig) => cfg.serviceVatRate ?? 0.2;
 
 export interface Breakdown {
   price: number; commission: number; shipping: number; fixed: number;
+  returns: number;  // beklenen iade gideri (oran × iade maliyeti)
   vatDue: number;   // devlete ödenecek KDV farkı (satış KDV'si - indirilecek KDV)
   net: number; rate: number;
 }
@@ -67,11 +73,11 @@ export function breakdown(price: number, cost: number, cfg: PricingConfig, commi
   // Tüm hizmet kalemleri KDV dahil tutara çevrilir (cebinden çıkan para)
   const shipping = r2((price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0) * (cfg.shippingVatIncluded === false ? 1 + sv : 1));
   const comm = price * commission * (cfg.commissionPlusVat ? 1 + sv : 1);
-  const services = comm + shipping + cfg.fixedCost;
+  const services = comm + shipping + fixedOf(cfg);
   const vatDue = (price - cost) * v / (1 + v) - services * sv / (1 + sv);
   const net = price - cost - services - vatDue;
   const exVat = price / (1 + v);
-  return { price, commission: r2(comm), shipping, fixed: cfg.fixedCost, vatDue: r2(vatDue), net: r2(net), rate: exVat > 0 ? net / exVat : 0 };
+  return { price, commission: r2(comm), shipping, fixed: cfg.fixedCost, returns: returnsOf(cfg), vatDue: r2(vatDue), net: r2(net), rate: exVat > 0 ? net / exVat : 0 };
 }
 
 export function profitOf(price: number, cost: number, cfg: PricingConfig, commission: number) {
@@ -87,7 +93,7 @@ function targetPrice(cost: number, cfg: PricingConfig, commission: number, withS
   const ship = withShipping ? cfg.shippingCost * (cfg.shippingVatIncluded === false ? 1 + sv : 1) : 0; // KDV dahil kargo
   // net = a(P - cost) - b(cP + kargo + sabit) = t·a·P  =>  P = (a·cost + b(kargo + sabit)) / (a(1 - t) - b·c)
   const den = a * (1 - cfg.targetProfitRate) - b * c;
-  return den > 0 ? (a * cost + b * (ship + cfg.fixedCost)) / den : Infinity;
+  return den > 0 ? (a * cost + b * (ship + fixedOf(cfg))) / den : Infinity;
 }
 
 // Net kârı tam N TL yapan fiyat: net = a(P - maliyet) - b(cP + kargo + sabit)  =>  P = (N + a·maliyet + b(kargo + sabit)) / (a - b·c)
@@ -98,7 +104,7 @@ function priceForNet(cost: number, cfg: PricingConfig, commission: number, withS
   const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);
   const ship = withShipping ? cfg.shippingCost * (cfg.shippingVatIncluded === false ? 1 + sv : 1) : 0;
   const den = a - b * c;
-  return den > 0 ? (n + a * cost + b * (ship + cfg.fixedCost)) / den : Infinity;
+  return den > 0 ? (n + a * cost + b * (ship + fixedOf(cfg))) / den : Infinity;
 }
 
 export function calcPrice(

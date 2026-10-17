@@ -66,6 +66,7 @@ export default function ProfitRules({ api, notify, marketplace }: Props) {
     const cfg: PricingConfig = {
       ...defaultConfig, commissionRate: Number(settings.commission_rate), targetProfitRate: Number(settings.target_profit_rate), shippingCost: Number(settings.shipping_cost),
       freeShippingThreshold: Number(settings.free_shipping_threshold), minMarkup: Number(settings.min_markup ?? 1.3), fixedCost: Number(settings.fixed_cost),
+      returnRate: Number(settings.return_rate ?? 0), returnCost: Number(settings.return_cost ?? 0), 
       minAcceptableProfitRate: Number(settings.min_acceptable_profit_rate), maxPrice: Number(settings.max_price), commissionPlusVat: settings.commission_plus_vat === true,
       shippingVatIncluded: settings.shipping_vat_included !== false,
     };
