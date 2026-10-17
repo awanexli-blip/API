@@ -57,7 +57,11 @@ export default function Settings({ api, notify, marketplace }: Props) {
   const byDesi = f.shipping_mode === "desi";
   if (byDesi) cfg.shippingCost = cargoPrice(simDesi, f.cargo_carrier || "hepsiJET");
   const label = marketplace === "trendyol" ? "Trendyol" : marketplace === "hepsiburada" ? "Hepsiburada" : marketplace;
-  const valid = Object.values(cfg).every((v) => Number.isFinite(v)) && cfg.commissionRate + cfg.targetProfitRate < 1;
+  // Yalnızca sayısal alanlar kontrol edilir (true/false ayarlar Number.isFinite'te hep geçersiz sayılıyordu)
+  const badFields = FIELDS.filter((x) => !Number.isFinite(num(x.key))).map((x) => x.label);
+  if (byDesi && !Number.isFinite(cfg.shippingCost)) badFields.push("Desi kargo tarifesi");
+  const sumOk = cfg.commissionRate + cfg.targetProfitRate < 1;
+  const valid = badFields.length === 0 && sumOk;
 
   async function save() {
     const body: Row = {};
@@ -142,7 +146,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
         </div>
         <div className="row" style={{ marginTop: 16 }}>
           <button className="btn primary" onClick={save} disabled={!valid}>Ayarları kaydet</button>
-          {!valid && <span className="muted">Değerleri kontrol et. Komisyon ve kâr toplamı %100'den küçük olmalı.</span>}
+          {!valid && <span className="muted">{badFields.length ? `Geçersiz veya boş: ${badFields.join(", ")}` : "Komisyon ve kâr toplamı %100'den küçük olmalı."}</span>}
         </div>
       </div>
 
