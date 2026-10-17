@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
     },
     body: JSON.stringify({ ref: "main", inputs: { mode, marketplace } }),
   });
+  if (res.status === 403 || res.status === 404)
+    return bad(`GitHub ${res.status}: GH_TOKEN bu repoya erişemiyor. Token'da "Repository access" içinde ${process.env.GH_REPO} seçili ve "Actions: Read and write" izni olmalı (süresi dolmuş da olabilir). Yeni token'ı Vercel'de GH_TOKEN'a yazıp Redeploy et.`);
   if (res.status !== 204) return bad(`GitHub ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return NextResponse.json({ ok: true });
 }
