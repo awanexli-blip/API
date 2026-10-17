@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateEan13, generateSku, issuesByPath, productSchema } from "@/lib/validation/product";
 import { readiness } from "@/lib/marketplace-readiness";
 import { tl, when, type Api, type Notify, type Row } from "./shared";
+import BrandInput from "./BrandInput";
 
 type Role = "viewer" | "editor" | "admin";
 const STATUS_TR: Record<string, string> = { draft: "Taslak", active: "Aktif", archived: "Arşiv" };
@@ -257,7 +258,6 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
     </div>
     <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
-      <datalist id="brands">{opts.brands.map((b) => <option key={b} value={b} />)}</datalist>
       <datalist id="cats">{opts.categories.map((c) => <option key={c.name} value={c.name}>{c.markets.length ? `✓ ${c.markets.join(", ")}` : ""}</option>)}</datalist>
       <datalist id="desi">{DESI.map((d) => <option key={d} value={d} />)}</datalist>
 
@@ -269,7 +269,10 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
           {err("title") ?? <small>{f.title.length} karakter · Trendyol en fazla 100, N11 en fazla 65</small>}
         </label>
         <div className="grid" style={{ marginTop: 12 }}>
-          {input("brand", "Marka", "Listeden seç veya yaz", "text", "brands")}
+          <label className="f">Marka
+            <BrandInput api={api} value={f.brand} onChange={(v) => set("brand", v)} local={opts.brands} placeholder={opts.defaultBrand} />
+            {err("brand") ?? <small>Yazdıkça pazaryerlerindeki markalar listelenir</small>}
+          </label>
           <label className="f">Kategori
             <input type="text" list="cats" value={f.category} placeholder="Yazmaya başla, listeden seç" onChange={(e) => set("category", e.target.value)} />
             {err("category") ?? <small>{!f.category ? "Kategoriler sekmesindeki eşleşmelerden seç" : cat?.markets.length

@@ -7,6 +7,7 @@ import { useApi, type Notify } from "./_components/shared";
 import Overview from "./_components/Overview";
 import Settings from "./_components/Settings";
 import Categories from "./_components/Categories";
+import Brands from "./_components/Brands";
 import Overrides from "./_components/Overrides";
 import Upcoming, { UPCOMING } from "./_components/Upcoming";
 import Products from "./_components/Products";
@@ -17,10 +18,11 @@ const MARKETS: { id: string; label: string; live: boolean }[] = [
   ...UPCOMING.filter((u) => u.id !== "hepsiburada").map((u) => ({ id: u.id, label: u.label, live: false })),
 ];
 
-type Sub = "ozet" | "ayarlar" | "kategoriler" | "ozel";
+type Sub = "ozet" | "ayarlar" | "markalar" | "kategoriler" | "ozel";
 const SUBS: [Sub, string][] = [
   ["ozet", "Özet"],
   ["ayarlar", "Fiyat ayarları"],
+  ["markalar", "Markalar"],
   ["kategoriler", "Kategoriler"],
   ["ozel", "Ürün istisnaları"],
 ];
@@ -110,6 +112,7 @@ function Panel({ token, email }: { token: string; email: string }) {
           <div key={market}>
             {sub === "ozet" && <Overview {...props} />}
             {sub === "ayarlar" && <Settings {...props} />}
+            {sub === "markalar" && <Brands {...props} />}
             {sub === "kategoriler" && <Categories {...props} />}
             {sub === "ozel" && <Overrides {...props} />}
           </div>

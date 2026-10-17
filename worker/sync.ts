@@ -284,7 +284,11 @@ async function main() {
     const limit = Number(process.env.CREATE_LIMIT || 0);
     const batch = limit > 0 ? toCreate.slice(0, limit) : toCreate;
     if (batch.length < toCreate.length) summary.createLimited = `${toCreate.length} üründen ilk ${batch.length} tanesi açıldı (limit)`;
-    const r = await mp.createProducts(batch, { vatRate: Number(s.vat_rate), skip });
+    // Yeni ürün markası panelden (marketplace_settings.brand_name); boşsa adaptörün varsayılanı
+    const br = await db.from("marketplace_settings").select("brand_name").eq("marketplace", marketplaceId).maybeSingle();
+    const brandName = br.error ? undefined : br.data?.brand_name || undefined;
+    if (brandName) summary.brandUsed = brandName;
+    const r = await mp.createProducts(batch, { vatRate: Number(s.vat_rate), skip, brandName });
     summary.created += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
   }
 

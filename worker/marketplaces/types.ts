@@ -63,7 +63,7 @@ export interface Marketplace {
   commission(listingId: string | null, xmlCategory: string, panelRate: number | null, defaultRate: number): Commission;
   pushInventory(items: InventoryItem[]): Promise<BatchResult>;
   zeroStock(ids: string[]): Promise<BatchResult>;
-  createProducts(items: NewProduct[], ctx: { vatRate: number; skip: (why: string) => void }): Promise<BatchResult>;
+  createProducts(items: NewProduct[], ctx: { vatRate: number; skip: (why: string) => void; brandName?: string }): Promise<BatchResult>;
   /** İsteğe bağlı: desi tarifesine göre kargo ücreti (KDV durumu ayarlarda) */
   shippingCost?(desi: number, carrier?: string): number;
   /** İsteğe bağlı: gönderilen toplu isteklerin ürün bazlı sonucu */

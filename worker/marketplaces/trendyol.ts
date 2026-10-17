@@ -77,6 +77,8 @@ export function createTrendyol(): Marketplace {
     return out;
   };
   const totals: Record<string, number> = {};
+  // Mağazadaki marka dağılımı (panel Markalar sekmesi): varyant sayısı ve Trendyol'un kapattıkları
+  const brandStats = new Map<string, { n: number; closed: number }>();
   // Onay süreci: sistemin açtığı (OS13-) ürünlerin durumu ve ret nedenleri
   const approval = { pendingApproval: 0, rejected: 0, docNeeded: 0, reasons: new Map<string, number>(), samples: [] as string[] };
 
@@ -181,6 +183,8 @@ export function createTrendyol(): Marketplace {
           const barcode = String(v.barcode);
           const price = Number(v.price?.salePrice);
           const closed = !!(v.locked || v.archived || v.blacklisted);
+          const bn = String(c.brand?.name ?? (c.brand?.id != null ? `#${c.brand.id}` : "(markasız)"));
+          const bs = brandStats.get(bn) ?? { n: 0, closed: 0 }; bs.n++; if (closed) bs.closed++; brandStats.set(bn, bs);
           const comm = Number(v.commission);
           if (Number.isFinite(comm) && comm > 0) liveComm.set(barcode, comm > 1 ? comm / 100 : comm);
           out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), vatRate: Number(v.vatRate), status: closed ? "closed" : "active",
@@ -273,8 +277,9 @@ export function createTrendyol(): Marketplace {
       for (const p of items) {
         if (used.has(p.id)) { ctx.skip("aynı barkoda dönüşen ürün kodu"); continue; }
         used.add(p.id);
-        const bId = await brandId(BRAND_NAME);
-        if (!bId) { ctx.skip(`marka bulunamadı: ${BRAND_NAME}`); continue; }
+        const brand = ctx.brandName || BRAND_NAME; // panel (Markalar) > ortam değişkeni > Eco Lounge
+        const bId = await brandId(brand);
+        if (!bId) { ctx.skip(`marka Trendyol'da bulunamadı: ${brand}`); continue; }
         const cid = String(p.cat.category_id);
         const { attributes, missing } = await fillAttributes(p, cid);
         if (missing.length) { ctx.skip(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
@@ -330,6 +335,7 @@ export function createTrendyol(): Marketplace {
       const xmlPc = new Set(xml.map((r) => String(r.productCode ?? "").trim()).filter(Boolean));
       const stat = (f: (i: any) => string, S: Set<string>) => tgItems.filter((i) => f(i) && S.has(f(i))).length;
       return {
+        brands: Object.fromEntries([...brandStats].sort((a, b) => b[1].n - a[1].n).slice(0, 40)),
         listingTotals: { ...totals, approvedVariantsLoaded: tgItems.length, closed: tgItems.filter((i) => i.closed).length, liveCommission: liveComm.size },
         // Sistemin açtığı ürünler: onaylanan (approved listesinde OS13-), bekleyen, reddedilen + ret nedenleri
         newProductApproval: {
