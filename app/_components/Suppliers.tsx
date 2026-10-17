@@ -47,15 +47,15 @@ export default function Suppliers({ api, notify }: { api: Api; notify: Notify })
           Her tedarikçinin XML'i ürün veritabanına kendi kaynak adıyla (xml:kod) girer. "Gece" işaretliler her gece 05:40'ta kendiliğinden güncellenir.
           Pazaryerlerine gönderim veritabanından yapılacak (Faz 3-4); şu an Trendyol senkronu yalnızca BayilikXML'i kullanıyor.
         </p>
-        {list.length === 0 ? <p className="muted">Henüz tedarikçi yok.</p> : <div className="scroll"><table>
+        {list.length === 0 ? <p className="muted">Henüz tedarikçi yok.</p> : <div className="scroll"><table className="cards">
           <thead><tr><th>Tedarikçi</th><th className="n">Ürün</th><th>Son içe aktarma</th><th>Aktif</th><th>Gece</th><th /></tr></thead>
           <tbody>{list.map((s) => (
             <tr key={s.id}>
               <td><b>{s.name}</b> <span className="muted">({s.code})</span><br /><span className="muted" style={{ fontSize: 12 }}>{s.url_masked || "adres yok"}{s.sku_prefix ? ` · SKU öneki ${s.sku_prefix}` : ""}</span></td>
-              <td className="n">{Number(s.product_count).toLocaleString("tr-TR")}</td>
-              <td style={{ fontSize: 13 }}>{s.last_run_at ? <>{when(s.last_run_at)} <span className={`pill ${s.last_status === "ok" ? "ok" : s.last_status === "error" ? "error" : "partial"}`}>{STATUS_TR[s.last_status] ?? s.last_status}</span></> : <span className="muted">hiç</span>}</td>
-              <td><input type="checkbox" checked={s.active} onChange={() => toggle(s, "active")} /></td>
-              <td><input type="checkbox" checked={s.nightly} disabled={!s.active} onChange={() => toggle(s, "nightly")} /></td>
+              <td data-label="Ürün" className="n">{Number(s.product_count).toLocaleString("tr-TR")}</td>
+              <td data-label="Son içe aktarma" style={{ fontSize: 13 }}>{s.last_run_at ? <>{when(s.last_run_at)} <span className={`pill ${s.last_status === "ok" ? "ok" : s.last_status === "error" ? "error" : "partial"}`}>{STATUS_TR[s.last_status] ?? s.last_status}</span></> : <span className="muted">hiç</span>}</td>
+              <td data-label="Aktif"><input type="checkbox" checked={s.active} onChange={() => toggle(s, "active")} /></td>
+              <td data-label="Gece"><input type="checkbox" checked={s.nightly} disabled={!s.active} onChange={() => toggle(s, "nightly")} /></td>
               <td className="n"><div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
                 <button className="btn primary" disabled={!s.active || !s.has_url} onClick={() => run(s.code, s.name)}>İçe aktar</button>
                 <button className="btn" onClick={() => setD({ ...empty(), ...s, xml_url: "", item_path: s.item_path ?? "" })}>Düzenle</button>

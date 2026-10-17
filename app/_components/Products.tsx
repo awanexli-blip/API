@@ -5,9 +5,8 @@ import { generateEan13, generateSku, issuesByPath, productSchema } from "@/lib/v
 import { readiness } from "@/lib/marketplace-readiness";
 import { tl, when, type Api, type Notify, type Row } from "./shared";
 import BrandInput from "./BrandInput";
-import Import from "./Import";
-import Feeds from "./Feeds";
-import Suppliers from "./Suppliers";
+import Icon from "./Icon";
+import PricePreview from "./PricePreview";
 
 type Role = "viewer" | "editor" | "admin";
 const STATUS_TR: Record<string, string> = { draft: "Taslak", active: "Aktif", archived: "Arşiv" };
@@ -24,9 +23,9 @@ const slug = (s: string) => s.toLocaleUpperCase("tr").replace(/Ç/g, "C").replac
 type VariantForm = { id?: string; sku: string; barcode: string; attrs: string; stock: string; cost_price: string; reserved?: number };
 type Form = {
   id?: string; sku: string; title: string; description: string; brand: string; category: string;
-  vat_rate: string; desi: string; cost_price: string; currency: string; status: string; attrs: string; images: string[]; variants: VariantForm[];
+  vat_rate: string; desi: string; cost_price: string; currency: string; status: string; attrs: string; images: string[]; variants: VariantForm[]; source?: string;
 };
-type Options = { brands: string[]; defaultBrand: string; categories: { name: string; markets: string[]; names: Record<string, string> }[] };
+type Options = { brands: string[]; defaultBrand: string; sources?: { id: string; label: string }[]; categories: { name: string; markets: string[]; names: Record<string, string> }[] };
 const emptyVariant = (): VariantForm => ({ sku: "", barcode: "", attrs: "", stock: "", cost_price: "" });
 const emptyForm = (brand = ""): Form => ({ sku: "", title: "", description: "", brand, category: "", vat_rate: "20", desi: "1", cost_price: "", currency: "TRY", status: "active", attrs: "", images: [], variants: [emptyVariant()] });
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -36,7 +35,7 @@ function fromProduct(p: Row): Form {
   return {
     id: p.id, sku: p.sku, title: p.title, description: p.description ?? "", brand: p.brand ?? "", category: p.category ?? "",
     vat_rate: s(p.vat_rate), desi: s(p.desi), cost_price: s(p.cost_price), currency: p.currency ?? "TRY", status: p.status,
-    attrs: toText(p.attributes, "\n"), images: p.images ?? [],
+    attrs: toText(p.attributes, "\n"), images: p.images ?? [], source: p.source,
     variants: (p.variants ?? []).map((v: Row) => ({ id: v.id, sku: v.sku, barcode: v.barcode ?? "", attrs: toText(v.attributes), stock: s(v.stock), cost_price: s(v.cost_price), reserved: v.reserved })),
   };
 }
@@ -71,8 +70,6 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
   const [editing, setEditing] = useState<Form | null>(null);
   const [opts, setOpts] = useState<Options>({ brands: [], defaultBrand: "", categories: [] });
   const [key, setKey] = useState(0); // yeni formda bileşeni sıfırlamak için
-  const [view, setView] = useState<"liste" | "ice" | "tedarik" | "feed">("liste");
-  const [listKey, setListKey] = useState(0);
   useEffect(() => { api("/api/me").then((m) => setRole(m.role)).catch(() => {}); }, [api]);
   const loadOpts = useCallback(() => api("/api/products/options").then(setOpts).catch(() => {}), [api]);
   useEffect(() => { loadOpts(); }, [loadOpts]);
@@ -90,70 +87,114 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
 
   if (editing) return <Editor key={key} api={api} notify={notify} role={role} initial={editing} opts={opts}
     onClose={() => { setEditing(null); loadOpts(); }} onNew={() => { loadOpts(); open(); }} onCopy={copy} />;
-  const views: ["liste" | "ice" | "tedarik" | "feed", string, boolean][] = [["liste", "Ürün listesi", true], ["ice", "İçe aktar", canEdit], ["tedarik", "Tedarikçiler (XML)", role === "admin"], ["feed", "XML feed", role === "admin"]];
-  return (
-    <>
-      <div className="row" style={{ marginBottom: 12, gap: 6 }}>
-        {views.filter(([, , ok]) => ok).map(([k, label]) => <button key={k} className={`btn ${view === k ? "primary" : ""}`} onClick={() => setView(k)}>{label}</button>)}
-      </div>
-      {view === "liste" && <List key={listKey} api={api} notify={notify} canEdit={canEdit} onOpen={open} />}
-      {view === "ice" && <Import api={api} notify={notify} isAdmin={role === "admin"} onDone={() => { setListKey((k) => k + 1); loadOpts(); }} />}
-      {view === "tedarik" && <Suppliers api={api} notify={notify} />}
-      {view === "feed" && <Feeds api={api} notify={notify} />}
-    </>
-  );
+  return <List api={api} notify={notify} canEdit={canEdit} onOpen={open} opts={opts} />;
 }
 
-function List({ api, notify, canEdit, onOpen }: { api: Api; notify: Notify; canEdit: boolean; onOpen: (id?: string) => void }) {
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");
+function List({ api, notify, canEdit, onOpen, opts }: { api: Api; notify: Notify; canEdit: boolean; onOpen: (id?: string) => void; opts: Options }) {
+  // Filtreler bu oturumda hatırlanır (bölümler arası gidip gelince kaybolmasın)
+  const saved = (() => { try { return JSON.parse(sessionStorage.getItem("productFilters") ?? "{}"); } catch { return {}; } })();
+  const [q, setQ] = useState<string>(saved.q ?? "");
+  const [status, setStatus] = useState<string>(saved.status ?? "");
+  const [source, setSource] = useState<string>(saved.source ?? "");
+  const [stock, setStock] = useState<string>(saved.stock ?? "");
   const [page, setPage] = useState(0);
   const [res, setRes] = useState<{ rows: Row[]; total: number; size: number } | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState<{ kind: "brand" | "category"; value: string } | null>(null);
 
   const load = useCallback(async () => {
-    const p = new URLSearchParams({ page: String(page), size: "25", ...(q ? { q } : {}), ...(status ? { status } : {}) });
+    try { sessionStorage.setItem("productFilters", JSON.stringify({ q, status, source, stock })); } catch {}
+    const p = new URLSearchParams({ page: String(page), size: "25", ...(q ? { q } : {}), ...(status ? { status } : {}), ...(source ? { source } : {}), ...(stock ? { stock } : {}) });
     try { setRes(await api(`/api/products?${p}`)); } catch (e: any) { notify("err", e.message); }
-  }, [api, notify, page, q, status]);
+  }, [api, notify, page, q, status, source, stock]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
+  useEffect(() => { setSel(new Set()); }, [q, status, source, stock, page]);
   const pages = res ? Math.max(1, Math.ceil(res.total / res.size)) : 1;
+  const all = !!res?.rows.length && res.rows.every((r) => sel.has(r.id));
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const filtered = !!(q || status || source || stock);
+  const srcLabel = (s: string) => opts.sources?.find((x) => x.id === s)?.label ?? (s === "manual" ? "Elle" : s);
+
+  async function runBulk(patch: Record<string, string>, label: string) {
+    if (!confirm(`${sel.size} ürün için: ${label}. Devam edilsin mi?`)) return;
+    try { const r = await api("/api/products/bulk", { method: "POST", body: JSON.stringify({ ids: [...sel], ...patch }) }); notify("good", `${r.updated} ürün güncellendi (${label}).`); setSel(new Set()); setBulk(null); load(); }
+    catch (e: any) { notify("err", e.message); }
+  }
 
   return (
-    <div className="card">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>Ürünler {res ? <span className="muted">({res.total})</span> : null}</h2>
-        {canEdit && <button className="btn primary" onClick={() => onOpen()}>+ Yeni ürün</button>}
+    <>
+      <div className="card" style={{ padding: 14 }}>
+        <div className="row" style={{ gap: 10 }}>
+          <div style={{ position: "relative", flex: "1 1 240px" }}>
+            <span style={{ position: "absolute", left: 10, top: 9, color: "var(--muted)" }}><Icon name="search" size={16} /></span>
+            <input type="search" placeholder="Başlık veya SKU ara" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} style={{ paddingLeft: 34 }} />
+          </div>
+          <select value={source} onChange={(e) => { setSource(e.target.value); setPage(0); }} style={{ flex: "0 1 180px" }} aria-label="Kaynak">
+            <option value="">Tüm kaynaklar</option>{(opts.sources ?? []).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+          <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} style={{ flex: "0 1 150px" }} aria-label="Durum">
+            <option value="">Tüm durumlar</option><option value="active">Aktif</option><option value="draft">Taslak</option><option value="archived">Arşiv</option>
+          </select>
+          <select value={stock} onChange={(e) => { setStock(e.target.value); setPage(0); }} style={{ flex: "0 1 150px" }} aria-label="Stok">
+            <option value="">Tüm stoklar</option><option value="in">Stokta olan</option><option value="out">Stokta olmayan</option>
+          </select>
+          {filtered && <button className="btn ghost" onClick={() => { setQ(""); setStatus(""); setSource(""); setStock(""); setPage(0); }}>Temizle</button>}
+          {canEdit && <button className="btn primary" style={{ marginLeft: "auto" }} onClick={() => onOpen()}>+ Yeni ürün</button>}
+        </div>
       </div>
-      <div className="row" style={{ marginBottom: 12 }}>
-        <input type="text" placeholder="Başlık veya SKU ara" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} style={{ maxWidth: 320 }} />
-        <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} style={{ maxWidth: 160 }}>
-          <option value="">Tüm durumlar</option><option value="active">Aktif</option><option value="draft">Taslak</option><option value="archived">Arşiv</option>
-        </select>
-      </div>
-      {!res ? <p className="muted">Yükleniyor...</p> : res.rows.length === 0 ? (
-        <p className="muted">{q || status ? "Aramaya uyan ürün yok." : "Henüz ürün yok. \"Yeni ürün\" ile ekle (CSV/XML içe aktarma Faz 2'de)."}</p>
-      ) : (
-        <div className="scroll"><table>
-          <thead><tr><th /><th>SKU</th><th>Başlık</th><th className="n">Varyant</th><th className="n">Stok</th><th className="n">Maliyet</th><th>Durum</th><th>Güncelleme</th></tr></thead>
-          <tbody>{res.rows.map((p) => (
-            <tr key={p.id} onClick={() => onOpen(p.id)} style={{ cursor: "pointer" }}>
-              <td>{p.image ? <img src={p.image} alt="" width={36} height={36} style={{ objectFit: "cover", borderRadius: 4 }} /> : null}</td>
-              <td>{p.sku}</td>
-              <td>{p.title}<br /><span className="muted" style={{ fontSize: 12 }}>{[p.brand, p.category].filter(Boolean).join(" · ")}</span></td>
-              <td className="n">{p.variants}</td>
-              <td className="n">{p.stock}</td>
-              <td className="n">{p.cost_price == null ? "-" : tl(Number(p.cost_price))}</td>
-              <td><span className={`pill ${p.status === "active" ? "ok" : p.status === "archived" ? "error" : "partial"}`}>{STATUS_TR[p.status]}</span></td>
-              <td className="muted" style={{ fontSize: 13 }}>{when(p.updated_at)}</td>
-            </tr>
-          ))}</tbody>
-        </table></div>
-      )}
-      {pages > 1 && <div className="row" style={{ marginTop: 12 }}>
-        <button className="btn" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
-        <span className="muted">{page + 1} / {pages}</span>
-        <button className="btn" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>Sonraki</button>
+
+      {canEdit && sel.size > 0 && <div className="card" style={{ padding: 12, borderColor: "var(--accent)" }}>
+        <div className="row">
+          <b>{sel.size} ürün seçili</b>
+          <button className="btn" onClick={() => runBulk({ status: "active" }, "aktif yap")}>Aktif yap</button>
+          <button className="btn" onClick={() => runBulk({ status: "draft" }, "taslağa al")}>Taslağa al</button>
+          <button className="btn" onClick={() => runBulk({ status: "archived" }, "arşivle")}>Arşivle</button>
+          <button className="btn" onClick={() => setBulk({ kind: "brand", value: opts.defaultBrand })}>Marka değiştir</button>
+          <button className="btn" onClick={() => setBulk({ kind: "category", value: "" })}>Kategori değiştir</button>
+          <button className="btn ghost" onClick={() => setSel(new Set())}>Seçimi kaldır</button>
+        </div>
+        {bulk && <div className="row" style={{ marginTop: 10 }}>
+          <input type="text" list={bulk.kind === "category" ? "bulk-cats" : undefined} value={bulk.value} placeholder={bulk.kind === "brand" ? "Yeni marka" : "Yeni kategori"} onChange={(e) => setBulk({ ...bulk, value: e.target.value })} style={{ flex: "1 1 240px" }} />
+          <datalist id="bulk-cats">{opts.categories.map((c) => <option key={c.name} value={c.name} />)}</datalist>
+          <button className="btn primary" disabled={!bulk.value.trim()} onClick={() => runBulk({ [bulk.kind]: bulk.value.trim() }, `${bulk.kind === "brand" ? "marka" : "kategori"}: ${bulk.value.trim()}`)}>Uygula</button>
+          <button className="btn" onClick={() => setBulk(null)}>Vazgeç</button>
+        </div>}
+        <small className="muted">Bu işlem yalnızca ürün veritabanını değiştirir; pazaryerindeki açık ilanların markası değişmez.</small>
       </div>}
-    </div>
+
+      <div className="card">
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+          <span className="muted">{res ? `${res.total.toLocaleString("tr-TR")} ürün` : "Yükleniyor..."}</span>
+          {pages > 1 && <span className="muted" style={{ fontSize: 13 }}>Sayfa {page + 1} / {pages}</span>}
+        </div>
+        {!res ? <div><div className="skeleton" style={{ marginBottom: 10 }} /><div className="skeleton" style={{ width: "80%", marginBottom: 10 }} /><div className="skeleton" style={{ width: "60%" }} /></div> : res.rows.length === 0 ? (
+          <div className="empty"><Icon name="box" size={32} /><p>{filtered ? "Filtreye uyan ürün yok." : "Henüz ürün yok."}</p>{!filtered && canEdit && <p className="muted" style={{ fontSize: 13 }}>"+ Yeni ürün" ile ekle, "İçe aktar"dan dosya yükle veya "Tedarikçiler"den XML al.</p>}</div>
+        ) : (
+          <div className="scroll"><table className="cards">
+            <thead><tr>{canEdit && <th style={{ width: 32 }}><input type="checkbox" aria-label="Tümünü seç" checked={all} onChange={() => setSel(all ? new Set() : new Set(res.rows.map((r) => r.id)))} /></th>}<th /><th>Ürün</th><th>Kaynak</th><th className="n">Stok</th><th className="n">Maliyet</th><th>Durum</th><th>Güncelleme</th></tr></thead>
+            <tbody>{res.rows.map((p) => (
+              <tr key={p.id} onClick={() => onOpen(p.id)} style={{ cursor: "pointer" }}>
+                {canEdit && <td onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label="Seç" checked={sel.has(p.id)} onChange={() => toggle(p.id)} /></td>}
+                <td style={{ width: 52 }}>{p.image ? <img src={p.image} alt="" width={44} height={44} loading="lazy" style={{ objectFit: "cover", borderRadius: 8, display: "block" }} /> : <div style={{ width: 44, height: 44, borderRadius: 8, background: "var(--panel-2)", display: "grid", placeItems: "center", color: "var(--muted)" }}><Icon name="box" size={18} /></div>}</td>
+                <td data-label="Ürün"><b style={{ fontWeight: 600 }}>{p.title}</b><br /><span className="muted" style={{ fontSize: 12 }}>{p.sku}{p.brand ? ` · ${p.brand}` : ""}{p.category ? ` · ${String(p.category).slice(0, 60)}` : ""}</span>{p.variants > 1 && <span className="pill" style={{ marginLeft: 6 }}>{p.variants} seçenek</span>}</td>
+                <td data-label="Kaynak" style={{ fontSize: 13 }}>{srcLabel(p.source)}</td>
+                <td data-label="Stok" className="n" style={{ color: p.stock > 0 ? undefined : "var(--bad)" }}>{p.stock}</td>
+                <td data-label="Maliyet" className="n">{p.cost_price == null ? "-" : p.currency && p.currency !== "TRY" ? `${p.cost_price} ${p.currency}` : tl(Number(p.cost_price))}</td>
+                <td data-label="Durum"><span className={`pill ${p.status === "active" ? "ok" : p.status === "archived" ? "error" : "partial"}`}>{STATUS_TR[p.status]}</span></td>
+                <td data-label="Güncelleme" className="muted" style={{ fontSize: 13 }}>{when(p.updated_at)}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+        {pages > 1 && <div className="row" style={{ marginTop: 12, justifyContent: "center" }}>
+          <button className="btn" disabled={page === 0} onClick={() => setPage(0)}>«</button>
+          <button className="btn" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
+          <span className="muted">{page + 1} / {pages}</span>
+          <button className="btn" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>Sonraki</button>
+          <button className="btn" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)}>»</button>
+        </div>}
+      </div>
+    </>
   );
 }
 
@@ -376,6 +417,8 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
           </table></div>
         </>}
       </div>
+
+      {role === "admin" && <PricePreview api={api} cost={n(f.cost_price) ?? n(f.variants[0]?.cost_price ?? "")} currency={f.currency} vat={Number(f.vat_rate) || 20} category={f.category} brand={f.brand} source={f.source ?? "manual"} stock={f.variants.reduce((t, v) => t + (Number(v.stock) || 0), 0)} />}
 
       <div className="card">
         <h2>Pazaryerine hazır mı?</h2>

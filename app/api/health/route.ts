@@ -26,5 +26,6 @@ export async function GET(req: NextRequest) {
       checks.push({ name: "GitHub workflow erişimi", ok: false, detail: e.message });
     }
   }
-  return NextResponse.json({ ok: checks.every((c) => c.ok), checks });
+  const version = process.env.VERCEL_GIT_COMMIT_SHA ? `${process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 7)} (${process.env.VERCEL_GIT_COMMIT_MESSAGE?.split(String.fromCharCode(10))[0].slice(0, 60) ?? ""})` : null;
+  return NextResponse.json({ ok: checks.every((c) => c.ok), checks, version });
 }

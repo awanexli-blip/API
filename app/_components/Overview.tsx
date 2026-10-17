@@ -129,7 +129,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
         </div>
         {runs.length === 0 ? <p className="muted">Henüz çalıştırma yok.</p> : (
           <div className="scroll">
-            <table>
+            <table className="cards">
               <thead><tr><th>Zaman</th><th>Mod</th><th>Durum</th><th>Sonuç</th></tr></thead>
               <tbody>{runs.filter((r) => (r.marketplace ?? r.summary?.marketplace ?? "trendyol") === marketplace).map((r) => <RunRow key={r.id} r={r} />)}</tbody>
             </table>
@@ -147,10 +147,10 @@ function RunRow({ r }: { r: Row }) {
   const stale = r.status === "running" && Date.now() - new Date(r.started_at).getTime() > 3600_000;
   return (
     <tr>
-      <td>{when(r.started_at)}</td>
-      <td>{r.mode}{r.trigger === "schedule" ? " (zamanlı)" : ""}</td>
-      <td><span className={`pill ${stale ? "error" : r.status}`}>{stale ? "Yarıda kaldı" : statusTr[r.status] ?? r.status}</span></td>
-      <td>
+      <td data-label="Zaman">{when(r.started_at)}</td>
+      <td data-label="Mod">{r.mode}{r.trigger === "schedule" ? " (zamanlı)" : ""}</td>
+      <td data-label="Durum"><span className={`pill ${stale ? "error" : r.status}`}>{stale ? "Yarıda kaldı" : statusTr[r.status] ?? r.status}</span></td>
+      <td data-label="Sonuç">
         {r.error ? <span style={{ color: "var(--bad)" }}>{r.error}</span>
           : m.skippedRun ? <span className="muted">{m.skippedRun}</span>
           : m.xml != null ? (
