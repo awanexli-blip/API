@@ -46,6 +46,7 @@ export default function AmazonMatching({ api, notify }: Props) {
           Amazon'da yeni ürün açmak için gerçek barkod (GTIN) veya muafiyet gerekir. O zamana kadar ürünlerin Amazon'da zaten satılan <b>birebir aynısına</b> teklif verilir.
           1) Aday bul: sistem Amazon kataloğunda barkod veya başlıkla arar (Amazon'a hiçbir şey yazmaz). 2) Doğru ürünü onayla. 3) Onaylananları gönder.
           Farklı bir ürüne teklif hesabına uyarı getirebilir; emin olmadığını "Hiçbiri" ile geç.
+          <b> Markalı ürünler (Philips, Grundig, Apple...):</b> yalnızca elindeki ürün gerçekten o markanın orijinal ürünüyse onayla; Amazon fatura/yetki belgesi isteyebilir, değilse marka ihlali sayılır. Jenerik ("Genel") ürünler otomatik elenir: onlara teklif eklenemez.
         </p>
         <div className="kpis" style={{ marginBottom: 0 }}>
           <div className="kpi"><div className="label">Onaylı eşleşme</div><div className="value">{s.confirmed ?? 0}</div></div>
@@ -90,6 +91,7 @@ export default function AmazonMatching({ api, notify }: Props) {
                   {c.image ? <img src={c.image} alt="" width={64} height={64} style={{ objectFit: "contain", borderRadius: 6, background: "#fff", flex: "none" }} /> : <div style={{ width: 64, height: 64, borderRadius: 6, background: "var(--panel-2)", flex: "none" }} />}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{c.title || c.asin}</div>
+                    {c.brand && !String(v.title ?? "").toLocaleLowerCase("tr").includes(String(c.brand).toLocaleLowerCase("tr")) && <div style={{ fontSize: 12, color: "var(--warn)" }}>⚠ Bizim ürünün adında "{c.brand}" geçmiyor: aynı ürün olduğundan emin ol</div>}
                     <div className="muted" style={{ fontSize: 12 }}>{c.asin}{c.brand ? ` · ${c.brand}` : ""} · <a href={`https://www.amazon.com.tr/dp/${c.asin}`} target="_blank" rel="noreferrer">Amazon'da gör</a></div>
                     <div className="row" style={{ marginTop: 6 }}>
                       <button className="btn primary" style={{ minHeight: 30, padding: "2px 10px" }} onClick={() => decide(c.id, "confirmed")}>Bu ürün</button>

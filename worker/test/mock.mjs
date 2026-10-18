@@ -151,7 +151,7 @@ globalThis.fetch = async (url, init = {}) => {
     if (pth === "/catalog/2022-04-01/items") {
       log.amzCatalog = [...(log.amzCatalog ?? []), Object.fromEntries(u.searchParams)];
       if (u.searchParams.get("identifiers") === "8690000000012") return json({ items: [{ asin: "B0EANMATCH", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Eslesen Urun", brand: "Marka" }], images: [] }] });
-      if (u.searchParams.get("keywords")) return json({ items: [{ asin: "B0CAND1", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Aday 1" }] }, { asin: "B0CAND2", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Aday 2" }] }] });
+      if (u.searchParams.get("keywords")) return json({ items: [{ asin: "B0CAND1", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Aday 1", brand: "MarkaX" }] }, { asin: "B0CAND2", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Aday 2", brand: "MarkaY" }] }] });
       return json({ items: [] });
     }
     return json({ errors: [{ message: "bilinmeyen uç " + pth }] }, 404);

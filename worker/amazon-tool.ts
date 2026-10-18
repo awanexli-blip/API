@@ -6,6 +6,7 @@
 //   offer <SKU> <ASIN> <fiyat> <adet>   tek ürün teklif aç (var olan ASIN'e, yeni durumda)
 //   validate <SKU> <ASIN> <fiyat> <adet> teklifi Amazon'a göndermeden doğrula (VALIDATION_PREVIEW: alan bazında hatalar)
 //   item <SKU>                    ilanın Amazon'daki durumu ve sorunları
+//   delete <SKU> [SKU...]         ilanı Amazon'dan sil (gizli/eksik kalan SKU'ları temizlemek için)
 //   stock <SKU> <adet>            stok güncelle
 //   price <SKU> <fiyat>           fiyat güncelle (KDV dahil TL)
 //   feed <feedId>                 feed durumu ve sonuç raporu
@@ -51,6 +52,12 @@ try {
     const r = await c.sp(`/listings/2021-08-01/items/${encodeURIComponent(c.SELLER)}/${encodeURIComponent(sku)}?marketplaceIds=${c.MKT}&issueLocale=tr_TR&mode=VALIDATION_PREVIEW`, { method: "PUT", body: JSON.stringify(offerBody(c.MKT, { asin, price: Number(price), qty: Number(qty) })) });
     log(`Doğrulama: ${r.status}`, r.issues?.length ? r.issues : "sorun yok");
     if (r.status !== "VALID" && r.status !== "ACCEPTED") log("Özet", issuesText(r.issues));
+  } else if (cmd === "delete") {
+    need(1, "<SKU> [SKU...]");
+    for (const sku of args) {
+      try { const r = await c.sp(`/listings/2021-08-01/items/${encodeURIComponent(c.SELLER)}/${encodeURIComponent(sku)}?marketplaceIds=${c.MKT}`, { method: "DELETE" }); log(`${sku}: ${r.status ?? "silindi"}`, r.issues?.length ? r.issues : undefined); }
+      catch (e: any) { log(`${sku}: hata`, String(e?.message ?? e)); }
+    }
   } else if (cmd === "item") {
     need(1, "<SKU>");
     const r = await c.sp(`/listings/2021-08-01/items/${encodeURIComponent(c.SELLER)}/${encodeURIComponent(args[0])}?marketplaceIds=${c.MKT}&issueLocale=tr_TR&includedData=summaries,issues,offers,fulfillmentAvailability`);

@@ -77,15 +77,21 @@ export function amazonClient() {
     else if (q.title) { params.set("keywords", q.title.split(/\s+/).slice(0, 8).join(",")); params.set("pageSize", "5"); }
     else return [];
     const r = await sp(`/catalog/2022-04-01/items?${params}`);
-    return (r.items ?? []).slice(0, 5).map((it: any) => {
+    return (r.items ?? []).map((it: any) => {
       const s = (it.summaries ?? []).find((x: any) => x.marketplaceId === MKT) ?? it.summaries?.[0] ?? {};
       const img = (it.images ?? []).find((x: any) => x.marketplaceId === MKT)?.images?.[0]?.link ?? it.images?.[0]?.images?.[0]?.link;
       return { asin: String(it.asin), title: String(s.itemName ?? ""), brand: s.brand ?? s.brandName, image: img, by };
-    });
+    })
+      // Jenerik (markasız) ASIN'lere başka satıcı teklif ekleyemez (Amazon hata 5886): önerilmez
+      .filter((c: CatalogMatch) => !isGenericBrand(c.brand))
+      .slice(0, 5);
   }
 
   return { SELLER, MKT, sp, download, submitFeed, searchCatalog, accessToken };
 }
+
+// Amazon jenerik marka: bu ASIN'lere teklif eklenemez (5886 "kısıtlanmış jenerik ASIN"). Markasız (boş) ürünler de çoğunlukla jeneriktir.
+export const isGenericBrand = (b?: string | null) => !b || /^(generic|genel|jenerik|gen[eé]rico|markas[ıi]z|markas[ıi]z [üu]r[üu]n|unbranded|no brand|oem|none|yok)$/i.test(String(b).trim());
 
 // Satıcı belirteci biçimi (ör. A1B2C3D4E5F6G7)
 export const isMerchantToken = (v: string) => /^A[A-Z0-9]{7,19}$/.test(v);
