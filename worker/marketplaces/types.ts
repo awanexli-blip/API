@@ -11,6 +11,8 @@ export interface Listing {
   categoryName?: string;
   commission?: number;   // ilanın komisyon oranı (0-1)
   asin?: string;         // Amazon: ilanın bağlı olduğu ASIN
+  // Reddedilen ilan (Trendyol): ret türleri ve açıklamaları + düzeltme için mevcut içerik
+  reject?: { types: string[]; details: string[]; title?: string; description?: string; images?: string[]; categoryId?: string; categoryName?: string };
   // active: güncellenir · closed: pazaryeri kapatmış (kilitli/arşiv), dokunulmaz · pending: onay bekliyor/reddedildi, dokunulmaz ama yeniden açılmaz
   status?: "active" | "closed" | "pending";
 }
@@ -77,8 +79,11 @@ export interface Marketplace {
   listingKeyFor?(source: string, variant: { sku: string; barcode: string | null }): string;
   /** Amazon: barkoddan (EAN/GTIN) veya başlıktan katalog eşleşmesi */
   findCatalogMatches?(q: { ean?: string | null; title?: string }): Promise<CatalogMatch[]>;
+  /** İsteğe bağlı: reddedilen ürünleri düzeltip yeniden onaya gönder (Trendyol: unapproved-bulk-update) */
+  updateRejected?(items: RejectedUpdate[]): Promise<BatchResult>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */
   diagnostics?(xml: any[], linkedCount: number): Record<string, unknown>;
 }
 
 export interface CatalogMatch { asin: string; title: string; brand?: string; image?: string; by: "ean" | "keyword" }
+export interface RejectedUpdate { id: string; title?: string; description?: string; categoryId?: number; images?: string[] }

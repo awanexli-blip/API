@@ -7,7 +7,8 @@ const STATUS: Record<string, string> = { active: "live", closed: "closed", pendi
 
 export function listingRows(marketplace: string, listings: Listing[], now: string) {
   return listings.map((l) => ({
-    marketplace, listing_key: l.id, status: STATUS[l.status ?? "active"] ?? "live",
+    marketplace, listing_key: l.id, status: l.reject ? "rejected" : STATUS[l.status ?? "active"] ?? "live",
+    last_error: l.reject ? l.reject.details.join(" | ").slice(0, 1000) || l.reject.types.join(", ") : null,
     title: l.title?.slice(0, 300) || null,
     price: Number.isFinite(l.price) ? l.price : null,
     stock: Number.isFinite(l.quantity) ? Math.max(0, Math.floor(l.quantity)) : null,
@@ -29,7 +30,7 @@ export async function snapshotListings(db: any, marketplace: string, listings: L
   // Bu çalışmada görülmeyen ilanlar pazaryerinden kalkmış (yalnızca liste tam geldiyse)
   let gone = 0;
   if (rows.length > 0) {
-    const r = await db.from("marketplace_listings").update({ status: "gone", updated_at: now }).eq("marketplace", marketplace).lt("seen_at", now).in("status", ["live", "pending_approval", "closed"]).select("listing_key");
+    const r = await db.from("marketplace_listings").update({ status: "gone", updated_at: now }).eq("marketplace", marketplace).lt("seen_at", now).in("status", ["live", "pending_approval", "closed", "rejected"]).select("listing_key");
     gone = r.data?.length ?? 0;
   }
   const link = await db.rpc("listings_link", { mp: marketplace });

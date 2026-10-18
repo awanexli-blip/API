@@ -212,7 +212,15 @@ export function createTrendyol(): Marketplace {
           } else approval.pendingApproval++;
           if (p.docNeeded) approval.docNeeded++;
         }
-        out.set(String(p.barcode), { id: String(p.barcode), title: String(p.title ?? "").slice(0, 120), price: Number(p.salePrice), quantity: Number(p.quantity), status: "pending" });
+        const rejected = p.status === "rejected" ? {
+          types: (p.rejectReasonDetails ?? []).map((r: any) => String(r.rejectReason ?? "")).filter(Boolean),
+          details: (p.rejectReasonDetails ?? []).map((r: any) => String(r.rejectReasonDetail ?? r.rejectReason ?? "")).filter(Boolean),
+          title: p.title != null ? String(p.title) : undefined, description: p.description != null ? String(p.description) : undefined,
+          images: Array.isArray(p.images) ? p.images.map((i: any) => String(i?.url ?? i)).filter(Boolean) : undefined,
+          categoryId: p.categoryId != null ? String(p.categoryId) : p.category?.id != null ? String(p.category.id) : p.pimCategoryId != null ? String(p.pimCategoryId) : undefined,
+          categoryName: p.categoryName ?? p.category?.name,
+        } : undefined;
+        out.set(String(p.barcode), { id: String(p.barcode), title: String(p.title ?? "").slice(0, 120), price: Number(p.salePrice), quantity: Number(p.quantity), status: "pending", reject: rejected });
       });
       return [...out.values()];
     },
@@ -295,6 +303,26 @@ export function createTrendyol(): Marketplace {
       for (const batch of chunk(payloads, 100)) {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/v2/products`, { method: "POST", body: JSON.stringify({ items: batch }) });
+          res.ok += batch.length; res.batchIds.push(r.batchRequestId);
+        } catch (e: any) { res.failed++; console.error(e.message); }
+        await sleep(500);
+      }
+      return res;
+    },
+
+    // Reddedilen ürünü düzeltip yeniden onaya gönder: yalnızca değişen alanlar (gönderilmeyen alan korunur)
+    async updateRejected(items) {
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      const body = items.map((p) => ({
+        barcode: p.id,
+        ...(p.title ? { title: p.title.slice(0, 100) } : {}),
+        ...(p.description ? { description: p.description.slice(0, 30000) } : {}),
+        ...(p.categoryId ? { categoryId: p.categoryId } : {}),
+        ...(p.images?.length ? { images: p.images.slice(0, 8).map((url) => ({ url })) } : {}),
+      }));
+      for (const batch of chunk(body, 500)) {
+        try {
+          const r = await tg(`/product/sellers/${SELLER_ID}/products/unapproved-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
         } catch (e: any) { res.failed++; console.error(e.message); }
         await sleep(500);

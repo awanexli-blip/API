@@ -12,6 +12,7 @@ import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./prici
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings } from "./core/listings.ts";
 import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
+import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
@@ -87,6 +88,11 @@ async function main() {
   const pr = await db.from("pricing_rules").select("*");
   const rules = rulesFor((pr.error ? [] : pr.data ?? []) as PricingRule[], marketplaceId);
   const ruleCount: Record<string, number> = {};
+
+  // Yasaklı kelimeler (Trendyol ret nedenlerinden öğrenilir + elle eklenenler); yeni ürün metinleri gönderimden önce temizlenir
+  const bw = await db.from("banned_words").select("word").eq("marketplace", marketplaceId);
+  const banned: string[] = (bw.error ? [] : bw.data ?? []).map((r: any) => r.word);
+  const clean = (title: string, description: string) => (marketplaceId === "trendyol" ? cleanForMarketplace(title, description, banned) : { title, description });
 
   const raw = await loadXml();
   {
@@ -238,7 +244,8 @@ async function main() {
     if (!images.length) { skip("resim yok"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: resim yok`); continue; }
     if (hidden || qty < minStock) { skip("stok yok / gizli"); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: stok yok`); continue; }
     const newId = mp.newListingId(r);
-    toCreate.push({ id: newId, name, detail: String(r.detail ?? ""), brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat: { ...(cat ?? {}), category_id: categoryId }, price, qty, refs: pred?.refs });
+    const cl = clean(name, String(r.detail ?? ""));
+    toCreate.push({ id: newId, name: cl.title, detail: cl.description, brand: String(r.brand ?? ""), productCode: String(r.productCode ?? barcode), desi: num(r.desi) || 1, images, cat: { ...(cat ?? {}), category_id: categoryId }, price, qty, refs: pred?.refs });
     csv.push(`${newId};${q(name)};${q(category)};${r.price};${price};${sellerPays ? "evet" : "hayir"};${net.toFixed(2)};${(rateOut * 100).toFixed(1)};YENI${cat?.category_id ? "" : guess}`);
   }
 
@@ -272,7 +279,39 @@ async function main() {
   }
 
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
-  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, skip, defaultVatRate: Number(s.vat_rate ?? 20) };
+  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean };
+
+  // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında; sistemin açtığı OS13- ürünler)
+  if ((doUpdate || mode === "create") && mp.updateRejected) {
+    const rejected = listings.filter((l) => l.reject && l.id.startsWith("OS13-"));
+    if (rejected.length) {
+      const fx2 = await db.from("listing_fixes").select("*").eq("marketplace", marketplaceId).in("listing_key", rejected.map((l) => l.id));
+      const rows = new Map<string, FixRow>((fx2.error ? [] : fx2.data ?? []).map((r: any) => [r.listing_key, r]));
+      const xmlBy = new Map<string, any>(raw.map((r) => [mp.newListingId(r), r]));
+      const updates: any[] = [], upserts: any[] = [], newWords = new Set<string>();
+      const stat: Record<string, number> = {};
+      const nowIso = new Date().toISOString();
+      for (const l of rejected) {
+        const row = rows.get(l.id);
+        const x = xmlBy.get(l.id);
+        const plan = planFix(l, row, { banned, xmlTitle: x ? String(x.name ?? "") : undefined, xmlDetail: x ? String(x.detail ?? "") : undefined });
+        stat[plan.action] = (stat[plan.action] ?? 0) + 1;
+        if ("banned" in plan) for (const w of plan.banned) newWords.add(w);
+        const base = { marketplace: marketplaceId, listing_key: l.id, types: l.reject!.types, details: l.reject!.details.join(" | ").slice(0, 2000), updated_at: nowIso };
+        if (plan.action === "resubmit") {
+          updates.push(plan.update);
+          upserts.push({ ...base, status: "resubmitted", attempts: (row?.attempts ?? 0) + (plan.fromUser ? 0 : 1), note: plan.note, last_attempt_at: nowIso, proposed: row?.proposed ?? {} });
+        } else if (plan.action === "needs_user") {
+          upserts.push({ ...base, status: "needs_user", attempts: row?.attempts ?? 0, note: plan.note, last_attempt_at: row?.last_attempt_at ?? null, proposed: row?.proposed ?? {} });
+        }
+      }
+      if (newWords.size) await db.from("banned_words").upsert([...newWords].map((word) => ({ marketplace: marketplaceId, word, source: "ret" })), { onConflict: "marketplace,word", ignoreDuplicates: true });
+      let sent = 0;
+      if (updates.length) { const r = await mp.updateRejected(updates); sent = r.ok; summary.batchIds.push(...r.batchIds); if (r.failed) summary.failedBatches += r.failed; }
+      if (upserts.length) for (const part of chunk(upserts, 500)) await db.from("listing_fixes").upsert(part, { onConflict: "marketplace,listing_key" });
+      summary.rejectFixes = { rejected: rejected.length, ...stat, resubmitted: sent, newBannedWords: [...newWords] };
+    }
+  }
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
   summary.dbProducts = dbInv.stats;
   if (doUpdate) toUpdate.push(...dbInv.items);

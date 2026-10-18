@@ -39,7 +39,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("preview: onay bekleyen yeniden açılmıyor", line("OS13-BEKLEYEN").includes("onay bekliyor"));
   check("preview: yeni ürün (Türkçe karakter atıldı)", line("OS13-YEN-1").includes("YENI"));
   check("preview: aynı başlık engeli", line("BX12").includes("aynı başlık"));
-  check("onay: bekleyen ve reddedilen sayıldı", s.newProductApproval?.pendingApproval === 1 && s.newProductApproval?.rejected === 1 && s.newProductApproval?.topReasons?.["Görsel uygun değil"] === 1, JSON.stringify(s.newProductApproval));
+  check("onay: bekleyen ve reddedilen sayıldı", s.newProductApproval?.pendingApproval === 1 && s.newProductApproval?.rejected === 4 && s.newProductApproval?.topReasons?.["Görsel uygun değil"] === 1, JSON.stringify(s.newProductApproval));
   check("preview: create sayısı (filtre öncesi)", s.create === 4, String(s.create));
 }
 
@@ -255,8 +255,22 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("KDV hariç: fiyat yükseldi (maliyet x1,2)", b > a * 1.12, JSON.stringify({ dahil: a, haric: b }));
 }
 
+// 9j) Reddedilen ürün düzeltme: marka eki ve yasaklı kelime otomatik düzeltilip yeniden onaya gönderilir; kategori kullanıcıya
+{
+  const { calls, s } = run("update", { MOCK_BULK: "50" });
+  const upd = calls.trendyolWrites.filter((w) => w.path.endsWith("/products/unapproved-bulk-update")).flatMap((w) => w.body.items);
+  const m = upd.find((i) => i.barcode === "OS13-MARKA"), y = upd.find((i) => i.barcode === "OS13-YASAK");
+  check("ret: marka eki silinip gönderildi", m?.title === "Ahsap Gokkusagi Kule" && m?.description === "ahsap kule", JSON.stringify(m));
+  check("ret: yasaklı kelime silinip gönderildi", y?.title === "Ahsap Oyuncak", JSON.stringify(y));
+  check("ret: kategori hatası gönderilmedi (kullanıcıya)", !upd.some((i) => i.barcode === "OS13-KAT") && calls.fixes?.some((f) => f.listing_key === "OS13-KAT" && f.status === "needs_user"), JSON.stringify(calls.fixes));
+  check("ret: yasaklı kelime listeye eklendi", calls.bannedWords?.some((w) => w.word === "redka"), JSON.stringify(calls.bannedWords));
+  check("ret: özet", s.rejectFixes?.resubmitted === 2, JSON.stringify(s.rejectFixes));
+  const p = run("preview", { MOCK_BULK: "50" });
+  check("ret: önizlemede gönderim yok", !p.calls.trendyolWrites.some((w) => w.path.endsWith("unapproved-bulk-update")));
+}
+
 // 10) birim testleri
-for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts"]) {
+for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
 }

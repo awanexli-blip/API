@@ -26,6 +26,9 @@ const approved = [
 for (let i = 0; i < N_BULK; i++) approved.push(content(`BULK-${i}`, `Toplu ${i}`, 99));
 const unapproved = [
   { barcode: "OS13-BEKLEYEN", title: "Bekleyen Urun", salePrice: 70, quantity: 3, status: "pendingApproval" },
+  { barcode: "OS13-MARKA", title: "Ahsap Gokkusagi Kule -Birlik", description: "Birlik ahsap kule", salePrice: 70, quantity: 3, status: "rejected", rejectReasonDetails: [{ rejectReason: "Hatalı Marka Bilgisi", rejectReasonDetail: "Ürünün seçilen markası ile görsel, başlık veya açıklama kısmında belirtilen marka bilgileri birbiriyle uyuşmamaktadır." }] },
+  { barcode: "OS13-YASAK", title: "Redka Ahsap Oyuncak", salePrice: 70, quantity: 3, status: "rejected", rejectReasonDetails: [{ rejectReason: "Yasaklı Kelime", rejectReasonDetail: 'Ürün ismi ya da açıklamasında; "Redka" yasaklı kelimesi kullanılmıştır.' }] },
+  { barcode: "OS13-KAT", title: "Yanlis Kategori", salePrice: 70, quantity: 3, status: "rejected", rejectReasonDetails: [{ rejectReason: "Kategori Bilgisi Eksik veya Yanlış", rejectReasonDetail: "kategori arasında tutarsızlık" }] },
   { barcode: "OS13-RED", title: "Reddedilen Urun", salePrice: 70, quantity: 3, status: "rejected", rejectReasonDetails: [{ rejectReason: "Görsel uygun değil", rejectReasonDetail: "Görselde logo var" }] },
 ];
 
@@ -116,6 +119,8 @@ globalThis.fetch = async (url, init = {}) => {
     if (t === "create_failures" && method === "POST") log.createFailures = body;
     if (t === "marketplace_listings" && method === "POST") { log.listings = (log.listings ?? 0) + body.length; log.listingRows = [...(log.listingRows ?? []), ...body.filter((r) => r.variant_id)]; }
     if (t === "job_claim" && method === "POST") { const wantsSend = (body?.kinds ?? []).some((k) => k.startsWith("send_products")); const first = wantsSend && !log.claimed; if (wantsSend) log.claimed = true; return json(process.env.MOCK_SEND === "1" && first ? [{ id: 77, type: "send_products:trendyol", marketplace: "trendyol", payload: { product_ids: ["p1", "p2", "p3"] }, attempts: 1 }] : []); }
+    if (t === "banned_words" && method === "POST") log.bannedWords = body;
+    if (t === "listing_fixes" && method === "POST") log.fixes = [...(log.fixes ?? []), ...body];
     if (t === "job_finish" && method === "POST") { log.jobFinish = [...(log.jobFinish ?? []), body]; return json(null); }
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });

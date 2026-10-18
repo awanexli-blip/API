@@ -2,6 +2,10 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-18 (13) — Amazon gönderim düzeltmeleri, Trendyol ret düzeltme
+- Amazon: `AMAZON_SELLER_ID`'ye Client Secret girilmişti ("Invalid parameters" nedeni); düzeltildi, `validate` VALID. Satıcı belirteci biçim kontrolü, hata metinlerinde kimlik gizleme; sızan değer DB'den temizlendi, secret yenilemesi önerildi. Teklifler Listings Items API ile tek tek (alan bazlı hata), `audience: ALL`; test aracına `validate`, `item`.
+- Trendyol yeni ürün onayı: 165 onaylı, 37 ret (12 yasaklı kelime, 22 hatalı marka, 19 kategori). **Ret düzeltme**: adaptör ret ayrıntılarını (tür, açıklama, başlık, açıklama, görsel, kategori) okur, ilan tablosunda `rejected` + neden; `worker/core/rejections.ts` (yasaklı kelime çıkarımı/silme, başlık sonu " -Marka" eki, plan: otomatik en fazla 2 deneme, 6 saat bekleme, kategori/görsel kullanıcıya); `unapproved-bulk-update` ile yeniden onay; `banned_words`, `listing_fixes`, `store_categories` (migration 018). Yeni ürün metinleri gönderimden önce temizlenir (XML ve panel gönderimi). Panel: Trendyol → **Reddedilenler** (düzelt: başlık/açıklama/kategori/görsel, vazgeç, sisteme bırak; yasaklı kelime listesi). Testler: birim 16 + mock 6.
+
 ## 2026-10-18 (12) — Amazon canlı bağlantı, toplu eşleştirme
 - Kullanıcı SP-API geliştirici profilini (Private Solution Provider; roller: Product Listing, Pricing, Inventory and Order Tracking, Selling Partner Insights) gönderdi, onaylandı, Production uygulaması + self-authorization; GitHub Secrets girildi. `amazon-tool ping`: **✓ Amazon Türkiye hesabı bağlı** (canlı doğrulandı).
 - Güvenlik formu için `docs/GUVENLIK_OLAY_PLANI.md` (roller, 6 ayda bir gözden geçirme, 24 saatte security@amazon.com).

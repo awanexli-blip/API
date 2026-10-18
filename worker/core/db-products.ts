@@ -12,6 +12,7 @@ export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
   minStock: number; policy: string; catMap: Map<string, any>; existing: Set<string>; lsBy: Map<string, Listing>; lsTitles: Set<string>;
   linked: Set<string>; predict: ((title: string, xmlCategory: string) => any) | null; skip: (why: string) => void; defaultVatRate: number;
+  clean?: (title: string, description: string) => { title: string; description: string }; // yasaklı kelime / marka eki temizliği
 };
 
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
@@ -126,7 +127,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const pr = priceFor(ctx, p, v, null, avail);
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
-            id: key, name: p.title, detail: p.description || p.title, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
+            ...(() => { const c = ctx.clean ? ctx.clean(p.title, p.description || p.title) : { title: p.title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
+            id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
             refs: pred?.refs, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
