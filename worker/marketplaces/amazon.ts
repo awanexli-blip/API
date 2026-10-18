@@ -17,7 +17,9 @@ export function amazonClient() {
   const CLIENT_ID = env("AMAZON_LWA_CLIENT_ID");
   const CLIENT_SECRET = env("AMAZON_LWA_CLIENT_SECRET");
   const REFRESH = env("AMAZON_REFRESH_TOKEN");
-  const SELLER = env("AMAZON_SELLER_ID");
+  const SELLER = env("AMAZON_SELLER_ID").trim();
+  // Satıcı belirteci (Merchant Token) "A" ile başlar, 8-20 harf/rakam. "amzn1." ile başlıyorsa yanlış alana Client ID/Secret girilmiştir.
+  if (!isMerchantToken(SELLER)) throw new Error("AMAZON_SELLER_ID yanlış: Satıcı Belirteci (Merchant Token, A ile başlayan 8-20 harf/rakam) olmalı. Seller Central → Ayarlar → Hesap Bilgileri → Satıcı Belirteci. (Client ID / Client Secret / Refresh token buraya girilmez)");
   const BASE = process.env.AMAZON_ENDPOINT || "https://sellingpartnerapi-eu.amazon.com";
   const TOKEN_URL = process.env.AMAZON_TOKEN_URL || "https://api.amazon.com/auth/o2/token";
   const MKT = process.env.AMAZON_MARKETPLACE_ID || AMAZON_TR;
@@ -41,7 +43,11 @@ export function amazonClient() {
       const res = await fetch(`${BASE}${path}`, { ...init, headers: { "x-amz-access-token": await accessToken(), "Content-Type": "application/json", Accept: "application/json", ...(init?.headers ?? {}) } });
       const text = await res.text();
       if ((res.status === 429 || res.status >= 500) && attempt < 5) { await sleep(GAP_MS * (attempt + 1) ** 2); continue; }
-      if (!res.ok) throw new Error(`Amazon ${res.status} ${path.split("?")[0]}: ${text.slice(0, 500)}`);
+      // Hata metnine satıcı kimliği yazılmaz (yol yerine kısaltılmış uç)
+      if (!res.ok) {
+        const where = path.split("?")[0].split(SELLER).join("<satici>").replace(/\/items\/[^/]+\/[^/]+$/, "/items/<satici>/<sku>");
+        throw new Error(`Amazon ${res.status} ${where}: ${text.replace(/amzn1\.[A-Za-z0-9.\-]+/g, "<gizli>").slice(0, 500)}`);
+      }
       return text ? JSON.parse(text) : {};
     }
   }
@@ -80,6 +86,9 @@ export function amazonClient() {
 
   return { SELLER, MKT, sp, download, submitFeed, searchCatalog, accessToken };
 }
+
+// Satıcı belirteci biçimi (ör. A1B2C3D4E5F6G7)
+export const isMerchantToken = (v: string) => /^A[A-Z0-9]{7,19}$/.test(v);
 
 // Gerçek GTIN mi? (rakam, 8/12/13/14 hane, sağlama toplamı; "2" ile başlayan mağaza içi kodlar hariç)
 export function isRealGtin(code: string | null | undefined): boolean {

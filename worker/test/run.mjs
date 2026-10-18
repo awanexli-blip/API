@@ -216,13 +216,13 @@ function run(mode, env = {}, marketplace = "trendyol") {
 
 // 9h) Amazon: giriş, ilan raporu, stok/fiyat feed'i, ASIN eşleşmesiyle teklif
 {
-  const AMZ = { AMAZON_LWA_CLIENT_ID: "c", AMAZON_LWA_CLIENT_SECRET: "s", AMAZON_REFRESH_TOKEN: "amz-refresh", AMAZON_SELLER_ID: "SELLER1", AMAZON_POLL_MS: "1", AMAZON_GAP_MS: "1", MOCK_BULK: "50" };
+  const AMZ = { AMAZON_LWA_CLIENT_ID: "c", AMAZON_LWA_CLIENT_SECRET: "s", AMAZON_REFRESH_TOKEN: "amz-refresh", AMAZON_SELLER_ID: "A1TESTSELLER9", AMAZON_POLL_MS: "1", AMAZON_GAP_MS: "1", MOCK_BULK: "50" };
   const { calls, s, status } = run("update", { ...AMZ, MOCK_ZERO: "1" }, "amazon");
   check("amazon: çalışma tamam", status === "ok" || status === "partial", status);
   check("amazon: ilan raporu okundu (Incomplete hariç güncellenir)", s.listings === 3 && s.matched >= 1, JSON.stringify({ l: s.listings, m: s.matched }));
   const msgs = (calls.amzFeeds ?? []).flatMap((f) => f.messages);
   const aaa = msgs.find((m) => m.sku === "AAA");
-  check("amazon: feed başlığı", calls.amzFeeds?.[0]?.header?.sellerId === "SELLER1" && calls.amzFeeds[0].header.version === "2.0", JSON.stringify(calls.amzFeeds?.[0]?.header));
+  check("amazon: feed başlığı", calls.amzFeeds?.[0]?.header?.sellerId === "A1TESTSELLER9" && calls.amzFeeds[0].header.version === "2.0", JSON.stringify(calls.amzFeeds?.[0]?.header));
   check("amazon: AAA stok+fiyat PATCH", aaa?.operationType === "PATCH" && aaa.patches.some((p) => p.path === "/attributes/fulfillment_availability" && p.value[0].quantity === 10) && aaa.patches.some((p) => p.path === "/attributes/purchasable_offer" && p.value[0].currency === "TRY" && p.value[0].marketplace_id === "A33AVAJ2PDY3EV"), JSON.stringify(aaa));
   check("amazon: eşleşme %50 altındayken toplu sıfırlama yapılmadı (güvenlik)", !msgs.some((m) => m.sku === "ORPHAN-AMZ") && !!s.zeroMissingSkipped, JSON.stringify({ skus: msgs.map((m) => m.sku), z: s.zeroMissingSkipped }));
   check("amazon: eksik (Incomplete) ilana dokunulmadı", !msgs.some((m) => m.sku === "EKSIK"));
@@ -241,6 +241,9 @@ function run(mode, env = {}, marketplace = "trendyol") {
   let badMsg = "";
   { const dir = mkdtempSync(join(tmpdir(), "synctest-")); try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, sync, "preview", "amazon"], { cwd: dir, env: { ...envBase, ...AMZ, AMAZON_REFRESH_TOKEN: "yanlis" }, stdio: "pipe" }); } catch (e) { badMsg = String(e.stderr ?? ""); } try { badMsg += JSON.stringify(JSON.parse(readFileSync(join(dir, "calls.json"), "utf8")).run ?? {}); } catch {} }
   check("amazon: yanlış token anlaşılır hatayla durur", /LWA/.test(badMsg), badMsg.slice(0, 200));
+  let sellerMsg = "";
+  { const dir = mkdtempSync(join(tmpdir(), "synctest-")); try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, sync, "preview", "amazon"], { cwd: dir, env: { ...envBase, ...AMZ, AMAZON_SELLER_ID: "amzn1.oa2-cs.v1.abc123" }, stdio: "pipe" }); } catch (e) { sellerMsg = String(e.stderr ?? ""); } }
+  check("amazon: yanlış satıcı kimliği (Client Secret girilmiş) anlaşılır hata", /AMAZON_SELLER_ID yanlış/.test(sellerMsg) && !/abc123/.test(sellerMsg.split("AMAZON_SELLER_ID")[1] ?? ""), sellerMsg.slice(0, 200));
 }
 
 // 9i) Tedarikçi fiyatı KDV hariç: maliyete ürünün KDV'si eklenir, fiyat yükselir
