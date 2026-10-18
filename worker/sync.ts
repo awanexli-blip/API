@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings } from "./core/listings.ts";
-import { dbInventory, processSendJobs, type DbCtx } from "./core/db-products.ts";
+import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
@@ -273,6 +273,8 @@ async function main() {
   summary.dbProducts = dbInv.stats;
   if (doUpdate) toUpdate.push(...dbInv.items);
   summary.update = toUpdate.length;
+  // Katalog eşleştirme kuyruğu (Amazon; yalnızca okuma, her modda)
+  if (mp.findCatalogMatches) summary.matchJobs = await processMatchJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => ({ error: String(e?.message ?? e) }));
   // Paneldeki "Pazaryerine gönder" kuyruğu (yalnızca yazma modlarında)
   let sendRes: Awaited<ReturnType<typeof processSendJobs>> | null = null;
   if (doUpdate || mode === "create") {

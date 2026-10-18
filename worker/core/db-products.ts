@@ -159,3 +159,42 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
   }
   return out;
 }
+
+// Toplu katalog eşleştirme (Amazon): jobs "match_products:<pazaryeri>" { product_ids }.
+// Pazaryerine yazmaz (yalnızca katalog araması): önizleme modunda da çalışır. EAN ile tek sonuç otomatik onaylanır, diğerleri aday.
+export async function processMatchJobs(ctx: DbCtx, worker: string): Promise<{ jobs: number; searched: number; auto: number; suggested: number; none: number }> {
+  const out = { jobs: 0, searched: 0, auto: 0, suggested: 0, none: 0 };
+  if (!ctx.mp.findCatalogMatches) return out;
+  const { data: jobs, error } = await ctx.db.rpc("job_claim", { worker, kinds: [`match_products:${ctx.marketplaceId}`], max_n: 3 });
+  if (error || !jobs?.length) return out;
+  for (const job of jobs as any[]) {
+    out.jobs++;
+    try {
+      const ids: string[] = (job.payload?.product_ids ?? []).slice(0, 300);
+      const { data: products, error: pe } = await ctx.db.from("products").select("id, title, product_variants(id, barcode)").in("id", ids);
+      if (pe) throw new Error(pe.message);
+      const vids = (products ?? []).flatMap((p: any) => (p.product_variants ?? []).map((v: any) => v.id));
+      // Zaten onaylı / aday bulunmuş varyantlar tekrar aranmaz
+      const known = new Set<string>();
+      if (vids.length) {
+        const { data } = await ctx.db.from("marketplace_matches").select("variant_id").eq("marketplace", ctx.marketplaceId).in("variant_id", vids).neq("status", "rejected");
+        for (const r of data ?? []) known.add(r.variant_id);
+      }
+      const now = new Date().toISOString();
+      for (const p of products ?? []) for (const v of p.product_variants ?? []) {
+        if (known.has(v.id)) continue;
+        out.searched++;
+        const byEan = isRealGtin(v.barcode) ? await ctx.mp.findCatalogMatches!({ ean: v.barcode }).catch(() => []) : [];
+        const cands = byEan.length ? byEan : await ctx.mp.findCatalogMatches!({ title: p.title }).catch(() => []);
+        if (!cands.length) { out.none++; continue; }
+        const auto = byEan.length === 1;
+        auto ? out.auto++ : out.suggested++;
+        await ctx.db.from("marketplace_matches").upsert(cands.map((c) => ({ marketplace: ctx.marketplaceId, variant_id: v.id, product_id: p.id, external_id: c.asin, title: c.title?.slice(0, 300), brand: c.brand ?? null, image: c.image ?? null, matched_by: c.by, status: auto ? "confirmed" : "suggested", decided_by: auto ? "otomatik (EAN)" : null, updated_at: now })), { onConflict: "marketplace,variant_id,external_id" });
+      }
+      await ctx.db.rpc("job_finish", { job_id: job.id, ok: true, res: { ...out }, err: null });
+    } catch (e: any) {
+      await ctx.db.rpc("job_finish", { job_id: job.id, ok: false, res: null, err: String(e?.message ?? e) });
+    }
+  }
+  return out;
+}

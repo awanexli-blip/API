@@ -115,7 +115,7 @@ globalThis.fetch = async (url, init = {}) => {
     if (t === "unmapped_categories" && method === "POST") log.unmapped = body;
     if (t === "create_failures" && method === "POST") log.createFailures = body;
     if (t === "marketplace_listings" && method === "POST") { log.listings = (log.listings ?? 0) + body.length; log.listingRows = [...(log.listingRows ?? []), ...body.filter((r) => r.variant_id)]; }
-    if (t === "job_claim" && method === "POST") { const first = !log.claimed; log.claimed = true; return json(process.env.MOCK_SEND === "1" && first ? [{ id: 77, type: "send_products:trendyol", marketplace: "trendyol", payload: { product_ids: ["p1", "p2", "p3"] }, attempts: 1 }] : []); }
+    if (t === "job_claim" && method === "POST") { const wantsSend = (body?.kinds ?? []).some((k) => k.startsWith("send_products")); const first = wantsSend && !log.claimed; if (wantsSend) log.claimed = true; return json(process.env.MOCK_SEND === "1" && first ? [{ id: 77, type: "send_products:trendyol", marketplace: "trendyol", payload: { product_ids: ["p1", "p2", "p3"] }, attempts: 1 }] : []); }
     if (t === "job_finish" && method === "POST") { log.jobFinish = [...(log.jobFinish ?? []), body]; return json(null); }
     if (t === "sync_runs" && method === "PATCH") log.run = body;
     return new Response(null, { status: 204 });
