@@ -221,6 +221,8 @@ async function main() {
       continue;
     }
 
+    // Kategori gerektirmeyen pazaryeri (Amazon): yeni ürün XML'den açılmaz, panelde eşleştirme + gönderim ile
+    if (mp.requiresCategory === false) { skip(`yeni ürün: ${mp.label}'a eşleştirme ekranından gönderilir`); continue; }
     // Yeni ürün: önce aynı başlıklı ürün mağazada var mı (çoklama riski)
     if (lsTitles.has(normTitle(name))) { skip(`${mp.label}'da aynı başlık var (çoklama riski)`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: aynı başlık ${mp.label}'da var`); continue; }
     // kategori eşleşmesi, resim ve stok şart

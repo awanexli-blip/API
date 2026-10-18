@@ -136,6 +136,13 @@ globalThis.fetch = async (url, init = {}) => {
     if (pth === "/feeds/2021-06-30/feeds" && method === "POST") { const id = "F" + ((log.amzFeedN = (log.amzFeedN ?? 0) + 1)); log.amzFeedCreate = [...(log.amzFeedCreate ?? []), { id, ...body }]; return json({ feedId: id }); }
     if (/^\/feeds\/2021-06-30\/feeds\/F\d+$/.test(pth)) return json({ processingStatus: "DONE", resultFeedDocumentId: "RES-" + pth.split("/").pop() });
     if (/^\/feeds\/2021-06-30\/documents\/RES-F\d+$/.test(pth)) return json({ url: "https://amz-docs.local/" + pth.split("/").pop() });
+    if (/^\/listings\/2021-08-01\/items\/SELLER1\/[^/]+$/.test(pth) && method === "PUT") {
+      const sku = decodeURIComponent(pth.split("/").pop());
+      log.amzPuts = [...(log.amzPuts ?? []), { sku, query: Object.fromEntries(u.searchParams), body }];
+      const asin = body?.attributes?.merchant_suggested_asin?.[0]?.value;
+      if (asin === "B0BAD") return json({ sku, status: "INVALID", issues: [{ code: "90244", message: "Marka onayı gerekli", severity: "ERROR", attributeNames: ["merchant_suggested_asin"] }] });
+      return json({ sku, status: "ACCEPTED", submissionId: "S1", issues: [] });
+    }
     if (pth === "/catalog/2022-04-01/items") {
       log.amzCatalog = [...(log.amzCatalog ?? []), Object.fromEntries(u.searchParams)];
       if (u.searchParams.get("identifiers") === "8690000000012") return json({ items: [{ asin: "B0EANMATCH", summaries: [{ marketplaceId: "A33AVAJ2PDY3EV", itemName: "Eslesen Urun", brand: "Marka" }], images: [] }] });

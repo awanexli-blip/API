@@ -4,12 +4,14 @@
 //   search <EAN | kelimeler>      katalogda ara (EAN 8/12/13/14 hane ise barkodla, değilse kelimeyle)
 //   listings                      mağazadaki ilanlar (rapor; ilk 20 satır + toplam)
 //   offer <SKU> <ASIN> <fiyat> <adet>   tek ürün teklif aç (var olan ASIN'e, yeni durumda)
+//   validate <SKU> <ASIN> <fiyat> <adet> teklifi Amazon'a göndermeden doğrula (VALIDATION_PREVIEW: alan bazında hatalar)
+//   item <SKU>                    ilanın Amazon'daki durumu ve sorunları
 //   stock <SKU> <adet>            stok güncelle
 //   price <SKU> <fiyat>           fiyat güncelle (KDV dahil TL)
 //   feed <feedId>                 feed durumu ve sonuç raporu
 // Ortam: AMAZON_LWA_CLIENT_ID, AMAZON_LWA_CLIENT_SECRET, AMAZON_REFRESH_TOKEN, AMAZON_SELLER_ID
 import { writeFileSync } from "node:fs";
-import { amazonClient, createAmazon } from "./marketplaces/amazon.ts";
+import { amazonClient, createAmazon, issuesText, offerBody } from "./marketplaces/amazon.ts";
 
 const [cmd = "ping", ...args] = process.argv.slice(2);
 const out: any = { command: cmd, args, at: new Date().toISOString() };
@@ -42,8 +44,17 @@ try {
     need(4, "<SKU> <ASIN> <fiyat> <adet>");
     const [sku, asin, price, qty] = args;
     const r = await mp.createProducts([{ id: sku, asin, price: Number(price), qty: Number(qty), name: sku, detail: "", brand: "", productCode: sku, desi: 1, images: [], cat: {} }], { vatRate: 20, skip: (w) => log("Atlandı", w) });
-    log("Feed gönderildi", r);
-    if (r.batchIds[0]) log("Sonuç", await mp.checkBatches!(r.batchIds));
+    log(r.ok ? "✓ Teklif kabul edildi (Amazon işliyor; birkaç dakika sonra 'item' ile bak)" : "✗ Teklif reddedildi", r.failedItems?.length ? r.failedItems : r);
+  } else if (cmd === "validate") {
+    need(4, "<SKU> <ASIN> <fiyat> <adet>");
+    const [sku, asin, price, qty] = args;
+    const r = await c.sp(`/listings/2021-08-01/items/${encodeURIComponent(c.SELLER)}/${encodeURIComponent(sku)}?marketplaceIds=${c.MKT}&issueLocale=tr_TR&mode=VALIDATION_PREVIEW`, { method: "PUT", body: JSON.stringify(offerBody(c.MKT, { asin, price: Number(price), qty: Number(qty) })) });
+    log(`Doğrulama: ${r.status}`, r.issues?.length ? r.issues : "sorun yok");
+    if (r.status !== "VALID" && r.status !== "ACCEPTED") log("Özet", issuesText(r.issues));
+  } else if (cmd === "item") {
+    need(1, "<SKU>");
+    const r = await c.sp(`/listings/2021-08-01/items/${encodeURIComponent(c.SELLER)}/${encodeURIComponent(args[0])}?marketplaceIds=${c.MKT}&issueLocale=tr_TR&includedData=summaries,issues,offers,fulfillmentAvailability`);
+    log("İlan", r);
   } else if (cmd === "stock") {
     need(2, "<SKU> <adet>");
     const r = await mp.pushInventory([{ id: args[0], quantity: Number(args[1]), price: null }]); // price: null = fiyata dokunma

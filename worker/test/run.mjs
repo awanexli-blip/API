@@ -229,9 +229,10 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("amazon: feed sonucu ürün bazında hata", s.batchCheck?.failedItems >= 1, JSON.stringify(s.batchCheck));
   // gönderim: EAN ile tek eşleşme -> teklif; iç barkod -> adaylar, onay bekler
   const g = run("update", { ...AMZ, MOCK_SEND: "1" }, "amazon");
-  const offers = (g.calls.amzFeeds ?? []).flatMap((f) => f.messages).filter((m) => m.operationType === "UPDATE");
+  const offers = (g.calls.amzPuts ?? []).map((x) => ({ sku: x.sku, ...x.body, query: x.query }));
   const o = offers.find((m) => m.sku === "TD-1");
-  check("amazon: EAN eşleşmesiyle teklif (LISTING_OFFER_ONLY)", o?.requirements === "LISTING_OFFER_ONLY" && o.attributes.merchant_suggested_asin[0].value === "B0EANMATCH" && o.attributes.condition_type[0].value === "new_new", JSON.stringify(offers));
+  check("amazon: EAN eşleşmesiyle teklif (Listings API, LISTING_OFFER_ONLY)", o?.requirements === "LISTING_OFFER_ONLY" && o.productType === "PRODUCT" && o.attributes.merchant_suggested_asin[0].value === "B0EANMATCH" && o.attributes.condition_type[0].value === "new_new" && o.query.marketplaceIds === "A33AVAJ2PDY3EV", JSON.stringify(offers));
+  check("amazon: fiyatta audience ALL", o?.attributes.purchasable_offer[0].audience === "ALL" && o.attributes.purchasable_offer[0].currency === "TRY", JSON.stringify(o?.attributes?.purchasable_offer));
   check("amazon: iç barkodlu ürün gönderilmedi (aday onayı bekler)", !offers.some((m) => m.sku === "TD-2"));
   const rows = Object.fromEntries((g.calls.listingRows ?? []).map((r) => [r.listing_key, r]));
   check("amazon: ilan durumları", rows["TD-1"]?.status === "sent" && rows["TD-2"]?.status === "error" && /onay bekliyor/.test(rows["TD-2"]?.last_error ?? ""), JSON.stringify(rows));

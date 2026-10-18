@@ -8,10 +8,10 @@ on:
       command:
         description: "Komut"
         type: choice
-        options: [ping, search, listings, offer, stock, price, feed]
+        options: [ping, search, listings, validate, offer, item, stock, price, feed]
         default: ping
       args:
-        description: "Argümanlar (search: 8690000000000 veya kelimeler · offer: SKU ASIN fiyat adet · stock: SKU adet · price: SKU fiyat · feed: feedId)"
+        description: "Argümanlar (search: 8690000000000 veya kelimeler · validate/offer: SKU ASIN fiyat adet · item: SKU · stock: SKU adet · price: SKU fiyat · feed: feedId)"
         default: ""
 
 jobs:

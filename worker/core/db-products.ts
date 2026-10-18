@@ -142,6 +142,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const skipped: string[] = [];
         const r = await ctx.mp.createProducts(items, { vatRate: ctx.defaultVatRate, skip: (why) => skipped.push(why), brandName: brand || undefined });
         sentInJob += r.ok; failedBatches += r.failed; out.batchIds.push(...r.batchIds);
+        for (const f of r.failedItems ?? []) { const row = rows.find((x) => x.listing_key === f.id && x.status === "sent"); if (row) { row.status = "error"; row.last_error = f.reason; out.errors++; } }
         // Adaptörün gönderemediği ürünler (ör. zorunlu özellik doldurulamadı): ilan "error"
         // Hiçbiri gönderilemediyse grubun ilanları "error"; kısmi hatalar toplu sonuç kontrolünde ürün bazında işaretlenir
         if (r.ok === 0) { const ids = new Set(items.map((i) => i.id)); for (const row of rows) if (row.status === "sent" && ids.has(row.listing_key)) { row.status = "error"; row.last_error = (skipped[0] ?? "Pazaryeri isteği başarısız").slice(0, 500); } }

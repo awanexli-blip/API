@@ -48,6 +48,7 @@ export interface BatchResult {
   ok: number;           // başarılı gönderilen ürün sayısı
   failed: number;       // başarısız toplu istek sayısı
   batchIds: string[];
+  failedItems?: { id: string; reason: string }[]; // anında reddedilen ürünler (ör. Amazon Listings API doğrulaması)
 }
 
 export interface Commission { rate: number; source: string }

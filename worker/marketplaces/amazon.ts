@@ -107,7 +107,19 @@ export function parseListingsReport(tsv: string): Listing[] {
   });
 }
 
-const price = (MKT: string, value: number) => [{ marketplace_id: MKT, currency: "TRY", our_price: [{ schedule: [{ value_with_tax: Math.round(value * 100) / 100 }] }] }];
+const price = (MKT: string, value: number) => [{ marketplace_id: MKT, audience: "ALL", currency: "TRY", our_price: [{ schedule: [{ value_with_tax: Math.round(value * 100) / 100 }] }] }];
+// Var olan ASIN'e teklif (LISTING_OFFER_ONLY) gövdesi
+export const offerBody = (MKT: string, p: { asin: string; price: number; qty: number }) => ({
+  productType: "PRODUCT", requirements: "LISTING_OFFER_ONLY",
+  attributes: {
+    condition_type: [{ value: "new_new", marketplace_id: MKT }],
+    merchant_suggested_asin: [{ value: p.asin, marketplace_id: MKT }],
+    purchasable_offer: price(MKT, p.price),
+    fulfillment_availability: qty(p.qty),
+  },
+});
+// Listings API yanıtındaki hatalar -> okunur metin
+export const issuesText = (issues: any[] = []) => issues.filter((i) => i.severity === "ERROR").map((i) => `${i.code ?? ""} ${i.message ?? ""}${i.attributeNames?.length ? ` [${i.attributeNames.join(", ")}]` : ""}`.trim()).join(" | ");
 const qty = (n: number) => [{ fulfillment_channel_code: "DEFAULT", quantity: Math.max(0, Math.floor(n)) }];
 
 export function createAmazon(): Marketplace {
@@ -178,17 +190,18 @@ export function createAmazon(): Marketplace {
 
     // Yalnızca var olan Amazon ürününe teklif (ASIN gerekli). GTIN muafiyeti gelince yeni ürün açma eklenecek.
     async createProducts(items: NewProduct[], ctx): Promise<BatchResult> {
-      const ok = items.filter((p) => p.asin);
-      for (const p of items) if (!p.asin) ctx.skip("Amazon: ASIN eşleşmesi yok (GTIN muafiyeti olmadan yeni ürün açılamaz)");
-      return sendMessages(ok.map((p) => ({
-        sku: p.id, operationType: "UPDATE", productType: "PRODUCT", requirements: "LISTING_OFFER_ONLY",
-        attributes: {
-          condition_type: [{ value: "new_new", marketplace_id: c.MKT }],
-          merchant_suggested_asin: [{ value: p.asin, marketplace_id: c.MKT }],
-          purchasable_offer: price(c.MKT, p.price),
-          fulfillment_availability: qty(p.qty),
-        },
-      })));
+      // Toplu feed hata ayrıntısı vermiyor ("Invalid parameters"); Listings Items API anında ve alan bazında hata döndürür
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [], failedItems: [] };
+      for (const p of items) {
+        if (!p.asin) { ctx.skip("Amazon: ASIN eşleşmesi yok (GTIN muafiyeti olmadan yeni ürün açılamaz)"); res.failedItems!.push({ id: p.id, reason: "ASIN eşleşmesi yok" }); continue; }
+        try {
+          const r = await c.sp(`/listings/2021-08-01/items/${encodeURIComponent(c.SELLER)}/${encodeURIComponent(p.id)}?marketplaceIds=${c.MKT}&issueLocale=tr_TR`, { method: "PUT", body: JSON.stringify(offerBody(c.MKT, { asin: p.asin, price: p.price, qty: p.qty })) });
+          if (r.status === "ACCEPTED") res.ok++;
+          else { res.failedItems!.push({ id: p.id, reason: (issuesText(r.issues) || `Amazon: ${r.status ?? "reddedildi"}`).slice(0, 500) }); }
+        } catch (e: any) { res.failedItems!.push({ id: p.id, reason: String(e?.message ?? e).slice(0, 500) }); }
+        await sleep(GAP_MS / 4); // Listings API: saniyede ~5 istek
+      }
+      return res;
     },
 
     // Feed sonuçları: işlenince sonuç dokümanındaki ERROR kayıtları ürün bazında
