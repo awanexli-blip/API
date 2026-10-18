@@ -26,10 +26,10 @@ const NUM: Record<string, [number, number, boolean]> = {
 };
 // Boş bırakılabilen (null) sayısal alanlar
 const OPTIONAL = ["squeeze_min_net"];
-const BOOL = ["auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
+const BOOL = ["xml_price_includes_vat", "auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
 const POLICIES = ["keep", "floor", "formula", "smart"];
 // Yalnızca ortak (settings) tablosunda olanlar
-const BASE_ONLY = ["min_markup", "vat_rate", "fx_usd", "fx_eur", "update_prices"];
+const BASE_ONLY = ["xml_price_includes_vat", "min_markup", "vat_rate", "fx_usd", "fx_eur", "update_prices"];
 // Yalnızca marketplace_settings tablosunda olanlar
 const MP_ONLY = ["shipping_mode", "cargo_carrier", "default_desi", "shipping_vat_included", "enabled"];
 
@@ -95,6 +95,8 @@ export async function PUT(req: NextRequest) {
     const { error } = await db.from("marketplace_settings").upsert({ marketplace: mp, ...patch, updated_at: now });
     if (error) return bad(error.message);
   }
+  // Tedarikçi KDV durumu ürün veritabanı içe aktarmasında da aynı olsun (BayilikXML tedarikçi kaydı)
+  if ("xml_price_includes_vat" in patch) await db.from("suppliers").update({ price_includes_vat: !!patch.xml_price_includes_vat }).eq("code", "bayilik");
   const r = await read(mp);
   if (r.error) return bad(r.error);
   return NextResponse.json(r.data);

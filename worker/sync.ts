@@ -144,7 +144,7 @@ async function main() {
     if (!barcode) { skip("barkod yok"); continue; }
 
     const rate = fx[currency];
-    const cost = num(r.price) * (rate || 0);
+    let cost = num(r.price) * (rate || 0); // tedarikçi fiyatı (KDV durumu aşağıda, ürünün KDV oranı belli olunca)
     const cat = catMap.get(category);
     const listingId = mp.findListing(r, existing);
     const ov = ovMap.get(barcode) ?? (listingId ? ovMap.get(listingId) : undefined);
@@ -161,6 +161,8 @@ async function main() {
     const lsVat = listingId ? Number(lsBy.get(listingId)?.vatRate) : NaN;
     const vatRate = lsVat > 0 ? lsVat / 100 : cat?.vat_rate != null ? Number(cat.vat_rate) / 100 : defaultVat;
     vatCount[String(Math.round(vatRate * 100))] = (vatCount[String(Math.round(vatRate * 100))] ?? 0) + 1;
+    // Tedarikçi (XML) fiyatı KDV hariçse: gerçek alış maliyeti = fiyat × (1 + KDV). Formül maliyeti KDV dahil bekler.
+    if (s.xml_price_includes_vat === false) cost = cost * (1 + vatRate);
     const desi = Math.max(1, Math.ceil(num(r.desi) || defaultDesi));
     const base: PricingConfig = { ...cfg, vatRate, ...(byDesi ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };
     const { cfg: pcfg, applied } = rules.length ? applyRules(base, rules, { cost, supplier: "bayilik", category, brand: String(r.brand ?? ""), stock: num(r.quantity) }) : { cfg: base, applied: [] as string[] };

@@ -27,6 +27,7 @@ const FIELDS: Field[] = [
   { key: "fx_eur", label: "EUR kuru (TL)", kind: "num", hint: "XML'de döviz EUR ise gerekli", advanced: true },
 ];
 const BOOLS: [string, string][] = [
+  ["xml_price_includes_vat", "Tedarikçi (BayilikXML) fiyatları KDV dahil (kapalıysa fiyata %20/%10 KDV eklenerek maliyet hesaplanır)"],
   ["auto_create", "Yeni ürünleri de otomatik aç (kapalıysa sadece mevcutlar güncellenir)"],
   ["zero_missing", "XML'den kalkan ürünlerin stoğunu sıfırla"],
 ];

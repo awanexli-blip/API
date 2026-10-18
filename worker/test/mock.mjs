@@ -55,7 +55,7 @@ for (let i = 0; i < N_BULK; i++) xmlRows[xmlRows.length - N_BULK + i].barcode = 
 const esc = (v) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const xml = "<?xml version='1.0'?><products>" + xmlRows.map((r) => "<product>" + Object.entries(r).map(([k, v]) => `<${k}>${esc(v)}</${k}>`).join("") + "</product>").join("") + "</products>";
 
-const settings = { id: 1, commission_rate: 0.18, target_profit_rate: 0.15, shipping_cost: 90, free_shipping_threshold: 300, min_markup: 1.3, fixed_cost: 0, min_acceptable_profit_rate: 0.08, max_price: Number(process.env.MOCK_MAX_PRICE ?? 10000), min_stock: 3, vat_rate: 20, fx_usd: 35, fx_eur: 40, auto_sync: true, auto_create: true, update_prices: true, zero_missing: process.env.MOCK_ZERO === "1", existing_price_policy: process.env.MOCK_POLICY ?? "floor" };
+const settings = { id: 1, commission_rate: 0.18, target_profit_rate: 0.15, shipping_cost: 90, free_shipping_threshold: 300, min_markup: 1.3, fixed_cost: 0, min_acceptable_profit_rate: 0.08, max_price: Number(process.env.MOCK_MAX_PRICE ?? 10000), min_stock: 3, vat_rate: 20, fx_usd: 35, fx_eur: 40, auto_sync: true, auto_create: true, update_prices: true, zero_missing: process.env.MOCK_ZERO === "1", existing_price_policy: process.env.MOCK_POLICY ?? "floor", xml_price_includes_vat: process.env.MOCK_XML_EXVAT !== "1" };
 const catMap = [
   { xml_category: "Cat1", category_id: 1, commission_rate: 0.2, vat_rate: null, attributes: [] },
   { xml_category: "Cat3", category_id: 3, commission_rate: null, vat_rate: 10, attributes: [] },

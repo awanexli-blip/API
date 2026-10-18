@@ -242,6 +242,15 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("amazon: yanlış token anlaşılır hatayla durur", /LWA/.test(badMsg), badMsg.slice(0, 200));
 }
 
+// 9i) Tedarikçi fiyatı KDV hariç: maliyete ürünün KDV'si eklenir, fiyat yükselir
+{
+  const inc = run("update", { MOCK_BULK: "50", MOCK_POLICY: "formula" });
+  const exc = run("update", { MOCK_BULK: "50", MOCK_POLICY: "formula", MOCK_XML_EXVAT: "1" });
+  const price = (r, b) => r.calls.trendyolWrites.flatMap((w) => w.body.items ?? []).find((i) => i.barcode === b)?.salePrice;
+  const a = price(inc, "ÖS13-AAA"), b = price(exc, "ÖS13-AAA");
+  check("KDV hariç: fiyat yükseldi (maliyet x1,2)", b > a * 1.12, JSON.stringify({ dahil: a, haric: b }));
+}
+
 // 10) birim testleri
 for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
