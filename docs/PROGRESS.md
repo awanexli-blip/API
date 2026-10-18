@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-18 (12) — Amazon canlı bağlantı, toplu eşleştirme
+- Kullanıcı SP-API geliştirici profilini (Private Solution Provider; roller: Product Listing, Pricing, Inventory and Order Tracking, Selling Partner Insights) gönderdi, onaylandı, Production uygulaması + self-authorization; GitHub Secrets girildi. `amazon-tool ping`: **✓ Amazon Türkiye hesabı bağlı** (canlı doğrulandı).
+- Güvenlik formu için `docs/GUVENLIK_OLAY_PLANI.md` (roller, 6 ayda bir gözden geçirme, 24 saatte security@amazon.com).
+- 299,90 sıkıştırması: `squeeze_min_net` (migration 015), canlıda 15 TL (K onayı). Maliyet ~218 TL'ye kadar 299,90'a döner; smart politika ile kademeli (%10/çalışma).
+- Amazon ayarı: komisyon %15 + KDV (`commission_plus_vat`; kaynaklar: komisyon kargo dahil toplamdan, +%20 KDV). Gerçek oranlar onay sonrası Product Fees API ile alınacak.
+- Toplu eşleştirme: `processMatchJobs` (jobs `match_products:amazon`, yalnızca okuma, önizleme modunda da), `/api/matches/queue` (aday bul: `products_unmatched`; gönder: `products_confirmed_unlisted` → `/api/listings/send`), panel Amazon → **Eşleştirme** sekmesi (sayılar, aday bul/şimdi ara, Bu ürün/Değil/Hiçbiri, onaylananları gönder). Migration 016.
+- **Ürün veritabanı hâlâ boş (0)**: BayilikXML içe aktarması hiç çalıştırılmadı (K). Marka listesi çekildi (807.201).
+
 ## 2026-10-17 (11) — Amazon TR
 - Kullanıcı: Amazon TR hesabı var, SP-API yok; marka/GTIN durumunu bilmiyor; yöntem "ikisi birden" (önce var olan ürünlere teklif, muafiyet gelince kendi ürünleri).
 - `worker/marketplaces/amazon.ts`: LWA token, SP-API EU, TR `A33AVAJ2PDY3EV` (resmi dokümandan doğrulandı), `GET_MERCHANT_LISTINGS_ALL_DATA` raporu (TSV, GZIP), `JSON_LISTINGS_FEED` PATCH (stok/fiyat, 5000 mesaj/feed), teklif `UPDATE` + `LISTING_OFFER_ONLY` + `merchant_suggested_asin`, feed sonuç raporundan ürün bazlı hata, katalog araması (EAN / kelime). `isRealGtin` ("2" ile başlayan iç kodlar hariç). Bekleme süreleri `AMAZON_POLL_MS/GAP_MS` (test).
