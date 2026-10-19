@@ -26,7 +26,7 @@ export async function snapshotListings(db: any, marketplace: string, listings: L
   const now = new Date().toISOString();
   const rows = listingRows(marketplace, listings, now, calc);
   let written = 0;
-  for (const part of chunk(rows, 1000)) {
+  for (const part of chunk(rows, 500)) {
     const { error } = await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
     if (error) return { error: error.message, written };
     written += part.length;
