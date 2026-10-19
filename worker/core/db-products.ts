@@ -2,7 +2,7 @@
 //  - dbInventory: veritabanından gönderilmiş ilanların stok/fiyatı (BayilikXML ilanları XML akışında kalır)
 //  - processSendJobs: paneldeki "Pazaryerine gönder" kuyruğu (jobs: send_products:<pazaryeri>) -> ürün açma
 // Ürün pazaryerinde doğrulanmadan "yayında" sayılmaz: gönderilen ilan "sent" olur, durumu sonraki senkronlarda pazaryerinden okunur.
-import { calcPrice, existingPrice, type PricingConfig } from "../pricing.ts";
+import { calcPrice, existingPriceSafe, type PricingConfig } from "../pricing.ts";
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle } from "./util.ts";
@@ -51,7 +51,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
       const pr = priceFor(ctx, p, v, key, avail);
       if (!pr.ok) { items.push({ id: key, price: null, quantity: 0 }); stats.zeroed++; ctx.skip(`veritabanı ürünü: ${pr.reason} (stok 0)`); continue; }
-      const sendPrice = existingPrice(ctx.policy, Number(ls.price), pr.price, pr.pcfg, pr.comm);
+      const sendPrice = existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
       const qty = p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
       items.push({ id: key, price: sendPrice, quantity: qty });
       stats.updated++;

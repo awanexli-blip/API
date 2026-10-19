@@ -8,7 +8,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
-import { calcPrice, existingPrice, breakdown, type PricingConfig } from "./pricing.ts";
+import { calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings } from "./core/listings.ts";
 import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
@@ -70,7 +70,7 @@ async function main() {
     commissionRate: Number(s.commission_rate), targetProfitRate: Number(s.target_profit_rate),
     shippingCost: Number(s.shipping_cost), freeShippingThreshold: Number(s.free_shipping_threshold),
     minMarkup: Number(s.min_markup), fixedCost: Number(s.fixed_cost),
-    returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, 
+    returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, multiUnitMinNet: s.multi_unit_min_net != null ? Number(s.multi_unit_min_net) : null, 
     minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price),
     commissionPlusVat: s.commission_plus_vat === true, shippingVatIncluded: s.shipping_vat_included !== false,
   };
@@ -216,7 +216,7 @@ async function main() {
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da kapalı/fiyatsız`);
         continue;
       }
-      const sendPrice: number | null = ov?.price_override ? price : existingPrice(policy, curPrice, price, pcfg, comm);
+      const sendPrice: number | null = ov?.price_override ? price : existingPriceSafe(policy, curPrice, price, cost, pcfg, comm);
       const change = sendPrice == null ? "fiyat korunur" : !known ? "yeni fiyat" : sendPrice > curPrice + 0.005 ? "artacak" : sendPrice < curPrice - 0.005 ? "düşecek" : "aynı";
       priceMoves[change] = (priceMoves[change] ?? 0) + 1;
       toUpdate.push({ id: lid, price: sendPrice, quantity: hidden || qty < minStock ? 0 : Math.min(Math.floor(qty), 20000) });

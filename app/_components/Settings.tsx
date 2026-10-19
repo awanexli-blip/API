@@ -18,6 +18,7 @@ const FIELDS: Field[] = [
   { key: "fixed_cost", label: "Ürün başı sabit gider (TL)", kind: "num", hint: "Paketleme vb." },
   { key: "return_rate", label: "İade oranı (%)", kind: "pct", hint: "Siparişlerin yüzde kaçı iade geliyor (ör. 5)" },
   { key: "return_cost", label: "İade başına maliyet (TL)", kind: "num", hint: "İade kargosu + gidiş kargosu + hasar payı, KDV dahil (ör. 180)" },
+  { key: "multi_unit_min_net", label: "Çoklu adet koruması: en az net kâr (TL)", kind: "num", optional: true, hint: "300 TL altı üründen 2-3 adet alınıp sepet 300'ü geçince kargo sana kalır. Doluysa fiyat, o durumda bile bu kadar net kalacak şekilde ayarlanır. Boş = kapalı" },
   { key: "squeeze_min_net", label: "299,90'a çekerken en az net kâr (TL)", kind: "num", optional: true, hint: "Doluysa: kargo alıcıda kalsın diye 299,90'a çekmede yalnızca bu tutara bakılır (yüzde eşiği ve kural şartı yerine). Boş = yüzde eşiği" },
   { key: "min_acceptable_profit_rate", label: "Eşik altına çekmede en düşük kâr (%)", kind: "pct", hint: "299,90 için TL tutarı boşsa kullanılır" },
   { key: "max_price", label: "En yüksek satış fiyatı (TL)", kind: "num", hint: "Bunun üstündeki ürünler atlanır" },
@@ -57,6 +58,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     minAcceptableProfitRate: num("min_acceptable_profit_rate") / 100, maxPrice: num("max_price"),
     returnRate: num("return_rate") / 100, returnCost: num("return_cost"),
     squeezeMinNet: String(f.squeeze_min_net ?? "").trim() === "" ? null : num("squeeze_min_net"),
+    multiUnitMinNet: String(f.multi_unit_min_net ?? "").trim() === "" ? null : num("multi_unit_min_net"),
     vatRate: simVat / 100,
     commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false,
   };

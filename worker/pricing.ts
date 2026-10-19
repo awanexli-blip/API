@@ -22,6 +22,7 @@ export interface PricingConfig {
   squeezeMinNet?: number | null; // 300 TL eşiğinin altına (299,90) çekerken kabul edilen en az net kâr (TL). Doluysa yüzde eşiği ve kural TL şartı yerine geçer
   returnRate?: number;           // iade oranı (0.05 = siparişlerin %5'i iade)
   returnCost?: number;           // iade başına maliyet (KDV dahil TL: iade kargosu, gidiş kargosu, paketleme/hasar payı)
+  multiUnitMinNet?: number | null; // çoklu adet koruması: 300 TL altı üründen eşiği geçecek kadar (2-3 adet) alınınca kargo sonrası en az net kâr (TL). Boş = kapalı
 }
 
 export const defaultConfig: PricingConfig = {
@@ -108,6 +109,27 @@ function priceForNet(cost: number, cfg: PricingConfig, commission: number, withS
   return den > 0 ? (n + a * cost + b * (ship + fixedOf(cfg))) / den : Infinity;
 }
 
+// Çoklu adet koruması. Eşik sepet toplamına bakar: 300 TL altı üründen n adet (n·fiyat >= eşik) alınınca kargo satıcıya geçer.
+// n adetlik siparişin net kârı = n·(tek adet net) - kargo (KDV'si indirilir). Bunun en az multiUnitMinNet olması istenir.
+const shipNetOf = (cfg: PricingConfig) => cfg.shippingCost * (cfg.shippingVatIncluded === false ? 1 + svatOf(cfg) : 1) / (1 + svatOf(cfg));
+const unitsToThreshold = (price: number, cfg: PricingConfig) => Math.max(2, Math.ceil(cfg.freeShippingThreshold / price - 1e-9));
+export function multiUnitOk(price: number, net: number, cfg: PricingConfig): boolean {
+  const m = cfg.multiUnitMinNet;
+  if (m == null || !(m >= 0) || price >= cfg.freeShippingThreshold || !(price > 0)) return true;
+  return unitsToThreshold(price, cfg) * net - shipNetOf(cfg) >= m;
+}
+// Koruma için gereken en düşük fiyat (eşiğe ulaşırsa eşik üstü hesaba bırakılır)
+function multiUnitFloor(price: number, cost: number, cfg: PricingConfig, commission: number): number {
+  for (let i = 0; i < 6 && price < cfg.freeShippingThreshold; i++) {
+    const net = profitOf(price, cost, cfg, commission).net;
+    if (multiUnitOk(price, net, cfg)) break;
+    const need = (shipNetOf(cfg) + (cfg.multiUnitMinNet ?? 0)) / unitsToThreshold(price, cfg);
+    const next = roundUpPsych(priceForNet(cost, cfg, commission, false, need));
+    price = next > price ? next : roundUpPsych(price + 0.2);
+  }
+  return price;
+}
+
 export function calcPrice(
   cost: number,
   cfg: PricingConfig = defaultConfig,
@@ -126,19 +148,24 @@ export function calcPrice(
   const minNet = cfg.minNetProfit ?? 0;
   let price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, false), priceForNet(cost, cfg, commissionRate, false, minNet), floor));
   let note: string | undefined;
+  const single = price;
+  price = multiUnitFloor(price, cost, cfg, commissionRate);
+  if (price > single) note = "çoklu adet koruması (2-3 adette kargo sana geçse de kârlı)";
 
   if (price >= T) {
     // 2) 300 TL ve üstü: kargo (90 TL) senin. Önce 299.90'a sıkıştırmayı dene.
     const squeezed = roundUpPsych(T - 0.2); // 299.90
     const sq = profitOf(squeezed, cost, cfg, commissionRate);
     // Kabul: net kâr "299,90 için en az TL" ayarını karşılıyorsa (doluysa); değilse eski kural (yüzde eşiği + kural TL şartı)
-    const squeezeOk = cfg.squeezeMinNet != null && cfg.squeezeMinNet >= 0 ? sq.net >= cfg.squeezeMinNet && sq.net > 0 : sq.rate >= cfg.minAcceptableProfitRate && sq.net >= minNet;
+    const squeezeOk = (cfg.squeezeMinNet != null && cfg.squeezeMinNet >= 0 ? sq.net >= cfg.squeezeMinNet && sq.net > 0 : sq.rate >= cfg.minAcceptableProfitRate && sq.net >= minNet)
+      && multiUnitOk(squeezed, sq.net, cfg);
     if (squeezed < T && squeezed >= floor && squeezeOk) {
       price = squeezed;
       note = "299,90'a sabitlendi (kargo alıcıda, kâr hedefin biraz altında)";
     } else {
       // 3) Kargoyu maliyete ekleyerek yeniden hesapla
       price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, true), priceForNet(cost, cfg, commissionRate, true, minNet), floor));
+      note = undefined;
     }
   }
 
@@ -187,4 +214,11 @@ export function existingPrice(
     if (net(formula) >= net(candidate)) return formula;
   }
   return candidate;
+}
+
+// smart adımı formül ile mevcut arasında kalır; adet eşiği değiştiği için (3 -> 2 adet) korumayı bozabilir: o zaman formüle in
+export function existingPriceSafe(policy: string, current: number, formula: number, cost: number, cfg: PricingConfig, commissionRate: number, maxDrop: number = SMART_MAX_DROP): number | null {
+  const p = existingPrice(policy, current, formula, cfg, commissionRate, maxDrop);
+  if (p == null || p === formula || policy !== "smart") return p;
+  return multiUnitOk(p, profitOf(p, cost, cfg, commissionRate).net, cfg) ? p : formula;
 }

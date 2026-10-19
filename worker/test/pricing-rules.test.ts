@@ -1,6 +1,6 @@
 // Akıllı kâr kuralları ve en az net kâr birim testleri.
 // node --experimental-strip-types worker/test/pricing-rules.test.ts
-import { calcPrice, breakdown, defaultConfig as cfg, returnsOf } from "../pricing.ts";
+import { calcPrice, breakdown, defaultConfig as cfg, returnsOf, existingPriceSafe } from "../pricing.ts";
 import { applyRules, rulesFor, matches, SUGGESTED_RULES, describeCond, type PricingRule } from "../pricing-rules.ts";
 
 let fails = 0;
@@ -76,6 +76,31 @@ const check = (name: string, cond: boolean, info: unknown = "") => { console.log
   check("sıkıştırma: en az 15 TL ile 299,90'a döner", neu.price === 299.9 && neu.netProfit >= 15, neu);
   check("sıkıştırma: 15 TL'yi tutmuyorsa yapılmaz", at(260, 15).price > 300, at(260, 15));
   check("sıkıştırma: ucuz üründe etkisi yok", at(80, 15).price === at(80, null).price);
+}
+
+// Çoklu adet koruması: eşiği geçecek kadar adet alınınca (kargo satıcıda) sipariş yine en az N TL net
+{
+  const live = { ...cfg, minAcceptableProfitRate: 0.12, returnRate: 0.05, returnCost: 180, squeezeMinNet: 15 };
+  const order = (price: number, cost: number, c: typeof live, comm: number, n: number) => {
+    const one = breakdown(price, cost, c, comm).net;
+    return n * one - (n * price >= c.freeShippingThreshold ? c.shippingCost / 1.2 : 0);
+  };
+  // Dizlik: maliyet 153, komisyon %15,6 -> tek adet 249,90; 2 adette kargo sende, net ~6 TL
+  const off = calcPrice(153, live, 0.156), on = calcPrice(153, { ...live, multiUnitMinNet: 15 }, 0.156);
+  check("çoklu adet: kapalıyken 2 adet kârı 15 TL altında", order(off.price, 153, live, 0.156, 2) < 15, off);
+  check("çoklu adet: açıkken fiyat yükselir", on.price > off.price && on.price < 300, on);
+  check("çoklu adet: 2 adet siparişte en az 15 TL net", order(on.price, 153, live, 0.156, 2) >= 15, { p: on.price, net2: order(on.price, 153, live, 0.156, 2) });
+  // 100-150 TL bandı: 3 adet senaryosu
+  const c3 = calcPrice(70, { ...live, multiUnitMinNet: 15 }, 0.18), n3 = Math.ceil(300 / c3.price);
+  check("çoklu adet: ucuz üründe eşik adedinde de kârlı", c3.price >= 300 || order(c3.price, 70, live, 0.18, n3) >= 15, { c3, n3 });
+  // 299,90 sıkıştırması da korumayı geçmeli (2 adet = kargo sende)
+  const sq = calcPrice(210, { ...live, multiUnitMinNet: 15 }, 0.18);
+  check("çoklu adet: 299,90 yalnızca 2 adette de kârlıysa", sq.price !== 299.9 || order(299.9, 210, live, 0.18, 2) >= 15, sq);
+  check("çoklu adet: 300 üstü ürünlerde etkisi yok", calcPrice(400, { ...live, multiUnitMinNet: 15 }, 0.18).price === calcPrice(400, live, 0.18).price);
+  // smart adımı korumayı bozmamalı
+  const lc = { ...live, multiUnitMinNet: 15 };
+  const f = calcPrice(60, lc, 0.18).price, s = existingPriceSafe("smart", 199.9, f, 60, lc, 0.18)!;
+  check("çoklu adet: smart adımı korumalı", s >= 300 || order(s, 60, lc, 0.18, Math.ceil(300 / s)) >= 15 - 0.01, { f, s });
 }
 
 if (fails) { console.log(`\n${fails} kural testi başarısız`); process.exit(1); }
