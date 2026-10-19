@@ -27,7 +27,7 @@ const NUM: Record<string, [number, number, boolean]> = {
 };
 // Boş bırakılabilen (null) sayısal alanlar
 const OPTIONAL = ["squeeze_min_net", "multi_unit_min_net"];
-const BOOL = ["xml_price_includes_vat", "auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
+const BOOL = ["sales_paused", "xml_price_includes_vat", "auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
 const POLICIES = ["keep", "floor", "formula", "smart"];
 // Yalnızca ortak (settings) tablosunda olanlar
 const BASE_ONLY = ["xml_price_includes_vat", "min_markup", "vat_rate", "fx_usd", "fx_eur", "update_prices"];

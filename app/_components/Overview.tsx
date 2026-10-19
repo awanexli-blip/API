@@ -55,6 +55,26 @@ export default function Overview({ api, notify, marketplace }: Props) {
     setBusy("");
   }
 
+  // Satışı durdur / aç: bayrak kaydedilir ve hemen bir güncelleme başlatılır (stoklar 0'a iner ya da geri gelir)
+  async function toggleSales() {
+    if (!s || toggling) return;
+    const next = !s.sales_paused;
+    if (!confirm(next
+      ? "Bu pazaryerinde satış durdurulsun mu? Satıştaki bütün ürünlerin stoğu 0 gönderilir, ürünler satın alınamaz. İlanlar silinmez; tekrar açınca stoklar geri gelir."
+      : "Satış yeniden açılsın mı? Bir sonraki çalışmada XML stokları ve fiyatlar yeniden gönderilir.")) return;
+    setToggling(true);
+    try {
+      const d = await api(`/api/settings?mp=${marketplace}`, { method: "PUT", body: JSON.stringify({ sales_paused: next }) });
+      setS(d);
+      if (d.sales_paused !== next) { notify("err", "Ayar kaydedilemedi (Supabase migration 021 gerekli olabilir)."); return; }
+      await api("/api/run", { method: "POST", body: JSON.stringify({ mode: "update", marketplace }) })
+        .then(() => notify("good", next ? "Satış durduruldu. Stoklar birkaç dakika içinde 0'a iner." : "Satış açıldı. Stoklar birkaç dakika içinde geri gelir."))
+        .catch(() => notify("good", next ? "Satış durduruldu; stoklar bir sonraki zamanlı çalışmada 0'a iner." : "Satış açıldı; stoklar bir sonraki zamanlı çalışmada geri gelir."));
+      setWatchUntil(Date.now() + 6 * 60_000);
+    } catch (e: any) { notify("err", "Kaydedilemedi: " + e.message); }
+    finally { setToggling(false); }
+  }
+
   async function toggleAuto() {
     if (!s || toggling) return;
     const next = !s.auto_sync;
@@ -71,6 +91,17 @@ export default function Overview({ api, notify, marketplace }: Props) {
 
   return (
     <>
+      {s && (
+        <div className="card" style={s.sales_paused ? { borderColor: "var(--bad)" } : undefined}>
+          <h2>Satış durumu</h2>
+          <div className="row">
+            <span className={`pill ${s.sales_paused ? "error" : "ok"}`}>{s.sales_paused ? "Satış durduruldu: bütün stoklar 0" : "Satışta"}</span>
+            <button className={`btn ${s.sales_paused ? "primary" : "danger"}`} onClick={toggleSales} disabled={toggling}>{s.sales_paused ? "Satışı aç" : "Satışı durdur"}</button>
+          </div>
+          <small className="muted">Durdurunca satıştaki ilanların stoğu 0 gönderilir (ilanlar silinmez, otomatik senkron kapalı olsa da uygulanır). Açınca XML stokları ve fiyatlar geri gönderilir.</small>
+        </div>
+      )}
+
       <div className="card">
         <h2>Otomatik senkronizasyon</h2>
         <p className="muted">15 dakikada bir XML çekilir, stok ve fiyat hesaplanıp gönderilir.</p>

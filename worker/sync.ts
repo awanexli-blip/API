@@ -56,13 +56,24 @@ async function loadSettings(): Promise<any> {
 async function main() {
   const s = await loadSettings();
   if (s.enabled === false) return { skippedRun: `${marketplaceId} panelde kapalı` };
-  if (mode === "auto" && trigger === "schedule" && !s.auto_sync) {
+  // Satış durduruldu (panel): otomatik senkron kapalı olsa da çalışır; satıştaki her ilana stok 0, başka hiçbir şey yapılmaz
+  const paused = s.sales_paused === true && mode !== "preview";
+  if (!paused && mode === "auto" && trigger === "schedule" && !s.auto_sync) {
     return { skippedRun: "otomatik senkronizasyon kapalı" };
   }
   // Kimlik bilgileri tanımlı değilse zamanlanmış çalışma sessizce atlanır, elle çalıştırmada hata verir
   let mp;
   try { mp = getMarketplace(marketplaceId); }
   catch (e: any) { if (trigger === "schedule") return { skippedRun: e.message }; throw e; }
+  if (paused) {
+    const listings = await mp.loadListings();
+    const ids = listings.filter((l) => (l.status ?? "active") === "active" && l.quantity !== 0).map((l) => l.id);
+    const z = ids.length ? await mp.zeroStock(ids) : { ok: 0, failed: 0, batchIds: [] as string[] };
+    const summary: any = { marketplace: mp.id, salesPaused: true, listings: listings.length, zeroed: z.ok, failedBatches: z.failed, batchIds: z.batchIds, updated: 0, created: 0 };
+    if (z.batchIds.length && mp.checkBatches) summary.batchCheck = await mp.checkBatches(z.batchIds.slice(0, 40)).catch((e: any) => ({ error: String(e?.message ?? e) }));
+    summary.listingsTable = await snapshotListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
+    return summary;
+  }
   const doUpdate = mode === "update" || mode === "auto";
   const doCreate = mode === "create" || (mode === "auto" && s.auto_create);
 
