@@ -24,10 +24,10 @@ export default function PricePreview({ api, cost, currency, vat, category, brand
       <h2>Pazaryeri fiyatı (tahmini)</h2>
       {!(cost && cost > 0) ? <p className="muted" style={{ margin: 0 }}>Alış fiyatı girilince her pazaryeri için satış fiyatı ve net kâr burada hesaplanır.</p> : (
         <div className="scroll"><table className="cards">
-          <thead><tr><th>Pazaryeri</th><th className="n">Satış fiyatı</th><th className="n">Komisyon</th><th className="n">Kargo</th><th className="n">Net kâr</th><th>Kural</th></tr></thead>
+          <thead><tr><th>Pazaryeri</th><th className="n">Satış fiyatı</th><th className="n">Komisyon</th><th className="n">Kargo</th><th className="n">İade payı</th><th className="n">KDV farkı</th><th className="n">Net kâr</th><th>Kural</th></tr></thead>
           <tbody>{MARKETS.filter(([m]) => data[m]).map(([m, label]) => {
             const { s, rules } = data[m];
-            if (s.enabled === false) return <tr key={m}><td data-label="Pazaryeri">{label}</td><td colSpan={5} className="muted">kapalı</td></tr>;
+            if (s.enabled === false) return <tr key={m}><td data-label="Pazaryeri">{label}</td><td colSpan={7} className="muted">kapalı</td></tr>;
             const fx: Record<string, number> = { TRY: 1, USD: Number(s.fx_usd) || 0, EUR: Number(s.fx_eur) || 0 };
             const tlCost = cost * (fx[currency] ?? 0);
             const cfg: PricingConfig = {
@@ -46,6 +46,8 @@ export default function PricePreview({ api, cost, currency, vat, category, brand
                 <td data-label="Satış fiyatı" className="n" style={{ fontWeight: 700 }}>{r.ok ? tl(r.price) : <span style={{ color: "var(--bad)" }}>{r.reason}</span>}</td>
                 <td data-label="Komisyon" className="n">{b ? tl(b.commission) : "-"}</td>
                 <td data-label="Kargo" className="n">{b ? (b.shipping ? tl(b.shipping) : "alıcı öder") : "-"}</td>
+                <td data-label="İade payı" className="n">{b ? tl(b.returns) : "-"}</td>
+                <td data-label="KDV farkı" className="n">{b ? tl(b.vatDue) : "-"}</td>
                 <td data-label="Net kâr" className="n" style={{ color: r.ok ? "var(--ok)" : undefined }}>{r.ok ? `${tl(r.netProfit)} (%${Math.round(r.profitRate * 100)})` : "-"}</td>
                 <td data-label="Kural" className="muted" style={{ fontSize: 12 }}>{applied.join(", ") || "genel ayar"}{r.note ? ` · ${r.note}` : ""}</td>
               </tr>
@@ -53,7 +55,7 @@ export default function PricePreview({ api, cost, currency, vat, category, brand
           })}</tbody>
         </table></div>
       )}
-      <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Varsayılan komisyonla hesaplanır; canlıda ilanın kendi komisyon oranı kullanılır. KDV, kargo eşiği ve x9,90 yuvarlama dahil.</p>
+      <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Net kâr = satış − maliyet − komisyon − kargo − iade payı − devlete ödenecek KDV farkı. Varsayılan komisyonla hesaplanır; canlıda ilanın kendi komisyon oranı kullanılır. Kargo eşiği, çoklu adet koruması ve x9,90 yuvarlama dahil.</p>
     </div>
   );
 }
