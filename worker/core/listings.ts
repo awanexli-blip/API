@@ -6,7 +6,7 @@ import { chunk } from "./util.ts";
 const STATUS: Record<string, string> = { active: "live", closed: "closed", pending: "pending_approval" };
 
 // Senkronun hesabı (yalnızca XML ile eşleşen ilanlar): maliyet, gönderilen fiyat, o fiyatta tek adet net kâr
-export type ListingCalc = { cost: number | null; price: number | null; net: number | null; note: string };
+export type ListingCalc = { cost: number | null; price: number | null; net: number | null; note: string; xmlStock?: number | null; sentStock?: number | null };
 
 export function listingRows(marketplace: string, listings: Listing[], now: string, calc?: Map<string, ListingCalc>) {
   return listings.map((l) => ({
@@ -17,7 +17,7 @@ export function listingRows(marketplace: string, listings: Listing[], now: strin
     stock: Number.isFinite(l.quantity) ? Math.max(0, Math.floor(l.quantity)) : null,
     commission: l.commission ?? null, category_id: l.categoryId ?? null, category_name: l.categoryName || null,
     seen_at: now, updated_at: now,
-    ...(calc ? (() => { const c = calc.get(l.id); return { xml_cost: c?.cost ?? null, calc_price: c?.price ?? null, calc_net: c?.net ?? null, calc_note: c ? c.note.slice(0, 300) : "XML ile eşleşmedi: fiyat/stok sistem tarafından yönetilmiyor" }; })() : {}),
+    ...(calc ? (() => { const c = calc.get(l.id); return { xml_cost: c?.cost ?? null, calc_price: c?.price ?? null, calc_net: c?.net ?? null, calc_note: c ? c.note.slice(0, 300) : "XML ile eşleşmedi: fiyat/stok sistem tarafından yönetilmiyor", xml_stock: c?.xmlStock ?? null, sent_stock: c?.sentStock ?? null }; })() : {}),
   }));
 }
 

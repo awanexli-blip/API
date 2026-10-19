@@ -187,7 +187,7 @@ async function main() {
       if (listingId && ls && ls.status !== "pending" && ls.status !== "closed" && !linked.has(listingId)) {
         linked.add(listingId);
         toUpdate.push({ id: listingId, price: null, quantity: 0 });
-        calcBy.set(listingId, { cost, price: null, net: null, note: `stok 0: ${calc.reason ?? "fiyat hesaplanamadı"}` });
+        calcBy.set(listingId, { cost, price: null, net: null, note: `stok 0: ${calc.reason ?? "fiyat hesaplanamadı"}`, xmlStock: num(r.quantity), sentStock: 0 });
         skip(`${calc.reason ?? "fiyat hesaplanamadı"} (mevcut ilan: stok 0)`);
         csv.push(`${listingId};${q(name)};${q(category)};${r.price};;;;;STOK 0: ${calc.reason}`);
         continue;
@@ -209,13 +209,13 @@ async function main() {
       const curPrice = Number(ls?.price);
       const known = Number.isFinite(curPrice);
       if (ls?.status === "pending") {
-        calcBy.set(lid, { cost, price: null, net: null, note: "onay bekliyor/reddedildi: fiyat gönderilmez" });
+        calcBy.set(lid, { cost, price: null, net: null, note: "onay bekliyor/reddedildi: fiyat gönderilmez", xmlStock: num(r.quantity), sentStock: null });
         skip(`${mp.label}'da onay bekliyor/reddedildi`);
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da onay bekliyor/reddedildi`);
         continue;
       }
       if ((ls?.status === "closed" || (known && curPrice <= 0)) && !ov?.price_override) {
-        calcBy.set(lid, { cost, price: null, net: null, note: "kapalı/fiyatsız: fiyat gönderilmez" });
+        calcBy.set(lid, { cost, price: null, net: null, note: "kapalı/fiyatsız (Trendyol kapatmış): stok gönderilmez", xmlStock: num(r.quantity), sentStock: null });
         skip(`${mp.label}'da kapalı/fiyatsız ürün`);
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da kapalı/fiyatsız`);
         continue;
@@ -223,11 +223,12 @@ async function main() {
       const sendPrice: number | null = ov?.price_override ? price : existingPriceSafe(policy, curPrice, price, cost, pcfg, comm);
       const change = sendPrice == null ? "fiyat korunur" : !known ? "yeni fiyat" : sendPrice > curPrice + 0.005 ? "artacak" : sendPrice < curPrice - 0.005 ? "düşecek" : "aynı";
       priceMoves[change] = (priceMoves[change] ?? 0) + 1;
-      toUpdate.push({ id: lid, price: sendPrice, quantity: hidden || qty < minStock ? 0 : Math.min(Math.floor(qty), 20000) });
+      const sentQty = hidden || qty < minStock ? 0 : Math.min(Math.floor(qty), 20000);
+      toUpdate.push({ id: lid, price: sendPrice, quantity: sentQty });
       // Kâr sütunları satışta geçerli olacak fiyata göre (formül fiyatına göre değil)
       const eff = sendPrice ?? curPrice;
       const eb = breakdown(eff, cost, pcfg, comm);
-      calcBy.set(lid, { cost: Math.round(cost * 100) / 100, price: Number.isFinite(eff) ? eff : null, net: Number.isFinite(eff) ? eb.net : null, note: `${change}; formül ${price}${calc.note ? `; ${calc.note}` : ""}${ov?.price_override ? "; elle fiyat" : ""}` });
+      calcBy.set(lid, { cost: Math.round(cost * 100) / 100, price: Number.isFinite(eff) ? eff : null, net: Number.isFinite(eff) ? eb.net : null, note: `${change}; formül ${price}${calc.note ? `; ${calc.note}` : ""}${ov?.price_override ? "; elle fiyat" : ""}${hidden ? "; gizli (istisna)" : qty < minStock ? `; stok ${qty} < ${minStock}: 0 gönderildi` : ""}`, xmlStock: qty, sentStock: sentQty });
       csv.push(`${lid};${q(name)};${q(category)};${r.price};${known || sendPrice != null ? eff : ""};${eb.shipping ? "evet" : "hayir"};${eb.net.toFixed(2)};${(eb.rate * 100).toFixed(1)};MEVCUT (${change}; formül ${price}; eski ${known ? curPrice : "-"})`);
       continue;
     }
