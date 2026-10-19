@@ -73,7 +73,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - Hedef net kâr: **%15** (satış fiyatı üzerinden).
 - Varsayılan komisyon %18. Gerçek komisyon ürün/kategori bazında değişir (%7 ile %25,7).
 - **Kargo kuralı:** kargo ücreti **90 TL**. Satış fiyatı **300 TL ve üstündeyse kargoyu satıcı öder**, 300 TL altındaysa alıcı öder. Hesaplanan fiyat 300'ü aşıyorsa önce **299,90** denenir (kargo alıcıda kalır, net kâr en az %8 ise kabul). Olmazsa kargo maliyete eklenerek yeniden hesaplanır.
-- Alt sınır: fiyat >= maliyet x 1,3. Psikolojik yuvarlama: x9,90. Zarar eden ve 10.000 TL üstü ürünler atlanır. Stok < 3 ise Trendyol'a stok 0 gönderilir.
+- Alt sınır: fiyat >= maliyet x 1,3. Psikolojik yuvarlama: x9,90. Zarar eden ürünler ve fiyat üst sınırını (`max_price`, 19.10 kullanıcı isteğiyle 50.000 TL) aşanlar atlanır. Stok < 3 ise Trendyol'a stok 0 gönderilir.
 - Kullanıcı sabit %18 komisyon istedi, "kategoriye göre düşebilir" dedi. Şu an ürün bazlı gerçek oran kullanılıyor.
 
 **Komisyon ve KDV:** Trendyol komisyon oranları KDV dahil (panel bilgi kutusu, 16.10). Hepsiburada komisyonları +KDV (sözleşme EK.4). Fiyat formülü KDV'yi açıkça hesaplar, net kâr KDV sonrası, oran KDV hariç satışa göre.
