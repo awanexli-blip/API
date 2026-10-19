@@ -4,7 +4,7 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 
 ## 2026-10-19 (14) — Çoklu adet koruması, tedarikçi araştırması
 - Sorun (K siparişleri): 300 TL eşiği sepet toplamına bakıyor. Dizlik (maliyet 153, 249,90) 2 adet alınınca kargo satıcıya geçti, net ~6 TL. BK012 (299,90) ise K'nın verdiği 255 TL maliyetle zarar; sistem XML'de ≤ ~235 TL görüyor olmalı → fark (sipariş başı ücret? `fixed_cost` 0) K'ya soruldu, yanıt bekleniyor.
-- `multiUnitMinNet` / `settings.multi_unit_min_net` (migration 019, canlıda 15 TL, K onayı): 300 altı fiyatta eşiği geçen adet n=ceil(300/fiyat) için n·net − kargo(KDV indirimli) ≥ 15 TL. 299,90 sıkıştırması da bu şartı geçmeli. smart adımı korumayı bozarsa formüle iner (`existingPriceSafe`). Etki: 150–300 TL bandı çoğunlukla +10–20 TL; maliyeti ~200–218 TL olanlar 299,90'dan kargolu fiyata (~460) çıkar. Panel: Fiyat ayarları alanı. Testler eklendi.
+- `multiUnitMinNet` / `settings.multi_unit_min_net` (migration 019, K onayı; 19.10 K isteğiyle 40 TL, `squeeze_min_net` de 40): 300 altı fiyatta eşiği geçen adet n=ceil(300/fiyat) için n·net − kargo(KDV indirimli) ≥ 15 TL. 299,90 sıkıştırması da bu şartı geçmeli. smart adımı korumayı bozarsa formüle iner (`existingPriceSafe`). Etki: 150–300 TL bandı çoğunlukla +10–20 TL; maliyeti ~200–218 TL olanlar 299,90'dan kargolu fiyata (~460) çıkar. Panel: Fiyat ayarları alanı. Testler eklendi.
 - Tedarikçi araştırması (Şikayetvar): BayilikXML temiz (2 şikayet, çözüldü); Yenitoptancı (19) ve Hepsibayi (8) gecikme/fatura şikayetleri; Lisinya keyfi iade almıyor. Hepsibayi'ye XML istendi (keyfi iade yok, markalı elektronik riskli → nötr ürünler filtrelenecek).
 
 ## 2026-10-18 (13) — Amazon gönderim düzeltmeleri, Trendyol ret düzeltme
