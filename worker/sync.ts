@@ -10,7 +10,7 @@ import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
-import { snapshotListings } from "./core/listings.ts";
+import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
@@ -141,6 +141,7 @@ async function main() {
   const suggest = new Map<string, Map<string, { name: string; n: number; comm: number }>>();
   const commCount: Record<string, number> = {};
   const priceMoves: Record<string, number> = {};
+  const calcBy = new Map<string, ListingCalc>(); // ilan tablosuna: maliyet, gönderilen fiyat, net kâr
 
   for (const r of raw) {
     const barcode = String(r.barcode ?? "").trim();
@@ -186,6 +187,7 @@ async function main() {
       if (listingId && ls && ls.status !== "pending" && ls.status !== "closed" && !linked.has(listingId)) {
         linked.add(listingId);
         toUpdate.push({ id: listingId, price: null, quantity: 0 });
+        calcBy.set(listingId, { cost, price: null, net: null, note: `stok 0: ${calc.reason ?? "fiyat hesaplanamadı"}` });
         skip(`${calc.reason ?? "fiyat hesaplanamadı"} (mevcut ilan: stok 0)`);
         csv.push(`${listingId};${q(name)};${q(category)};${r.price};;;;;STOK 0: ${calc.reason}`);
         continue;
@@ -207,11 +209,13 @@ async function main() {
       const curPrice = Number(ls?.price);
       const known = Number.isFinite(curPrice);
       if (ls?.status === "pending") {
+        calcBy.set(lid, { cost, price: null, net: null, note: "onay bekliyor/reddedildi: fiyat gönderilmez" });
         skip(`${mp.label}'da onay bekliyor/reddedildi`);
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da onay bekliyor/reddedildi`);
         continue;
       }
       if ((ls?.status === "closed" || (known && curPrice <= 0)) && !ov?.price_override) {
+        calcBy.set(lid, { cost, price: null, net: null, note: "kapalı/fiyatsız: fiyat gönderilmez" });
         skip(`${mp.label}'da kapalı/fiyatsız ürün`);
         csv.push(`${lid};${q(name)};${q(category)};${r.price};;;;;ATLANDI: ${mp.label}'da kapalı/fiyatsız`);
         continue;
@@ -223,6 +227,7 @@ async function main() {
       // Kâr sütunları satışta geçerli olacak fiyata göre (formül fiyatına göre değil)
       const eff = sendPrice ?? curPrice;
       const eb = breakdown(eff, cost, pcfg, comm);
+      calcBy.set(lid, { cost: Math.round(cost * 100) / 100, price: Number.isFinite(eff) ? eff : null, net: Number.isFinite(eff) ? eb.net : null, note: `${change}; formül ${price}${calc.note ? `; ${calc.note}` : ""}${ov?.price_override ? "; elle fiyat" : ""}` });
       csv.push(`${lid};${q(name)};${q(category)};${r.price};${known || sendPrice != null ? eff : ""};${eb.shipping ? "evet" : "hayir"};${eb.net.toFixed(2)};${(eb.rate * 100).toFixed(1)};MEVCUT (${change}; formül ${price}; eski ${known ? curPrice : "-"})`);
       continue;
     }
@@ -315,6 +320,7 @@ async function main() {
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
   summary.dbProducts = dbInv.stats;
   if (doUpdate) toUpdate.push(...dbInv.items);
+  for (const it of dbInv.items) if (!calcBy.has(it.id)) calcBy.set(it.id, { cost: null, price: it.price, net: null, note: "ürün veritabanından yönetiliyor" });
   summary.update = toUpdate.length;
   // Katalog eşleştirme kuyruğu (Amazon; yalnızca okuma, her modda)
   if (mp.findCatalogMatches) summary.matchJobs = await processMatchJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => ({ error: String(e?.message ?? e) }));
@@ -384,7 +390,7 @@ async function main() {
   }
   summary.batchIds = summary.batchIds.slice(0, 20);
   // Faz 3: ilan tablosu (pazaryerinin gördüğü durum, ürün veritabanına bağlantı)
-  if (listings.length) summary.listingsTable = await snapshotListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
+  if (listings.length) summary.listingsTable = await snapshotListings(db, marketplaceId, listings, calcBy).catch((e: any) => ({ error: String(e?.message ?? e) }));
   return summary;
 }
 

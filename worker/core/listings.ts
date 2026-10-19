@@ -5,7 +5,10 @@ import { chunk } from "./util.ts";
 
 const STATUS: Record<string, string> = { active: "live", closed: "closed", pending: "pending_approval" };
 
-export function listingRows(marketplace: string, listings: Listing[], now: string) {
+// Senkronun hesabı (yalnızca XML ile eşleşen ilanlar): maliyet, gönderilen fiyat, o fiyatta tek adet net kâr
+export type ListingCalc = { cost: number | null; price: number | null; net: number | null; note: string };
+
+export function listingRows(marketplace: string, listings: Listing[], now: string, calc?: Map<string, ListingCalc>) {
   return listings.map((l) => ({
     marketplace, listing_key: l.id, status: l.reject ? "rejected" : STATUS[l.status ?? "active"] ?? "live",
     last_error: l.reject ? l.reject.details.join(" | ").slice(0, 1000) || l.reject.types.join(", ") : null,
@@ -14,13 +17,14 @@ export function listingRows(marketplace: string, listings: Listing[], now: strin
     stock: Number.isFinite(l.quantity) ? Math.max(0, Math.floor(l.quantity)) : null,
     commission: l.commission ?? null, category_id: l.categoryId ?? null, category_name: l.categoryName || null,
     seen_at: now, updated_at: now,
+    ...(calc ? (() => { const c = calc.get(l.id); return { xml_cost: c?.cost ?? null, calc_price: c?.price ?? null, calc_net: c?.net ?? null, calc_note: c ? c.note.slice(0, 300) : "XML ile eşleşmedi: fiyat/stok sistem tarafından yönetilmiyor" }; })() : {}),
   }));
 }
 
 // Yaz, bağla, kaybolanları işaretle. Hata senkronu durdurmaz (tablo yoksa / ağ hatası): özete not düşülür.
-export async function snapshotListings(db: any, marketplace: string, listings: Listing[]): Promise<Record<string, unknown>> {
+export async function snapshotListings(db: any, marketplace: string, listings: Listing[], calc?: Map<string, ListingCalc>): Promise<Record<string, unknown>> {
   const now = new Date().toISOString();
-  const rows = listingRows(marketplace, listings, now);
+  const rows = listingRows(marketplace, listings, now, calc);
   let written = 0;
   for (const part of chunk(rows, 1000)) {
     const { error } = await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
