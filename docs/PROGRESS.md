@@ -10,7 +10,8 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 - Marka riski listesine 30 kelime (chevrolet, hızlı ve öfkeli/fast and furious, dodge, nissan, jeep, mustang, yamaha...). Bunlardan hiçbiri gönderilmemişti. Not: "lotus", "lincoln" yanlış pozitif verebilir (panel → Markalar'dan çıkarılabilir).
 - Toplu gönderim (23:35 UTC): 2.099 gönderildi, 1.285 hata, 22.919 sırada (109 iş, senkron başına 25 iş, ~5 senkron). Hata dağılımı: kategori yok ~1.000 (geniş tedarikçi kategorileri), zorunlu özellik (Boyut/Ebat, Çalışma Tipi, Model, Araç Marka/Model...), ucuz kopya 87, aynı başlık 36.
 - BayilikXML: Trendyol'da 18.090 arşivde (25 saat dolunca 22.10 ~19:15 UTC otomatik silinir), 2.654 silindi. Amazon 17 ilan (Amazon kapalı, bekliyor).
-- Açık: S0.4/S0.5/S2.7 silme/S2.8 (K), S3.1 ikinci tur, toplu gönderimin sonucu ve Tcx onay/ret oranı, Bayilik ürünlerinin DB'de arşivlenmesi (K), Faz 6.
+- BayilikXML ürünleri (17.000) veritabanında arşive alındı (silme değil, geri alınabilir: status=active); tedarikçi kaydı ve adresi duruyor. Ürünler ekranı varsayılan filtre "Aktif".
+- Açık: S0.4/S0.5/S2.7 silme/S2.8 (K), S3.1 ikinci tur, toplu gönderimin sonucu ve Tcx onay/ret oranı, Faz 6.
 
 ## 2026-10-22 (20) — Toptancım toplu gönderim
 - Deneme: 39 ürünün yalnız 2'si gitti; 37'si Trendyol zorunlu özelliği (Menşei, garanti, Tip...) yüzünden adaptörde atlanmış ama tabloda "sent" kalmıştı (hata düzeltildi: atlananlar ürün bazında error + neden). Kategori eşlemesinde `attributes` nesne yazılmıştı ("object is not iterable"), düzeltildi.

@@ -168,7 +168,7 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
   // Filtreler bu oturumda hatırlanır (bölümler arası gidip gelince kaybolmasın)
   const saved = (() => { try { return JSON.parse(sessionStorage.getItem("productFilters") ?? "{}"); } catch { return {}; } })();
   const [q, setQ] = useState<string>(saved.q ?? "");
-  const [status, setStatus] = useState<string>(saved.status ?? "");
+  const [status, setStatus] = useState<string>(saved.status ?? "active");
   const [source, setSource] = useState<string>(saved.source ?? "");
   const [stock, setStock] = useState<string>(saved.stock ?? "");
   const [page, setPage] = useState(0);
