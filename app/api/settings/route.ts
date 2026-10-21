@@ -42,6 +42,9 @@ async function read(mp: string) {
   const { data: own, error: e2 } = await db.from("marketplace_settings").select("*").eq("marketplace", mp).maybeSingle();
   if (e2) return { error: `Supabase migration 002 çalıştırılmamış (${e2.message})` };
   const merged: Record<string, unknown> = { ...base, enabled: false, ...Object.fromEntries(Object.entries(own ?? {}).filter(([, v]) => v != null)) };
+  // Pazaryerine özel: ortak ayardan miras alınmaz (worker/sync.ts loadSettings ile aynı)
+  merged.sales_paused = own?.sales_paused === true;
+  merged.retire_legacy = false;
   return { data: { ...merged, marketplace: mp } };
 }
 

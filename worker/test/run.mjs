@@ -135,7 +135,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 // 9) Hepsiburada test aracı (sahte SIT)
 {
   const tool = join(here, "..", "hb-tool.ts");
-  const hbEnv = { ...envBase, HB_MERCHANT_ID: "m-1", HB_USERNAME: "u", HB_PASSWORD: "p", MOCK_BULK: "20" };
+  const hbEnv = { ...envBase, HB_MERCHANT_ID: "m-1", HB_USERNAME: "u", HB_PASSWORD: "p", MOCK_BULK: "20", MOCK_HB_PRODUCTS: "1" };
   const t = (...a) => {
     const dir = mkdtempSync(join(tmpdir(), "hbtool-"));
     let code = 0;
@@ -156,6 +156,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
   const send = t("send", "2", "18021982");
   const imp = send.calls.hbWrites.filter((w) => w.path.endsWith("/products/import")).flatMap((w) => w.body);
   check("araç send 2: iki ürün, kategori ve renk dolu", send.code === 0 && imp.length === 2 && imp.every((x) => x.categoryId === 18021982 && x.attributes.renk_variant_property), JSON.stringify(imp.map((x) => x.attributes)));
+  check("araç send: başlığında marka geçen atlanır", !imp.some((x) => String(x.attributes.UrunAdi).includes("Philips")), JSON.stringify(imp.map((x) => x.attributes.UrunAdi)));
   check("araç send: Siyah başlıktan", imp.some((x) => x.attributes.UrunAdi.includes("Siyah") ? x.attributes.renk_variant_property === "Siyah" : x.attributes.renk_variant_property === "Çok Renkli"), JSON.stringify(imp.map((x) => [x.attributes.UrunAdi, x.attributes.renk_variant_property])));
   const st = t("stock", "OS13-AAA", "7");
   check("araç stock", st.code === 0 && st.calls.hbWrites.some((w) => w.path.endsWith("/stock-uploads") && w.body[0].availableStock === 7), st.titles);

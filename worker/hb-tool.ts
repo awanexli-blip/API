@@ -150,7 +150,7 @@ async function main() {
     };
     // Kaynak: ürün veritabanı (aktif tedarikçiler; BayilikXML bırakıldı). Başlığında bilinen marka geçen ürünler atlanır (marka ihlali)
     const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
-    const BRANDS = /(philips|samsung|xiaomi|apple|iphone|sony|bosch|tefal|arzum|karaca|nike|adidas|puma|disney|marvel|barbie|lego|hasbro|mattel|pok[eé]mon|stanley|dyson|braun|remington|rowenta|fakir|sinbo|casio|swarovski|pandora|hello kitty|paw patrol|spider-?man|frozen|sonic|minecraft|fisher price|tupperware|emsan|korkmaz|pa[sş]abah[cç]e|huawei|lenovo|anker|baseus|jbl|logitech|hoco|ugreen|ally|duzzona|uslion)/i;
+    const BRANDS = /(?<![a-zçğıöşü])(philips|samsung|xiaomi|apple|iphone|sony|bosch|tefal|arzum|karaca|nike|adidas|puma|disney|marvel|barbie|lego|hasbro|mattel|pok[eé]mon|stanley|dyson|braun|remington|rowenta|fakir|sinbo|casio|swarovski|pandora|hello kitty|paw patrol|spider-?man|frozen|sonic|minecraft|fisher price|tupperware|emsan|korkmaz|pa[sş]abah[cç]e|huawei|lenovo|anker|baseus|jbl|logitech|hoco|ugreen|ally|duzzona|uslion)(?![a-zçğıöşü])/i;
     const picked: NewProduct[] = [];
     for (let from = 0; picked.length < n && from < 20000; from += 500) {
       const { data, error } = await db.from("products").select("id, sku, title, description, category, desi, cost_price, vat_rate, source, product_variants(sku, barcode, stock, cost_price), product_images(url, position)")

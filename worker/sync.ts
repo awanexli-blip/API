@@ -51,6 +51,9 @@ async function loadSettings(): Promise<any> {
   if (!ms) return { ...base, enabled: false };
   const merged: any = { ...base };
   for (const [k, v] of Object.entries(ms)) if (v != null) merged[k] = v;
+  // Pazaryerine özel anahtarlar ortak ayardan miras alınmaz (Trendyol'da satışı durdurmak Hepsiburada'yı durdurmamalı)
+  merged.sales_paused = ms.sales_paused === true;
+  merged.retire_legacy = (ms as any).retire_legacy === true;
   return merged;
 }
 

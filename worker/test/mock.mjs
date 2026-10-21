@@ -103,6 +103,12 @@ globalThis.fetch = async (url, init = {}) => {
       if (t === "product_overrides") return json([]);
       // Faz 4: veritabanından gönderilmiş ilan (XML'de yok) ve gönderilecek ürünler
       if (t === "marketplace_listings" && process.env.MOCK_DB === "1") return json(Number(u.searchParams.get("offset") ?? 0) > 0 ? [] : [{ listing_key: "ORPHAN-1", product_variants: { stock: 20, reserved: 0, cost_price: null }, products: { source: "xml:toptanci", status: "active", cost_price: 30, currency: "TRY", vat_rate: 20, category: "Cat1", brand: "X" } }]);
+      // HB test aracı "send": ürün veritabanından (marka geçen başlık atlanmalı)
+      if (t === "products" && process.env.MOCK_HB_PRODUCTS === "1") return json(Number(u.searchParams.get("offset") ?? 0) > 0 ? [] : [
+        { id: "h1", sku: "TCX-1", title: "Siyah Plastik Kirli Sepeti", description: "aciklama", category: "Banyo", desi: 2, cost_price: 120, vat_rate: 20, source: "xml:toptacim", product_variants: [{ sku: "TCX-1", barcode: "B1", stock: 9, cost_price: 120 }], product_images: [{ url: "https://i/1.jpg", position: 0 }] },
+        { id: "h2", sku: "TCX-2", title: "Philips Kirli Sepeti", description: "", category: "Banyo", desi: 2, cost_price: 120, vat_rate: 20, source: "xml:toptacim", product_variants: [{ sku: "TCX-2", barcode: "B2", stock: 9, cost_price: 120 }], product_images: [{ url: "https://i/2.jpg", position: 0 }] },
+        { id: "h3", sku: "TCX-3", title: "Bambu Kirli Sepeti Kapakli", description: "", category: "Banyo", desi: 2, cost_price: 90, vat_rate: 20, source: "xml:toptacim", product_variants: [{ sku: "TCX-3", barcode: "B3", stock: 9, cost_price: 90 }], product_images: [{ url: "https://i/3.jpg", position: 0 }] },
+      ]);
       if (t === "products" && process.env.MOCK_SEND === "1") return json([
         { id: "p1", sku: "TD-1", title: "Gonderilecek Urun Yepyeni", description: "aciklama", brand: "Eco Lounge", category: "Cat3", vat_rate: 20, desi: 2, cost_price: 100, currency: "TRY", status: "active", source: "xml:toptanci",
           product_variants: [{ id: "v1", sku: "TD-1", barcode: "8690000000012", stock: 9, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/x.jpg", position: 0 }] },
