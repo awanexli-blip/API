@@ -40,6 +40,7 @@ export default function Feeds({ api, notify }: { api: Api; notify: Notify }) {
           <label className="f">Ad<input type="text" value={d.name} placeholder="ör. Kendi sitem" onChange={(e) => setD({ ...d, name: e.target.value })} /></label>
           <label className="f">Fiyat
             <select value={d.price_mode} onChange={(e) => setD({ ...d, price_mode: e.target.value })}>{Object.entries(PRICE_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            {d.price_mode === "cost" && <small style={{ color: "var(--warn)" }}>Dikkat: alış fiyatın, feed adresini bilen herkese açık olur. Yalnızca güvendiğin bir yere ver.</small>}
           </label>
           <label className="f">Ürünler
             <select value={d.source_filter} onChange={(e) => setD({ ...d, source_filter: e.target.value })}>{Object.entries(SOURCE_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>

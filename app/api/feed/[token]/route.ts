@@ -69,9 +69,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     if (!data || data.length < 500) break;
   }
   out.push(`</products>`);
-  // Erişim istatistiği (yanıtı bekletmez)
-  db.from("feeds").update({ last_access_at: new Date().toISOString(), access_count: (feed.access_count ?? 0) + 1 }).eq("id", feed.id).then(() => {});
+  // Erişim istatistiği: atomik artırma (migration 030), hata yanıtı bozmaz ama günlüğe yazılır
+  const hit = await db.rpc("feed_hit", { fid: feed.id });
+  if (hit.error) console.error("feed sayacı", hit.error.code ?? "", hit.error.message.slice(0, 200));
   return new NextResponse(out.filter(Boolean).join("\n"), {
-    headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=300", "X-Product-Count": String(count) },
+    headers: { "Content-Type": "application/xml; charset=utf-8", // CDN 5 dk önbellek: aynı token'a sık istek veritabanını taramaz (hız sınırı etkisi)
+      "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=60", "X-Product-Count": String(count) },
   });
 }
