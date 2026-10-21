@@ -147,6 +147,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const brand = fromSupplier ? supBrand.get(p.source) ?? "" : (await brandOk(p.brand)) ? p.brand : "";
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
+          ctx.lsTitles.add(normTitle(p.title)); // aynı başlıklı ikinci ürün (başka tedarikçiden) aynı çalışmada çift ilan açmasın
           rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title: p.title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
           out.keys.set(key, job.id);
         }
