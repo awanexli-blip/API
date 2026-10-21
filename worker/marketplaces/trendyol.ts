@@ -135,7 +135,7 @@ export function createTrendyol(): Marketplace {
   // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > benzer onaylı ilan > nötr değer
   async function fillAttributes(p: NewProduct, cid: string): Promise<{ attributes: any[]; missing: string[] }> {
     const out = new Map<number, Attr>();
-    for (const a of p.cat.attributes ?? []) if (a?.attributeId) out.set(Number(a.attributeId), a);
+    for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.attributeId) out.set(Number(a.attributeId), a);
     const refs = [...(p.refs ?? []).filter((b) => catOfBarcode.get(b) === cid), ...(barcodesByCat.get(cid) ?? [])];
     const missing: string[] = [];
     for (const ca of await categoryAttributes(cid)) {

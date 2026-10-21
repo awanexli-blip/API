@@ -194,7 +194,7 @@ export function createHepsiburada(): Marketplace {
         if (used.has(p.id)) { ctx.skip("aynı stok koduna dönüşen ürün kodu"); continue; }
         used.add(p.id);
         let extra: Record<string, unknown> = {};
-        for (const a of p.cat.attributes ?? []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
+        for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
         try {
           const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra);
