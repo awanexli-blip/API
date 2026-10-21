@@ -76,7 +76,7 @@ export type SendResult = { jobs: number; sent: number; errors: number; batchIds:
 
 export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendResult> {
   const out: SendResult = { jobs: 0, sent: 0, errors: 0, batchIds: [], keys: new Map() };
-  const { data: jobs, error } = await ctx.db.rpc("job_claim", { worker, kinds: [`send_products:${ctx.marketplaceId}`], max_n: 5 });
+  const { data: jobs, error } = await ctx.db.rpc("job_claim", { worker, kinds: [`send_products:${ctx.marketplaceId}`], max_n: Number(process.env.SEND_JOBS_PER_RUN ?? 25) });
   if (error || !jobs?.length) return out;
   // Pazaryerinde kayıtlı markalar (yoksa ürün markası yerine pazaryeri varsayılan markası kullanılır)
   const brandRows = await ctx.db.from("marketplace_brands").select("name_norm").eq("marketplace", ctx.marketplaceId).limit(1);
