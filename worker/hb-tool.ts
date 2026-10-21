@@ -67,6 +67,11 @@ async function main() {
       ["kullanıcı adı : şifre, UA = '<mağaza ID> - SelfIntegration'", U, P, `${M} - SelfIntegration`],
       ...(UA ? [["kullanıcı adı : şifre, UA = HB_USER_AGENT", U, P, UA], ["mağaza ID : şifre, UA = HB_USER_AGENT", M, P, UA]] as [string, string, string, string][] : []),
     ];
+    log("ayar kontrolü (değerler gizli)", {
+      HB_USER_AGENT_tanımlı: !!UA, HB_USER_AGENT_uzunluk: UA.length,
+      HB_USERNAME_mağaza_ID_ile_aynı: U.trim() === M.trim(),
+      boşluk_var: [M, U, P, UA].some((v) => v !== v.trim()),
+    });
     const result: Record<string, string> = {};
     const urls: [string, string][] = [["listing", `${c.LISTING}/listings/merchantid/${M}?offset=0&limit=1`], ["katalog", `${c.MPOP}/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=0&size=1`]];
     for (const [label, user, pass, ua] of combos) {

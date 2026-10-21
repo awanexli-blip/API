@@ -60,7 +60,7 @@ jobs:
           HB_USERNAME: ${{ secrets.HB_USERNAME }}
           HB_PASSWORD: ${{ secrets.HB_PASSWORD }}
           HB_ENV: ${{ vars.HB_ENV }}             # boş = test (SIT), "prod" = canlı
-          HB_USER_AGENT: ${{ vars.HB_USER_AGENT }}
+          HB_USER_AGENT: ${{ vars.HB_USER_AGENT || secrets.HB_USER_AGENT }}
           AMAZON_LWA_CLIENT_ID: ${{ secrets.AMAZON_LWA_CLIENT_ID }}
           AMAZON_LWA_CLIENT_SECRET: ${{ secrets.AMAZON_LWA_CLIENT_SECRET }}
           AMAZON_REFRESH_TOKEN: ${{ secrets.AMAZON_REFRESH_TOKEN }}

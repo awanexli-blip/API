@@ -41,7 +41,7 @@ jobs:
           HB_MERCHANT_ID: ${{ secrets.HB_MERCHANT_ID }}
           HB_USERNAME: ${{ secrets.HB_USERNAME }}
           HB_PASSWORD: ${{ secrets.HB_PASSWORD }}
-          HB_USER_AGENT: ${{ vars.HB_USER_AGENT }}
+          HB_USER_AGENT: ${{ vars.HB_USER_AGENT || secrets.HB_USER_AGENT }}
           HB_ENV: ${{ github.event.inputs.env == 'prod' && 'prod' || '' }}
           CMD: ${{ github.event.inputs.command }}
           ARGS: ${{ github.event.inputs.args }}   # ortam değişkeniyle: kabuk komutu olarak yorumlanmaz
