@@ -6,6 +6,19 @@ Güvenlik kuralı: API anahtarlarını, secret'ları, `service_role` anahtarın�
 
 ---
 
+## 0. Çalışma protokolü (her oturumda uygula; ayrıntı `docs/CALISMA_KURALLARI.md`)
+
+1. Kod yazmadan önce: `git pull` + `git status`, `docs/PROGRESS.md` en üst girişler, `docs/TODO.md` "Şu an" kutusu. Kullanıcıya tek cümleyle hangi maddede olduğunu söyle.
+2. Çok adımlı işte TaskCreate ile adımları yaz, bitirdikçe TaskUpdate ile kapat. Son adım her zaman "doğrula ve kaydet".
+3. Bir madde ancak migration + API + ekran + test + gerçek tıklama denemesi tamamsa `[x]` olur. Sonra `docs/TODO.md` işaretlenir ve `docs/PROGRESS.md` en üste girdi yazılır.
+4. Çalışmayan düğme bırakma: her düğmenin API'si, başarı ve hata davranışı belli; kapalıysa nedeni yazılı; yapılmamış özellik gizli ya da "Yakında" ve devre dışı. Hata yutma yok.
+5. Canlıya yazan her şey (tedarikçiye sipariş, pazaryerine fiyat/stok/takip, müşteriye cevap) önce dry-run, onaysız tam otomatik gönderim yok, `idempotency_key` zorunlu. Müşteri verisi loglara/sohbete yazılmaz.
+6. Next.js eski bilgiyle uyuşmaz: Next kodundan önce `node_modules/next/dist/docs/` oku.
+7. **Önce güvenlik/hata düzeltmeleri:** `docs/DENETIM_GOREVLERI.md` (rapor: `docs/DENETIM_2026-10-21.md`). S0 (kritik) ve S1 (yüksek) bitmeden Faz 6'ya geçme. (CANLI) etiketli maddelerde önce kullanıcıdan onay al, hiçbir şeyi silme (tmp_* tablolar dahil).
+8. Sonraki plan: **Faz 6** (`docs/FAZ6_PLAN.md`): sipariş çekme, tedarikçiye iletme, takip, müşteri soruları (yapay zeka taslağı, insan onaylı), iade, gerçek kâr raporu.
+
+---
+
 ## 1. Amaç
 
 Kullanıcı (Ewan) dropshipping yapıyor. Tedarikçi BayilikXML'in XML akışından (yaklaşık 25.290 ürün) Trendyol mağazasına ürün satıyor. İstenen:

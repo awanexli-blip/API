@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-22 (18) — Denetim, Faz 6 planı, çalışma kuralları (yalnızca doküman; kod ve canlı sistem değişmedi)
+- Eklendi: `docs/DENETIM_2026-10-21.md` (bulgular), `docs/DENETIM_GOREVLERI.md` (Claude Code'un başlatacağı işaretli görev listesi), `docs/FAZ6_PLAN.md` (sipariş → tedarikçi → takip → soru/iade → kâr, F0-F12), `docs/CALISMA_KURALLARI.md` (oturum protokolü, çalışmayan buton ve unutma önleme kuralları, model/çaba tablosu). `CLAUDE.md` §0 ve `docs/TODO.md` "Şu an" bunlara bağlandı. Migration numaraları: güvenlik 025-026, Faz 6 027-028 (022-024 başka işlerde kullanımda: listing_retire, brand_blocklist, supplier_brand).
+- Doğrulanan (salt okunur, denetim anında): `tmp_profit` SECURITY DEFINER ve `anon/authenticated`'a SELECT yetkisi var (maliyet, komisyon, net kâr sütunları); `tmp_xml_costs`, `tmp_xml_raw`, `price_audit_before` üzerinde de anon SELECT yetkisi (RLS açık, politikasız); advisors: duplicate index, unindexed FK, `price_audit_before` PK yok, leaked password kapalı. Worker `npm audit` 0 açık; worker testleri geçti. Panel `tsc/build` yapılamadı (xlsx CDN 403): görev S3.2.
+- Not: denetim, BayilikXML bırakılmadan önceki kod durumunda yapıldı; sonraki commit'ler (retire, Toptancım) ikinci tura bırakıldı (S3.1).
+- Açık / sıradaki: `docs/DENETIM_GOREVLERI.md` **S0.1** (anon anahtarla canlı kanıt), ardından S0.2 (CANLI, K onayı).
+
 ## 2026-10-21 (17) — Hepsiburada SIT, Toptancım fiyat ve marka filtresi
 - HB SIT kimlik: Basic `merchantId:secretKey`, `User-Agent` = developer username (zorunlu). Listing + sipariş 200; stok/fiyat (tek ve 30'lu toplu) doğrulandı, 30/30 satılabilir. Katalog (mpop) 403: yetki HB'de. `sales_paused`/`retire_legacy` artık pazaryeri bazında (Trendyol ayarı HB'ye miras geçip test stoğunu sıfırlamıştı). hb-tool `send` ürün DB'sinden.
 - Toptancım: 2 XML = 20.717 + 5.604 ürün (eksik okuma yok; 11 SKU çakışması). Fiyat doğrulaması 68–5.016 TL × 5 komisyon: en az 45 TL tek, 40 TL çok adet. KDV hariç ayarı K'ya teyit için soruldu (XML 158 → maliyet 189,60). SKU öneki alanına örnek kod girilmiş (açık).

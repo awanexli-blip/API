@@ -2,7 +2,15 @@
 
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Kural: her oturumda önce `docs/PROGRESS.md`, sonra bu dosya okunur; iş bittikçe burada işaretlenir, ayrıntı PROGRESS'e yazılır.
-Son güncelleme: 17.10.2026.
+Son güncelleme: 21.10.2026.
+
+## Şu an
+
+> **Önce: güvenlik ve hata düzeltmeleri** (`docs/DENETIM_GOREVLERI.md`, rapor: `docs/DENETIM_2026-10-21.md`). **Sıradaki ilk madde: S0.1** (anon anahtarla `tmp_profit` okunabiliyor mu: kanıt). S0 ve S1 bitmeden Faz 6'ya geçme.
+> **Sonra aktif aşama: F (Faz 6 — operasyon merkezi).** Plan: `docs/FAZ6_PLAN.md`. Çalışma kuralları: `docs/CALISMA_KURALLARI.md`.
+> **F'de ilk madde: F0 — önkoşullar** (Trendyol sipariş yetkisi, tedarikçi sipariş yöntemleri tablosu `docs/TEDARIKCILER.md`, KVKK kararı).
+> Not: Trendyol'da `sales_paused` açık (20.10). Sipariş sistemi canlı test edilmeden satışı açma.
+> Bu kutuyu her dilim bitince güncelle (aşama + sıradaki madde).
 
 ## Çizelge
 
@@ -14,7 +22,7 @@ Son güncelleme: 17.10.2026.
 | C | Faz 3 | İş kuyruğu + pazaryeri ilan tablosu (`marketplace_listings`), adaptörler DB'den beslenir | 1-2 oturum | [x] 17.10 |
 | D | Faz 4 | Trendyol tüm tedarikçilerin ürünlerini DB'den alır; ürün formunda "Pazaryerine gönder" | 2 oturum | [x] 17.10 (canlı ilk gönderim (K)) |
 | E ← sıradaki | Faz 5 | Hepsiburada canlı (HB testi sonrası), N11, ÇiçekSepeti, Amazon TR | pazaryeri başına 1-2 oturum | [ ] |
-| F | Faz 6 | Siparişler, stok rezervasyonu, bildirimler, kâr raporları | 2-3 oturum | [ ] |
+| F ← aktif | Faz 6 | Siparişler, tedarikçiye iletme, takip, müşteri soruları (yapay zeka taslağı), iade, stok rezervasyonu, bildirimler, gerçek kâr raporları (ayrıntı: `FAZ6_PLAN.md`) | 8-12 oturum | [ ] |
 
 ## Bitenler (özet; ayrıntı PROGRESS.md)
 
@@ -66,12 +74,21 @@ Son güncelleme: 17.10.2026.
 - [ ] N11, ÇiçekSepeti (hesap + API anahtarı (K))
 - [x] Amazon TR adaptörü (SP-API, 17.10): giriş, ilan raporu, stok/fiyat feed'i, var olan ASIN'e teklif, ASIN eşleştirme ekranı, test aracı; sahte servis testleri 12/12. [x] SP-API kaydı + Secrets, `ping` canlıda başarılı (18.10). [x] Toplu eşleştirme ekranı. [ ] (K) Panelde Amazon'u aç → aday bul → onayla → gönder. [ ] Product Fees API ile gerçek komisyon. [ ] (K) GTIN muafiyeti / Marka Kaydı → yeni ürün açma (ürün tipi şeması). [ ] Varyant gruplama (parent/child)
 
-## F — Faz 6: operasyon
+## F — Faz 6: operasyon (ayrıntı, kabul ölçütleri ve veri modeli: `docs/FAZ6_PLAN.md`)
 
-- [ ] Siparişleri çek, tedarikçiye ilet, kargo takibi
-- [ ] Stok rezervasyonu (`reserved` alanı hazır)
-- [ ] Bildirimler (Telegram/e-posta): senkron hatası, XML inmedi, token süresi, stok bitti
-- [ ] Raporlar: gerçek satışlardan net kâr, en çok satan, iade oranı
+- [ ] F0 Önkoşullar: Trendyol sipariş yetkisi/test siparişi (K), tedarikçi sipariş yöntemleri `docs/TEDARIKCILER.md` (K), Trendyol servis doğrulamaları (D), KVKK kararı (K)
+- [ ] F1 Veri modeli: `orders`, `order_lines`, `order_events`, `supplier_orders`, `suppliers` genişletme, `order_upsert` (migration 027-028, RLS, DB testi)
+- [ ] F2 Trendyol sipariş çekme: `fetchOrders`, `worker/orders.ts` (15 dk), webhook ucu, statü haritası, sahte servis testi
+- [ ] F3 Siparişler ekranı: liste, filtre, detay, zaman çizelgesi, kâr özeti, "Dikkat gerektirenler", telefon uyumlu
+- [ ] F4 Tedarikçi sipariş motoru: manual (tek tık) → email → semi (hazırla + onay) → api; ön kontroller; idempotent; tam otomatik en son ve varsayılan kapalı
+- [ ] F5 Takip kodu ve kargo: elle giriş, pazaryerine bildirme, gecikme uyarıları
+- [ ] F6 Stok rezervasyonu (`reserved`) ve çok pazaryeri stok düşümü
+- [ ] F7 Müşteri soruları: gelen kutusu, yapay zeka cevap taslağı (insan onaylı, otomatik gönderim yok); yorum servisi var mı doğrula (D)
+- [ ] F8 İadeler: claims çekme, neden sınıfı, tedarikçi alacağı, `return_rate/return_cost` kalibrasyonu
+- [ ] F9 Analitik ve gerçek net kâr: gösterge kartları, en çok satan/iade, ilk 2 hafta yalnızca veri topla sonra araştırma raporu
+- [ ] F10 Bildirimler (Telegram/e-posta/panel) ve hata merkezi
+- [ ] F11 Diğer pazaryerlerinin siparişleri: Hepsiburada, Amazon TR, N11, ÇiçekSepeti
+- [ ] F12 Sertleştirme: uçtan uca test, mobil denetim, güvenlik, runbook, güncel sürüm denetimi
 
 ## Öneriler (henüz plana alınmadı, karar (K))
 
