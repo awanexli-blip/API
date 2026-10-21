@@ -7,7 +7,5 @@ preview.csv
 next-env.d.ts
 xml_dump.csv
 preview_*.csv
-worker/package-lock.json
-package-lock.json
 *.xlsx
 kaynaklar/
