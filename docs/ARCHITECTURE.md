@@ -8,7 +8,7 @@ Durum: Faz 1 ve Faz 2 (içe/dışa aktarma) tamam. Mevcut XML → pazaryeri senk
 BayilikXML (XML) ──> GitHub Actions: worker/sync.ts (15 dk) ──> Trendyol V2 / Hepsiburada adaptörleri
                               │  ayarlar, kategori eşleşmesi, geçmiş
                               ▼
-                          Supabase  <── Vercel: Next.js 14 paneli (app/)
+                          Supabase  <── Vercel: Next.js 16 paneli (app/)
 ```
 
 - Ürün verisi yalnızca XML'de; veritabanında ürün tablosu yok. Fiyat, eşleştirme ve stok her çalışmada XML'den yeniden hesaplanıyor.

@@ -2,14 +2,14 @@
 
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Kural: her oturumda önce `docs/PROGRESS.md`, sonra bu dosya okunur; iş bittikçe burada işaretlenir, ayrıntı PROGRESS'e yazılır.
-Son güncelleme: 21.10.2026.
+Son güncelleme: 22.10.2026.
 
 ## Şu an
 
-> **Önce: güvenlik ve hata düzeltmeleri** (`docs/DENETIM_GOREVLERI.md`, rapor: `docs/DENETIM_2026-10-21.md`). **Sıradaki ilk madde: S0.1** (anon anahtarla `tmp_profit` okunabiliyor mu: kanıt). S0 ve S1 bitmeden Faz 6'ya geçme.
+> **Önce: güvenlik ve hata düzeltmeleri** (`docs/DENETIM_GOREVLERI.md`). 22.10: S0 (S0.4/S0.5 K hariç) ve S1 tamam, S2 büyük ölçüde tamam. **Sıradaki:** K kararları (S0.4 Auth ayarları, S0.5 depo özel mi); Claude: S3.1 ikinci tur, sonra Faz 6 F0.
 > **Sonra aktif aşama: F (Faz 6 — operasyon merkezi).** Plan: `docs/FAZ6_PLAN.md`. Çalışma kuralları: `docs/CALISMA_KURALLARI.md`.
 > **F'de ilk madde: F0 — önkoşullar** (Trendyol sipariş yetkisi, tedarikçi sipariş yöntemleri tablosu `docs/TEDARIKCILER.md`, KVKK kararı).
-> Not: Trendyol'da `sales_paused` açık (20.10). Sipariş sistemi canlı test edilmeden satışı açma.
+> Not: Trendyol satışı açık (sales_paused=false, 21.10 K kararı); Toptancım toplu gönderimi sürüyor (PROGRESS 21). Siparişler şimdilik Trendyol panelinden elle.
 > Bu kutuyu her dilim bitince güncelle (aşama + sıradaki madde).
 
 ## Çizelge

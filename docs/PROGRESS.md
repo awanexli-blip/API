@@ -2,6 +2,16 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-22 (21) — Denetim S1/S2 düzeltmeleri, ürün vitrini, toplu gönderim takibi (K uyurken, onaysız yapılabilenler)
+- Güvenlik: S1.1 workflow enjeksiyonu (girdiler env, argüman doğrulama), S1.2 maliyetli CSV artifact kaldırıldı + maskeleme yardımcıları, S1.3 doğrulanmamış e-posta reddi + tek admin istemcisi, S1.4 kilit dosyaları + npm ci + actions SHA + Dependabot, S2.1 SSRF korumalı safeFetch (DNS + iç ağ + yönlendirme + boyut), S2.2 güvenlik başlıkları + CSP rapor modu, S2.3 feed (atomik sayaç 030, CDN önbellek, alış fiyatı uyarısı), S2.4 dahili HTTP çağrısı kaldırıldı, S2.5 genel hata mesajları, S2.6 CSV formül koruması. CI (tsc + build + test) eklendi, Linux'ta yeşil. Testler: worker tümü + 21 birim testi geçti; next build temiz.
+- Panel: **Ürünler → Vitrin** (varsayılan): büyük görsel, büyük satış fiyatı (Trendyol ilan fiyatı; yoksa ayarlar + akıllı kârla "tahmini"), net kâr rozeti (40 TL altı turuncu), alış, stok, tükendi/son N, ilan durumu; sıralama (yeni, fiyat yüksek/düşük, ad); Liste görünümü korunur. Tarayıcı testi: masaüstü/telefon/gece, yatay taşma ve konsol hatası yok. Migration 029 (indeksler).
+- Gönderilemeyenler: kategori bulunamayanlarda sistemin tahmini "öneri" olarak yazılır ve formda önceden seçilir (otomatik gönderilmez; düşük güven). 1.560 kategori hatası öneri üretmek için yeniden sıraya alındı (job 159).
+- Toptancım varsayılan özellik: "Paket İçeriği = 1 Adet", Menşei alternatifleri genişletildi; bu iki hatayla kalan 105 ürün yeniden sırada (job 158).
+- Marka riski listesine 30 kelime (chevrolet, hızlı ve öfkeli/fast and furious, dodge, nissan, jeep, mustang, yamaha...). Bunlardan hiçbiri gönderilmemişti. Not: "lotus", "lincoln" yanlış pozitif verebilir (panel → Markalar'dan çıkarılabilir).
+- Toplu gönderim (23:35 UTC): 2.099 gönderildi, 1.285 hata, 22.919 sırada (109 iş, senkron başına 25 iş, ~5 senkron). Hata dağılımı: kategori yok ~1.000 (geniş tedarikçi kategorileri), zorunlu özellik (Boyut/Ebat, Çalışma Tipi, Model, Araç Marka/Model...), ucuz kopya 87, aynı başlık 36.
+- BayilikXML: Trendyol'da 18.090 arşivde (25 saat dolunca 22.10 ~19:15 UTC otomatik silinir), 2.654 silindi. Amazon 17 ilan (Amazon kapalı, bekliyor).
+- Açık: S0.4/S0.5/S2.7 silme/S2.8 (K), S3.1 ikinci tur, toplu gönderimin sonucu ve Tcx onay/ret oranı, Bayilik ürünlerinin DB'de arşivlenmesi (K), Faz 6.
+
 ## 2026-10-22 (20) — Toptancım toplu gönderim
 - Deneme: 39 ürünün yalnız 2'si gitti; 37'si Trendyol zorunlu özelliği (Menşei, garanti, Tip...) yüzünden adaptörde atlanmış ama tabloda "sent" kalmıştı (hata düzeltildi: atlananlar ürün bazında error + neden). Kategori eşlemesinde `attributes` nesne yazılmıştı ("object is not iterable"), düzeltildi.
 - K kararları: Menşei = TR (uyarı verildi), garanti yok -> "Garanti Yok|0"; aynı ürünün (aynı başlık + aynı görsel kökü) yalnızca en ucuzu (603 grup, 647 elenir); aynı başlıklı farklı modellere başlık sonuna model kodu. Açıklama: XML `detail` eşlendi (önceden kısa `description`). Toptancım 352 alt kategorisi ad eşleşmesiyle `category_map`'e (komisyon: kategorideki en yüksek); geniş 188 kategori eşlenmedi (ürün başına tahmin).
