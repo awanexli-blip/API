@@ -26,6 +26,8 @@ function withModel(title: string, ref: string) {
   if (!code || title.toLowerCase().includes(code.toLowerCase())) return title;
   return `${title.slice(0, 100 - code.length - 1).trim()} ${code}`;
 }
+// Ürüne elle girilen özellikler (panel: Gönderilemeyenler) tedarikçi varsayılanını ezer; kategori anahtarı özellik değildir
+const productAttrs = (a: any): Record<string, string> => Object.fromEntries(Object.entries(a && typeof a === "object" && !Array.isArray(a) ? a : {}).filter(([k, v]) => k !== "Trendyol kategori" && typeof v === "string" && v.trim()).map(([k, v]) => [k, String(v)]));
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
 const supplierOf = (source: string) => String(source ?? "").replace(/^xml:/, "");
 // Pazaryerindeki anahtar: BayilikXML ürünleri mağaza kuralıyla "OS13-" + SKU, diğerleri varyant barkodu
@@ -139,7 +141,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const cheaper = sib.find((x: any) => imageBase(firstImage(x)) === myImg && myImg && (Number(x.cost_price) < Number(p.cost_price) || (Number(x.cost_price) === Number(p.cost_price) && x.id < p.id)));
         const title = sib.some((x: any) => imageBase(firstImage(x)) !== myImg) ? withModel(p.title, p.source_ref ?? p.sku) : p.title;
         const pred = ctx.predict ? ctx.predict(p.title, p.category ?? "") : null;
-        const categoryId = ctx.catMap.get(p.category)?.category_id ?? (pred?.level === "yuksek" ? pred.categoryId : null);
+        // Panelde (Gönderilemeyenler) ürüne elle girilen kategori numarası önce gelir
+        const manualCat = /^\d+$/.test(String(p.attributes?.["Trendyol kategori"] ?? "")) ? String(p.attributes["Trendyol kategori"]) : null;
+        const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id ?? (pred?.level === "yuksek" ? pred.categoryId : null);
         for (const v of [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position)) {
           const key = keyFor(p.source, v);
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
@@ -172,7 +176,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
-            refs: pred?.refs, defaults: supDefaults.get(p.source), price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
+            refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes) }, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
           // Tedarikçi ürünü: tedarikçi ayarındaki pazaryeri markası; elle girilen ürün: kendi markası (pazaryerinde kayıtlıysa) yoksa mağaza markası
           const fromSupplier = String(p.source ?? "").startsWith("xml:");

@@ -20,6 +20,7 @@ import Feeds from "./_components/Feeds";
 import AppSettings from "./_components/AppSettings";
 import AmazonMatching from "./_components/AmazonMatching";
 import Rejections from "./_components/Rejections";
+import Unsent from "./_components/Unsent";
 import { applyTheme, currentTheme, type Theme } from "./_components/theme";
 
 type Role = "viewer" | "editor" | "admin";
@@ -30,7 +31,7 @@ const MARKETS: { id: string; label: string; live: boolean }[] = [
   ...UPCOMING.filter((u) => u.id !== "hepsiburada" && u.id !== "amazon").map((u) => ({ id: u.id, label: u.label, live: false })),
 ];
 const SUBS: [string, string][] = [
-  ["ozet", "Özet"], ["fiyat", "Fiyat ayarları"], ["kar", "Akıllı kâr"], ["eslestirme", "Eşleştirme"], ["reddedilen", "Reddedilenler"], ["markalar", "Markalar"], ["kategoriler", "Kategoriler"], ["istisnalar", "Ürün istisnaları"],
+  ["ozet", "Özet"], ["fiyat", "Fiyat ayarları"], ["kar", "Akıllı kâr"], ["eslestirme", "Eşleştirme"], ["gonderilemeyen", "Gönderilemeyenler"], ["reddedilen", "Reddedilenler"], ["markalar", "Markalar"], ["kategoriler", "Kategoriler"], ["istisnalar", "Ürün istisnaları"],
 ];
 
 // Adres çubuğu ile gezinme: #/urunler, #/pazaryeri/trendyol/kar ... (yenileyince aynı ekran, geri tuşu çalışır)
@@ -163,7 +164,7 @@ function Panel({ token, email }: { token: string; email: string }) {
     page = info ? <Upcoming info={info} /> : (
       <>
         <div className="tabs" role="tablist">
-          {SUBS.filter(([k]) => (mp === "amazon" ? !["markalar", "kategoriler", "reddedilen"].includes(k) : k !== "eslestirme" && (mp === "trendyol" || k !== "reddedilen"))).map(([k, label]) => <button key={k} role="tab" aria-selected={sub === k} className="tab" onClick={() => nav(`pazaryeri/${mp}/${k}`)}>{label}</button>)}
+          {SUBS.filter(([k]) => (mp === "amazon" ? !["markalar", "kategoriler", "reddedilen", "gonderilemeyen"].includes(k) : k !== "eslestirme" && (mp === "trendyol" || (k !== "reddedilen" && k !== "gonderilemeyen")))).map(([k, label]) => <button key={k} role="tab" aria-selected={sub === k} className="tab" onClick={() => nav(`pazaryeri/${mp}/${k}`)}>{label}</button>)}
         </div>
         <div key={mp + sub}>
           {sub === "ozet" && <Overview {...props} />}
@@ -171,6 +172,7 @@ function Panel({ token, email }: { token: string; email: string }) {
           {sub === "kar" && <ProfitRules {...props} />}
           {sub === "eslestirme" && mp === "amazon" && <AmazonMatching {...props} />}
           {sub === "reddedilen" && mp === "trendyol" && <Rejections {...props} />}
+          {sub === "gonderilemeyen" && mp === "trendyol" && <Unsent {...props} />}
           {sub === "markalar" && <Brands {...props} />}
           {sub === "kategoriler" && <Categories {...props} />}
           {sub === "istisnalar" && <Overrides {...props} />}
