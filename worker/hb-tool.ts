@@ -58,6 +58,25 @@ async function main() {
   if (cmd === "ping") {
     try { const r = await c.hb(`${c.LISTING}/listings/merchantid/${c.MERCHANT}?offset=0&limit=1`); log("listing erişimi: TAMAM", r); } catch (e: any) { log("listing erişimi: HATA", e.message); }
     try { const r = await c.hb(`${c.MPOP}/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=0&size=2`); log("katalog (mpop) erişimi: TAMAM", r); } catch (e: any) { log("katalog erişimi: HATA", e.message); }
+    // Kimlik biçimi teşhisi: Hepsiburada dokümanı kapalı, kaynaklar çelişiyor. Olası birleşimleri dene (gizli değerler yazılmaz, yalnızca etiket)
+    const M = c.MERCHANT, U = process.env.HB_USERNAME ?? "", P = process.env.HB_PASSWORD ?? "", UA = process.env.HB_USER_AGENT ?? "";
+    const combos: [string, string, string, string][] = [
+      ["kullanıcı adı : şifre, UA = kullanıcı adı", U, P, U],
+      ["mağaza ID : şifre, UA = kullanıcı adı", M, P, U],
+      ["mağaza ID : şifre, UA = '<mağaza ID> - SelfIntegration'", M, P, `${M} - SelfIntegration`],
+      ["kullanıcı adı : şifre, UA = '<mağaza ID> - SelfIntegration'", U, P, `${M} - SelfIntegration`],
+      ...(UA ? [["kullanıcı adı : şifre, UA = HB_USER_AGENT", U, P, UA], ["mağaza ID : şifre, UA = HB_USER_AGENT", M, P, UA]] as [string, string, string, string][] : []),
+    ];
+    const result: Record<string, string> = {};
+    for (const [label, user, pass, ua] of combos) {
+      try {
+        const res = await fetch(`${c.MPOP}/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=0&size=1`, { headers: { Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"), "User-Agent": ua, Accept: "application/json" } });
+        result[label] = res.ok ? "ÇALIŞIYOR" : `HTTP ${res.status}`;
+      } catch (e: any) { result[label] = "bağlantı hatası: " + String(e?.message ?? e).slice(0, 80); }
+    }
+    log("kimlik biçimi teşhisi (katalog ucu)", result);
+    const ok = Object.entries(result).find(([, v]) => v === "ÇALIŞIYOR");
+    log(ok ? `✓ Çalışan biçim: ${ok[0]}` : "✗ Hiçbir biçim çalışmadı: bilgileri ve ortamı (sit/prod) kontrol et");
     return;
   }
 
