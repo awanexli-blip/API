@@ -4,7 +4,7 @@
 //   categories <arama>           yaprak kategorilerde arama (tam liste hb_categories.csv)
 //   suggest                      XML kategorilerine en uygun HB kategorileri (hb_category_suggestions.csv)
 //   attributes <kategoriId>      kategori özellikleri (zorunlu olanlar ve değerleri)
-//   send <adet> <kategoriId> [xml-kategori-filtresi]   ürün gönder (1 / 2 / 10 ...), takip numarası ve sonucu yazar
+//   send <adet> <kategoriId> [filtre]   ürün veritabanından (Toptancım vb.) ürün gönder, takip numarası ve sonucu yazar
 //   status <takipNo>             ürün gönderim sonucu
 //   listings [adet]              mağazadaki listing'ler
 //   stock <merchantSku> <adet>   stok güncelle (ve sonucu kontrol et)
@@ -136,32 +136,40 @@ async function main() {
     const n = Math.max(1, Number(args[0] || 1));
     const categoryId = args[1];
     const filter = lo(args.slice(2).join(" "));
-    if (!categoryId) throw new Error("kullanım: send <adet> <hbKategoriId> [xml-kategori-filtresi]");
+    if (!categoryId) throw new Error("kullanım: send <adet> <hbKategoriId> [başlık/kategori filtresi]");
     const s = await settings();
     const mp = createHepsiburada();
     const existing = new Set((await mp.loadListings()).map((l) => l.id));
-    const raw = await loadXml();
     const minStock = Number(s.min_stock ?? 5);
     const cfg = {
       commissionRate: Number(s.commission_rate), targetProfitRate: Number(s.target_profit_rate), shippingCost: Number(s.shipping_cost),
       freeShippingThreshold: Number(s.free_shipping_threshold), minMarkup: Number(s.min_markup), fixedCost: Number(s.fixed_cost),
-      returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, multiUnitMinNet: s.multi_unit_min_net != null ? Number(s.multi_unit_min_net) : null, 
+      returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, multiUnitMinNet: s.multi_unit_min_net != null ? Number(s.multi_unit_min_net) : null,
       minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price),
       commissionPlusVat: s.commission_plus_vat === true, shippingVatIncluded: s.shipping_vat_included !== false, vatRate: Number(s.vat_rate ?? 20) / 100,
     };
+    // Kaynak: ürün veritabanı (aktif tedarikçiler; BayilikXML bırakıldı). Başlığında bilinen marka geçen ürünler atlanır (marka ihlali)
+    const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+    const BRANDS = /(philips|samsung|xiaomi|apple|iphone|sony|bosch|tefal|arzum|karaca|nike|adidas|puma|disney|marvel|barbie|lego|hasbro|mattel|pok[eé]mon|stanley|dyson|braun|remington|rowenta|fakir|sinbo|casio|swarovski|pandora|hello kitty|paw patrol|spider-?man|frozen|sonic|minecraft|fisher price|tupperware|emsan|korkmaz|pa[sş]abah[cç]e|huawei|lenovo|anker|baseus|jbl|logitech|hoco|ugreen|ally|duzzona|uslion)/i;
     const picked: NewProduct[] = [];
-    for (const r of raw) {
-      if (picked.length >= n) break;
-      const pc = String(r.productCode ?? "").trim();
-      const id = "OS13-" + san(pc || String(r.barcode ?? ""));
-      const images = Array.from({ length: 12 }, (_, i) => r[`image${i + 1}`]).filter(Boolean).map(String);
-      if (!pc || existing.has(id) || !images.length || num(r.quantity) < minStock) continue;
-      if (filter && !lo(String(r.category ?? "")).includes(filter)) continue;
-      const desi = Math.max(1, Math.ceil(num(r.desi) || Number(s.default_desi ?? 2)));
-      const pcfg = { ...cfg, ...(s.shipping_mode === "desi" ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };
-      const calc = calcPrice(num(r.price), pcfg);
-      if (!calc.ok) continue;
-      picked.push({ id, name: String(r.name ?? ""), detail: String(r.detail ?? ""), brand: "", productCode: pc, desi, images, cat: { category_id: categoryId, attributes: [] }, price: calc.price, qty: num(r.quantity) });
+    for (let from = 0; picked.length < n && from < 20000; from += 500) {
+      const { data, error } = await db.from("products").select("id, sku, title, description, category, desi, cost_price, vat_rate, source, product_variants(sku, barcode, stock, cost_price), product_images(url, position)")
+        .eq("status", "active").neq("source", "xml:bayilik").order("created_at").range(from, from + 499);
+      if (error) throw new Error("ürünler okunamadı: " + error.message);
+      if (!data?.length) break;
+      for (const p of data as any[]) {
+        if (picked.length >= n) break;
+        const v = p.product_variants?.[0];
+        const id = String(v?.sku ?? p.sku ?? "");
+        const images = [...(p.product_images ?? [])].sort((a: any, b: any) => a.position - b.position).map((i: any) => String(i.url));
+        if (!id || existing.has(id) || !images.length || Number(v?.stock ?? 0) < minStock || BRANDS.test(p.title)) continue;
+        if (filter && !lo(`${p.title} ${p.category ?? ""}`).includes(filter)) continue;
+        const desi = Math.max(1, Math.ceil(Number(p.desi) || Number(s.default_desi ?? 2)));
+        const pcfg = { ...cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(s.shipping_mode === "desi" ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };
+        const calc = calcPrice(Number(v?.cost_price ?? p.cost_price), pcfg);
+        if (!calc.ok) continue;
+        picked.push({ id, name: String(p.title), detail: String(p.description ?? p.title), brand: "", productCode: id, desi, images, cat: { category_id: categoryId, attributes: [] }, price: calc.price, qty: Number(v.stock) });
+      }
     }
     log(`${picked.length} ürün seçildi`, picked.map((p) => ({ merchantSku: p.id, ad: p.name, fiyat: p.price, stok: p.qty, desi: p.desi })));
     const skipped: Record<string, number> = {};
