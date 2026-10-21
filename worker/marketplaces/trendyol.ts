@@ -154,6 +154,14 @@ export function createTrendyol(): Marketplace {
           else if (ca.allowCustom) val = { attributeId: id, customAttributeValue: "Çok Renkli" };
         }
       }
+      // Tedarikçi varsayılanı (ör. Menşei -> Çin): değer listesinde adıyla aranır, yoksa serbest metin kabul ediliyorsa yazılır
+      const def = Object.entries(p.defaults ?? {}).find(([k]) => lo(k) === lo(name))?.[1];
+      if (!val && def) {
+        const vals = await attributeValues(cid, id);
+        const hit = vals.find((v) => lo(v.name) === lo(def));
+        if (hit) val = { attributeId: id, attributeValueId: hit.id };
+        else if (ca.allowCustom) val = { attributeId: id, customAttributeValue: def };
+      }
       if (!val) for (const b of refs) {
         const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);
         if (a) { val = a.attributeValueId ? { attributeId: id, attributeValueId: a.attributeValueId } : { attributeId: id, customAttributeValue: a.customAttributeValue }; break; }
@@ -307,14 +315,16 @@ export function createTrendyol(): Marketplace {
       const payloads: any[] = [];
       const used = new Set<string>();
       for (const p of items) {
-        if (used.has(p.id)) { ctx.skip("aynı barkoda dönüşen ürün kodu"); continue; }
+        // Gönderilemeyen ürün ürün bazında bildirilir (ilan "error" + neden; "sent" kalmaz)
+        const no = (why: string) => { ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
+        if (used.has(p.id)) { no("aynı barkoda dönüşen ürün kodu"); continue; }
         used.add(p.id);
         const brand = ctx.brandName || BRAND_NAME; // panel (Markalar) > ortam değişkeni > Eco Lounge
         const bId = await brandId(brand);
-        if (!bId) { ctx.skip(`marka Trendyol'da bulunamadı: ${brand}`); continue; }
+        if (!bId) { no(`marka Trendyol'da bulunamadı: ${brand}`); continue; }
         const cid = String(p.cat.category_id);
         const { attributes, missing } = await fillAttributes(p, cid);
-        if (missing.length) { ctx.skip(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
+        if (missing.length) { no(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
         payloads.push({
           barcode: p.id, title: p.name.slice(0, 100), productMainId: p.id, brandId: bId,
           categoryId: Number(p.cat.category_id), quantity: Math.min(Math.floor(p.qty), 20000), stockCode: p.id,

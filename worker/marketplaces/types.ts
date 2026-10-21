@@ -41,6 +41,7 @@ export interface NewProduct {
   images: string[];
   cat: any;             // category_map satırı (category_id tahminden de gelebilir)
   refs?: string[];      // benzer mevcut ilanlar (zorunlu özellikleri kopyalamak için)
+  defaults?: Record<string, string>; // tedarikçi varsayılan özellikleri (özellik adı -> değer adı, ör. Menşei -> Çin)
   asin?: string;        // Amazon: var olan ürüne teklif (LISTING_OFFER_ONLY) için eşleşen ASIN
   price: number;
   qty: number;

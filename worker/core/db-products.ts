@@ -83,7 +83,15 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
   // Tedarikçi ürünlerinin pazaryerindeki markası: tedarikçi ayarı "Pazaryeri markası" (ör. Toptancım -> Tcx, yetki belgesiyle).
   // Boşsa tedarikçi ürünü gönderilmez (mağaza markasıyla açmak istenmiyor; XML markası başkasına kayıtlı olabilir)
   const supBrand = new Map<string, string>();
-  { const r = await ctx.db.from("suppliers").select("code, marketplace_brand"); for (const x of r.data ?? []) if (x.marketplace_brand) supBrand.set(`xml:${x.code}`, String(x.marketplace_brand)); }
+  const supDefaults = new Map<string, Record<string, string>>(); // tedarikçi varsayılan özellikleri (ör. Menşei)
+  {
+    let r = await ctx.db.from("suppliers").select("code, marketplace_brand, default_attributes");
+    if (r.error) r = await ctx.db.from("suppliers").select("code, marketplace_brand"); // migration 026 öncesi
+    for (const x of r.data ?? []) {
+      if (x.marketplace_brand) supBrand.set(`xml:${x.code}`, String(x.marketplace_brand));
+      if (x.default_attributes && typeof x.default_attributes === "object" && !Array.isArray(x.default_attributes)) supDefaults.set(`xml:${x.code}`, x.default_attributes);
+    }
+  }
 
   const keyFor = (source: string, v: any) => (ctx.mp.listingKeyFor ? ctx.mp.listingKeyFor(source, v) : listingKeyOf(source, v));
   const needsCategory = ctx.mp.requiresCategory !== false;
@@ -140,7 +148,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             ...(() => { const c = ctx.clean ? ctx.clean(p.title, p.description || p.title) : { title: p.title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
-            refs: pred?.refs, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
+            refs: pred?.refs, defaults: supDefaults.get(p.source), price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
           // Tedarikçi ürünü: tedarikçi ayarındaki pazaryeri markası; elle girilen ürün: kendi markası (pazaryerinde kayıtlıysa) yoksa mağaza markası
           const fromSupplier = String(p.source ?? "").startsWith("xml:");

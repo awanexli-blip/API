@@ -191,14 +191,15 @@ export function createHepsiburada(): Marketplace {
       const used = new Set<string>();
       const payloads: any[] = [];
       for (const p of list) {
-        if (used.has(p.id)) { ctx.skip("aynı stok koduna dönüşen ürün kodu"); continue; }
+        const no = (why: string) => { ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
+        if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
         used.add(p.id);
         let extra: Record<string, unknown> = {};
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
         try {
           const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra);
-          if (f.missing.length) { ctx.skip(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
+          if (f.missing.length) { no(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
           extra = f.attributes;
         } catch (e: any) { console.error("özellik listesi alınamadı:", e.message); }
         payloads.push({
