@@ -68,14 +68,19 @@ async function main() {
       ...(UA ? [["kullanıcı adı : şifre, UA = HB_USER_AGENT", U, P, UA], ["mağaza ID : şifre, UA = HB_USER_AGENT", M, P, UA]] as [string, string, string, string][] : []),
     ];
     const result: Record<string, string> = {};
+    const urls: [string, string][] = [["listing", `${c.LISTING}/listings/merchantid/${M}?offset=0&limit=1`], ["katalog", `${c.MPOP}/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=0&size=1`]];
     for (const [label, user, pass, ua] of combos) {
-      try {
-        const res = await fetch(`${c.MPOP}/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=0&size=1`, { headers: { Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"), "User-Agent": ua, Accept: "application/json" } });
-        result[label] = res.ok ? "ÇALIŞIYOR" : `HTTP ${res.status}`;
-      } catch (e: any) { result[label] = "bağlantı hatası: " + String(e?.message ?? e).slice(0, 80); }
+      const parts: string[] = [];
+      for (const [name, url] of urls) {
+        try {
+          const res = await fetch(url, { headers: { Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"), "User-Agent": ua, Accept: "application/json" } });
+          parts.push(`${name}: ${res.ok ? "ÇALIŞIYOR" : `HTTP ${res.status}`}`);
+        } catch (e: any) { parts.push(`${name}: bağlantı hatası`); }
+      }
+      result[label] = parts.join(" · ");
     }
-    log("kimlik biçimi teşhisi (katalog ucu)", result);
-    const ok = Object.entries(result).find(([, v]) => v === "ÇALIŞIYOR");
+    log("kimlik biçimi teşhisi", result);
+    const ok = Object.entries(result).find(([, v]) => v.includes("ÇALIŞIYOR"));
     log(ok ? `✓ Çalışan biçim: ${ok[0]}` : "✗ Hiçbir biçim çalışmadı: bilgileri ve ortamı (sit/prod) kontrol et");
     return;
   }
