@@ -7,6 +7,9 @@ import { tl, when, type Api, type Notify, type Row } from "./shared";
 import BrandInput from "./BrandInput";
 import Icon from "./Icon";
 import PricePreview from "./PricePreview";
+import { calcPrice } from "@/worker/pricing";
+import { applyRules, rulesFor, type PricingRule } from "@/worker/pricing-rules";
+import { cfgFromSettings } from "./pricing-config";
 
 type Role = "viewer" | "editor" | "admin";
 const STATUS_TR: Record<string, string> = { draft: "Taslak", active: "Aktif", archived: "Arşiv" };
@@ -104,6 +107,63 @@ async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmi
   } catch (e: any) { notify("err", e.message); return false; }
 }
 
+// Vitrin: mağaza sayfası gibi büyük görsel ve fiyat. Fiyat = Trendyol ilanındaki fiyat; ilan yoksa ayarlar + akıllı kârla tahmini satış fiyatı.
+const MP_TR: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada", amazon: "Amazon" };
+function Gallery({ rows, canEdit, isAdmin, sel, toggle, onOpen, srcLabel, pricing }: {
+  rows: Row[]; canEdit: boolean; isAdmin: boolean; sel: Set<string>; toggle: (id: string) => void; onOpen: (id?: string) => void; srcLabel: (s: string) => string; pricing: { s: Row; rules: PricingRule[] } | null;
+}) {
+  const estimate = (p: Row) => {
+    if (!pricing || p.cost_price == null || (p.currency && p.currency !== "TRY")) return null;
+    const cost = Number(p.cost_price);
+    if (!(cost > 0)) return null;
+    const cfg = cfgFromSettings(pricing.s, Number(p.vat_rate) || 20);
+    const { cfg: rc } = applyRules(cfg, rulesFor(pricing.rules, "trendyol"), { cost, supplier: String(p.source ?? "").replace(/^xml:/, ""), category: p.category ?? "", brand: p.brand ?? "", stock: p.stock });
+    const r = calcPrice(cost, rc, cfg.commissionRate);
+    return r.ok ? { price: r.price, net: r.netProfit as number | null } : null;
+  };
+  return (
+    <div className="shop-grid">
+      {rows.map((p) => {
+        const ty = (p.listings ?? []).find((l: Row) => l.mp === "trendyol");
+        const live = ty && ty.price != null && Number(ty.price) > 0 ? { price: Number(ty.price), net: ty.net != null ? Number(ty.net) : null } : null;
+        const price = live ?? estimate(p);
+        const out = !(p.stock > 0);
+        const [whole, frac] = price ? price.price.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).split(",") : ["", ""];
+        return (
+          <article key={p.id} className={`shop-card${sel.has(p.id) ? " picked" : ""}${p.status !== "active" ? " dim" : ""}`} onClick={() => onOpen(p.id)} tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") onOpen(p.id); }}>
+            <div className="shop-img">
+              {p.image ? <img src={p.image} alt="" loading="lazy" /> : <div className="shop-noimg"><Icon name="box" size={40} /></div>}
+              {canEdit && <label className="shop-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label="Seç" checked={sel.has(p.id)} onChange={() => toggle(p.id)} /></label>}
+              <div className="shop-badges">
+                {out ? <span className="shop-badge bad">Tükendi</span> : p.stock < 3 ? <span className="shop-badge warn">Son {p.stock}</span> : null}
+                {p.status !== "active" && <span className="shop-badge">{STATUS_TR[p.status]}</span>}
+              </div>
+              {p.images > 1 && <span className="shop-count">{p.images} görsel</span>}
+            </div>
+            <div className="shop-body">
+              <div className="shop-brand">{p.brand || srcLabel(p.source)}</div>
+              <h3 className="shop-title" title={p.title}>{p.title}</h3>
+              <div className="shop-price">
+                {price ? <><b>{whole}</b><span className="frac">,{frac}</span><span className="cur">TL</span></> : <span className="muted" style={{ fontSize: 14 }}>Fiyat yok</span>}
+                {price && !live && <span className="shop-est" title="Trendyol'da ilanı yok; ayarlar ve akıllı kâr kurallarıyla hesaplanan satış fiyatı">tahmini</span>}
+              </div>
+              <div className="shop-meta">
+                {isAdmin && price?.net != null && <span className={`shop-net${price.net >= 40 ? "" : " low"}`}>net +{Math.round(price.net)} TL</span>}
+                {isAdmin && p.cost_price != null && <span className="muted">alış {p.currency && p.currency !== "TRY" ? `${p.cost_price} ${p.currency}` : tl(Number(p.cost_price))}</span>}
+              </div>
+              <div className="shop-foot">
+                <span className={`dot ${out ? "bad" : "ok"}`} />{out ? "Stok yok" : `${p.stock} stok`}
+                <span className="sp" />
+                {(p.listings ?? []).map((l: Row) => <span key={l.mp} className={`pill ${LISTING_PILL[l.status] ?? ""}`} title={`${MP_TR[l.mp] ?? l.mp}: ${LISTING_TR[l.status] ?? l.status}`}>{LISTING_TR[l.status] ?? l.status}</span>)}
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notify: Notify; canEdit: boolean; onOpen: (id?: string) => void; opts: Options; isAdmin: boolean }) {
   // Filtreler bu oturumda hatırlanır (bölümler arası gidip gelince kaybolmasın)
   const saved = (() => { try { return JSON.parse(sessionStorage.getItem("productFilters") ?? "{}"); } catch { return {}; } })();
@@ -115,12 +175,19 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
   const [res, setRes] = useState<{ rows: Row[]; total: number; size: number } | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<{ kind: "brand" | "category"; value: string } | null>(null);
+  const [sort, setSort] = useState<string>(saved.sort ?? "new");
+  // Görünüm (vitrin / liste) bu tarayıcıda hatırlanır
+  const [view, setView] = useState<"grid" | "list">(() => { try { return localStorage.getItem("productView") === "list" ? "list" : "grid"; } catch { return "grid"; } });
+  const pickView = (v: "grid" | "list") => { setView(v); setPage(0); try { localStorage.setItem("productView", v); } catch {} };
+  // Vitrinde tahmini Trendyol fiyatı için ayarlar + akıllı kâr kuralları (ilanı olmayan ürünlerde)
+  const [pricing, setPricing] = useState<{ s: Row; rules: PricingRule[] } | null>(null);
+  useEffect(() => { Promise.all([api("/api/settings?mp=trendyol"), api("/api/pricing-rules?mp=trendyol")]).then(([s, rules]) => setPricing({ s, rules })).catch(() => {}); }, [api]);
 
   const load = useCallback(async () => {
-    try { sessionStorage.setItem("productFilters", JSON.stringify({ q, status, source, stock })); } catch {}
-    const p = new URLSearchParams({ page: String(page), size: "25", ...(q ? { q } : {}), ...(status ? { status } : {}), ...(source ? { source } : {}), ...(stock ? { stock } : {}) });
+    try { sessionStorage.setItem("productFilters", JSON.stringify({ q, status, source, stock, sort })); } catch {}
+    const p = new URLSearchParams({ page: String(page), size: view === "grid" ? "24" : "25", sort, ...(q ? { q } : {}), ...(status ? { status } : {}), ...(source ? { source } : {}), ...(stock ? { stock } : {}) });
     try { setRes(await api(`/api/products?${p}`)); } catch (e: any) { notify("err", e.message); }
-  }, [api, notify, page, q, status, source, stock]);
+  }, [api, notify, page, q, status, source, stock, sort, view]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => { setSel(new Set()); }, [q, status, source, stock, page]);
   const pages = res ? Math.max(1, Math.ceil(res.total / res.size)) : 1;
@@ -152,7 +219,14 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
           <select value={stock} onChange={(e) => { setStock(e.target.value); setPage(0); }} style={{ flex: "0 1 150px" }} aria-label="Stok">
             <option value="">Tüm stoklar</option><option value="in">Stokta olan</option><option value="out">Stokta olmayan</option>
           </select>
+          <select value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }} style={{ flex: "0 1 170px" }} aria-label="Sıralama">
+            <option value="new">En yeni</option><option value="cost_desc">Fiyat: yüksekten</option><option value="cost_asc">Fiyat: düşükten</option><option value="title">Ada göre (A-Z)</option>
+          </select>
           {filtered && <button className="btn ghost" onClick={() => { setQ(""); setStatus(""); setSource(""); setStock(""); setPage(0); }}>Temizle</button>}
+          <div className="seg" role="group" aria-label="Görünüm">
+            <button aria-pressed={view === "grid"} onClick={() => pickView("grid")}>▦ Vitrin</button>
+            <button aria-pressed={view === "list"} onClick={() => pickView("list")}>☰ Liste</button>
+          </div>
           {canEdit && <button className="btn primary" style={{ marginLeft: "auto" }} onClick={() => onOpen()}>+ Yeni ürün</button>}
         </div>
       </div>
@@ -185,6 +259,8 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
         </div>
         {!res ? <div><div className="skeleton" style={{ marginBottom: 10 }} /><div className="skeleton" style={{ width: "80%", marginBottom: 10 }} /><div className="skeleton" style={{ width: "60%" }} /></div> : res.rows.length === 0 ? (
           <div className="empty"><Icon name="box" size={32} /><p>{filtered ? "Filtreye uyan ürün yok." : "Henüz ürün yok."}</p>{!filtered && canEdit && <p className="muted" style={{ fontSize: 13 }}>"+ Yeni ürün" ile ekle, "İçe aktar"dan dosya yükle veya "Tedarikçiler"den XML al.</p>}</div>
+        ) : view === "grid" ? (
+          <Gallery rows={res.rows} canEdit={canEdit} isAdmin={isAdmin} sel={sel} toggle={toggle} onOpen={onOpen} srcLabel={srcLabel} pricing={pricing} />
         ) : (
           <div className="scroll"><table className="cards compact">
             <thead><tr>{canEdit && <th style={{ width: 32 }}><input type="checkbox" aria-label="Tümünü seç" checked={all} onChange={() => setSel(all ? new Set() : new Set(res.rows.map((r) => r.id)))} /></th>}<th /><th>Ürün</th><th>Kaynak</th><th className="n">Stok</th><th className="n">Maliyet</th><th>Durum</th><th>Güncelleme</th></tr></thead>

@@ -5,6 +5,9 @@ import { issuesByPath, productSchema, STATUSES } from "@/lib/validation/product"
 
 export const dynamic = "force-dynamic";
 
+// Sıralama: ?sort=new|cost_desc|cost_asc|title (vitrin)
+const SORTS: Record<string, [string, boolean]> = { new: ["updated_at", false], cost_desc: ["cost_price", false], cost_asc: ["cost_price", true], title: ["title", true] };
+
 // Liste: ?q= (başlık / SKU) &status= &source= &stock=in|out &category= &page= &size=
 export async function GET(req: NextRequest) {
   const a = await authorize(req, "viewer");
@@ -16,12 +19,13 @@ export async function GET(req: NextRequest) {
   const q = (sp.get("q") ?? "").trim().replace(/[%,()*]/g, " ").slice(0, 100);
   const source = (sp.get("source") ?? "").slice(0, 60);
   const stock = sp.get("stock");
+  const sort = sp.get("sort") ?? "";
   const category = (sp.get("category") ?? "").trim().replace(/[%,()*]/g, " ").slice(0, 100);
 
   let query = admin()
     .from("products")
-    .select(`id, sku, title, brand, category, status, cost_price, currency, vat_rate, updated_at, source, product_variants${stock ? "!inner" : ""}(stock, reserved), product_images(url, position)`, { count: "exact" })
-    .order("updated_at", { ascending: false })
+    .select(`id, sku, title, brand, category, status, cost_price, currency, vat_rate, updated_at, source, product_variants${stock ? "!inner" : ""}(stock, reserved), product_images(url, position), marketplace_listings(marketplace, status, price, calc_price, calc_net, commission)`, { count: "exact" })
+    .order(SORTS[sort]?.[0] ?? "updated_at", { ascending: SORTS[sort]?.[1] ?? false, nullsFirst: false })
     .range(page * size, page * size + size - 1);
   if (status && (STATUSES as readonly string[]).includes(status)) query = query.eq("status", status);
   if (q) query = query.or(`title.ilike.%${q}%,sku.ilike.%${q}%`);
@@ -39,6 +43,13 @@ export async function GET(req: NextRequest) {
     variants: p.product_variants.length,
     stock: p.product_variants.reduce((t: number, v: any) => t + v.stock - v.reserved, 0),
     image: [...p.product_images].sort((x: any, y: any) => x.position - y.position)[0]?.url ?? null,
+    images: p.product_images.length,
+    // Pazaryeri ilanları (pazaryeri başına en "ileri" durum): vitrinde satış fiyatı ve rozet
+    listings: Object.values((p.marketplace_listings ?? []).reduce((m: any, l: any) => {
+      const rank = (x: string) => ["live", "pending_approval", "sent", "queued", "error", "rejected", "archived"].indexOf(x) >>> 0;
+      if (!m[l.marketplace] || rank(l.status) < rank(m[l.marketplace].status)) m[l.marketplace] = { mp: l.marketplace, status: l.status, price: l.price ?? l.calc_price ?? null, net: l.calc_net ?? null, commission: l.commission ?? null };
+      return m;
+    }, {})),
   }));
   return NextResponse.json({ rows, total: count ?? 0, page, size });
 }
