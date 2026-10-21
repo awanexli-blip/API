@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-22 (20) — Toptancım toplu gönderim
+- Deneme: 39 ürünün yalnız 2'si gitti; 37'si Trendyol zorunlu özelliği (Menşei, garanti, Tip...) yüzünden adaptörde atlanmış ama tabloda "sent" kalmıştı (hata düzeltildi: atlananlar ürün bazında error + neden). Kategori eşlemesinde `attributes` nesne yazılmıştı ("object is not iterable"), düzeltildi.
+- K kararları: Menşei = TR (uyarı verildi), garanti yok -> "Garanti Yok|0"; aynı ürünün (aynı başlık + aynı görsel kökü) yalnızca en ucuzu (603 grup, 647 elenir); aynı başlıklı farklı modellere başlık sonuna model kodu. Açıklama: XML `detail` eşlendi (önceden kısa `description`). Toptancım 352 alt kategorisi ad eşleşmesiyle `category_map`'e (komisyon: kategorideki en yüksek); geniş 188 kategori eşlenmedi (ürün başına tahmin).
+- `suppliers.default_attributes` (migration 026; denetim hijyeni 029'a kaydı), `marketplace_brand` = Tcx. HB ve Amazon panelde kapatıldı (K: yalnız Trendyol). Toplu gönderim: 26.254 ürün, 132 iş (200'lük), senkron başına 25 iş (`SEND_JOBS_PER_RUN`).
+- Panel: Trendyol → **Gönderilemeyenler** (eksik özellik/kategori elle, "Kaydet ve gönder" = ürün özelliklerine yazar + iş + senkron başlatır). Ürün özelliği "Trendyol kategori" = elle kategori.
+- Açık: toplu gönderim sonuçları, Tcx onay/ret, 39 ürünün kısa açıklamalarını güncelleme, denetim S0.3-S0.5 ve S1.
+
 ## 2026-10-22 (19) — Güvenlik S0, Toptancım ilk gönderim denemesi
 - S0.1 kanıt: anon anahtarla `tmp_profit` 200 + veri (maliyet/kâr sızıntısı, 19.10 analiz görünümü). S0.2 (K onayı): migration 025, `security_invoker` + anon/authenticated yetkileri ve varsayılan yetkiler geri alındı. Sonrası: 7 tablo/görünüm anon ile 401 (42501).
 - Toptancım: pazaryeri markası `Tcx` (K kararı, yetki belgesi henüz yok, deneme), 50 ürün kuyruğa (job 22) + 1 eski (job 18), Trendyol `sales_paused` kapatıldı (K: önce Toptancım ürünleri, sonra TODO). İlk deneme: 0 gönderim, 48 hata: 47 "kategori yok" (tedarikçi eşlemesi XML `main_category` -> yalnızca "Elektronik" gibi ana kategori), 3 zorunlu özellik (Garanti Süresi, Menşei, Frekans). Düzeltme: eşleme `category` (tam yol); sınıflandırıcı örnekleri ilan tablosunda Trendyol kategori adıyla. 15 dk tedarikçi içe aktarma adımı canlıda çalışıyor (import_jobs 8-10, "zamanlı-senkron").
