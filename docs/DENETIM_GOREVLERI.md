@@ -29,8 +29,8 @@ docs/DENETIM_GOREVLERI.md ve docs/DENETIM_2026-10-21.md dosyalarını oku, ardı
 ## S0 — Kritik: açık veri yetkileri
 Model: `opus`, çaba `high`. (CANLI) maddeler K onayı ister.
 
-- [ ] **S0.1 Kanıt (salt okunur).** Supabase MCP `get_publishable_keys` ile anon anahtarı al, **anahtarı sohbete/commit'e yazma**. `GET {SUPABASE_URL}/rest/v1/tmp_profit?select=listing_key&limit=1` isteğini anon anahtarla at. Yalnızca **HTTP kodunu ve dönen satır sayısını** raporla (içeriği yazdırma). Aynısını `tmp_xml_costs`, `tmp_xml_raw`, `price_audit_before` ve `products` için dene (tablolar RLS ile boş dönmeli). Sonucu PROGRESS'e yaz. `K1` doğrulanmış olur (200 + satır) ya da çürütülür.
-- [ ] **S0.2 (CANLI) Migration `025_security_hardening.sql`.** Önce `pg_default_acl` ve mevcut yetkileri sorgula, sonucu K'ya göster, onay al. İçerik (tekrar çalıştırılabilir):
+- [x] **S0.1 Kanıt (salt okunur).** _22.10: anon anahtarla `tmp_profit` HTTP 200 + satır döndü (K1 doğrulandı); diğer tablolar 200 + 0 satır._ Supabase MCP `get_publishable_keys` ile anon anahtarı al, **anahtarı sohbete/commit'e yazma**. `GET {SUPABASE_URL}/rest/v1/tmp_profit?select=listing_key&limit=1` isteğini anon anahtarla at. Yalnızca **HTTP kodunu ve dönen satır sayısını** raporla (içeriği yazdırma). Aynısını `tmp_xml_costs`, `tmp_xml_raw`, `price_audit_before` ve `products` için dene (tablolar RLS ile boş dönmeli). Sonucu PROGRESS'e yaz. `K1` doğrulanmış olur (200 + satır) ya da çürütülür.
+- [x] **S0.2 (CANLI) Migration `025_security_hardening.sql`.** _22.10 K onayıyla uygulandı (tmp_send_pick dahil tüm public nesneler)._ Önce `pg_default_acl` ve mevcut yetkileri sorgula, sonucu K'ya göster, onay al. İçerik (tekrar çalıştırılabilir):
   ```sql
   -- Görünüm çağıranın yetkisiyle çalışsın (RLS atlanmasın)
   alter view public.tmp_profit set (security_invoker = true);
@@ -47,7 +47,7 @@ Model: `opus`, çaba `high`. (CANLI) maddeler K onayı ister.
   alter default privileges for role postgres in schema public revoke execute on functions from anon, authenticated;
   ```
   Dikkat: `service_role` etkilenmez. Storage ve auth şemaları etkilenmez. Panelin hiçbir ekranı `supabase.from/rpc/storage` kullanmıyor (denetimde grep ile doğrulandı); yine de uygulamadan önce tekrar grep et.
-- [ ] **S0.3 Doğrulama.** S0.1'deki istekler artık 401/403 ya da yetki hatası dönmeli (öncesi/sonrası kanıtı). Panelde Özet, Ürünler, Tedarikçiler, Kategoriler ekranları açılıyor mu (service_role yolu bozulmadı). Bir `sync preview` çalıştır (yazmaz). `get_advisors(security)` yeniden: `security_definer_view` ERROR kalkmalı.
+- [~] **S0.3 Doğrulama.** _22.10: anon ile tmp_profit, tmp_xml_costs, tmp_send_pick, price_audit_before, products, settings, suppliers hepsi HTTP 401 (42501). Senkron service_role ile çalışmaya devam ediyor. Kalan: panel ekran kontrolü, advisors._ S0.1'deki istekler artık 401/403 ya da yetki hatası dönmeli (öncesi/sonrası kanıtı). Panelde Özet, Ürünler, Tedarikçiler, Kategoriler ekranları açılıyor mu (service_role yolu bozulmadı). Bir `sync preview` çalıştır (yazmaz). `get_advisors(security)` yeniden: `security_definer_view` ERROR kalkmalı.
 - [ ] **S0.4 (K) Supabase Auth ayarları (panelden):** (a) herkese açık kayıt **kapalı** (yalnızca davet), (b) e-posta onayı **açık**, (c) *Leaked password protection* **aç**, (d) yönetici hesabı için MFA kaydet. Yapıldığını K bildirir; Claude Code PROGRESS'e "K onayladı" yazar.
 - [ ] **S0.5 (K) Karar: depo özel mi olsun?** (bkz. rapor Y2). Seçenekler: (a) özel yap + Actions dakikasını yönet (30 dk senkron, gece işlerini azalt, gerekirse ücretli plan) · (b) açık kalsın, ama artifact yüklemeyi kaldır, CSV'ler özel Storage bucket'ına, günlüklerde maliyet/müşteri verisi yok. **Karar çıkmadan Faz 6 F2'ye geçilmez.** Karar `CLAUDE.md` iş kurallarına yazılır.
 

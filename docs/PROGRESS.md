@@ -2,6 +2,10 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-22 (19) — Güvenlik S0, Toptancım ilk gönderim denemesi
+- S0.1 kanıt: anon anahtarla `tmp_profit` 200 + veri (maliyet/kâr sızıntısı, 19.10 analiz görünümü). S0.2 (K onayı): migration 025, `security_invoker` + anon/authenticated yetkileri ve varsayılan yetkiler geri alındı. Sonrası: 7 tablo/görünüm anon ile 401 (42501).
+- Toptancım: pazaryeri markası `Tcx` (K kararı, yetki belgesi henüz yok, deneme), 50 ürün kuyruğa (job 22) + 1 eski (job 18), Trendyol `sales_paused` kapatıldı (K: önce Toptancım ürünleri, sonra TODO). İlk deneme: 0 gönderim, 48 hata: 47 "kategori yok" (tedarikçi eşlemesi XML `main_category` -> yalnızca "Elektronik" gibi ana kategori), 3 zorunlu özellik (Garanti Süresi, Menşei, Frekans). Düzeltme: eşleme `category` (tam yol); sınıflandırıcı örnekleri ilan tablosunda Trendyol kategori adıyla. 15 dk tedarikçi içe aktarma adımı canlıda çalışıyor (import_jobs 8-10, "zamanlı-senkron").
+
 ## 2026-10-22 (18) — Denetim, Faz 6 planı, çalışma kuralları (yalnızca doküman; kod ve canlı sistem değişmedi)
 - Eklendi: `docs/DENETIM_2026-10-21.md` (bulgular), `docs/DENETIM_GOREVLERI.md` (Claude Code'un başlatacağı işaretli görev listesi), `docs/FAZ6_PLAN.md` (sipariş → tedarikçi → takip → soru/iade → kâr, F0-F12), `docs/CALISMA_KURALLARI.md` (oturum protokolü, çalışmayan buton ve unutma önleme kuralları, model/çaba tablosu). `CLAUDE.md` §0 ve `docs/TODO.md` "Şu an" bunlara bağlandı. Migration numaraları: güvenlik 025-026, Faz 6 027-028 (022-024 başka işlerde kullanımda: listing_retire, brand_blocklist, supplier_brand).
 - Doğrulanan (salt okunur, denetim anında): `tmp_profit` SECURITY DEFINER ve `anon/authenticated`'a SELECT yetkisi var (maliyet, komisyon, net kâr sütunları); `tmp_xml_costs`, `tmp_xml_raw`, `price_audit_before` üzerinde de anon SELECT yetkisi (RLS açık, politikasız); advisors: duplicate index, unindexed FK, `price_audit_before` PK yok, leaked password kapalı. Worker `npm audit` 0 açık; worker testleri geçti. Panel `tsc/build` yapılamadı (xlsx CDN 403): görev S3.2.

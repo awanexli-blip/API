@@ -131,12 +131,13 @@ async function main() {
     const l = lsBy.get(mp.findListing(r, existing) ?? "");
     if (l?.categoryId && l.status !== "pending") examples.push({ title: l.title || String(r.name ?? ""), xmlCategory: String(r.category ?? ""), categoryId: l.categoryId, categoryName: l.categoryName ?? "", commission: l.commission, ref: l.id });
   }
-  // XML yoksa (eski tedarikçi kaldırıldı): örnekler ilan tablosundan (arşivlenip silinen ilanların kategorileri de öğrenme verisi olarak kalır)
+  // XML yoksa (eski tedarikçi kaldırıldı): örnekler ilan tablosundan (arşivlenip silinen ilanların kategorileri de öğrenme verisi olarak kalır).
+  // Kategori adı örneğin "XML kategorisi" yerine geçer: tedarikçi alt kategorisi ("Eğitici Oyuncak") Trendyol kategori adıyla eşleşsin
   if (!raw.length) {
     for (let from = 0; ; from += 1000) {
       const { data, error } = await db.from("marketplace_listings").select("listing_key, title, category_id, category_name, commission").eq("marketplace", marketplaceId).not("category_id", "is", null).range(from, from + 999);
       if (error || !data) break;
-      for (const l of data as any[]) if (l.title) examples.push({ title: l.title, xmlCategory: "", categoryId: String(l.category_id), categoryName: l.category_name ?? "", commission: l.commission ?? undefined, ref: l.listing_key });
+      for (const l of data as any[]) if (l.title) examples.push({ title: l.title, xmlCategory: l.category_name ?? "", categoryId: String(l.category_id), categoryName: l.category_name ?? "", commission: l.commission ?? undefined, ref: l.listing_key });
       if (data.length < 1000) break;
     }
   }
