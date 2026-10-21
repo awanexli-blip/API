@@ -16,7 +16,8 @@ export async function PUT(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
   const mp = mpOf(req);
   if (!mp) return bad("Geçersiz pazaryeri");
-  const b = await req.json();
+  const b = await req.json().catch(() => null);
+  if (!b || typeof b !== "object") return bad("Geçersiz istek gövdesi");
   const barcode = String(b.barcode ?? "").trim();
   if (!barcode) return bad("Barkod gerekli");
   const price = b.price_override === "" || b.price_override == null ? null : Number(b.price_override);

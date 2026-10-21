@@ -24,6 +24,8 @@ export function dbError(e: { code?: string; message?: string; details?: string }
     case "23514": return NextResponse.json({ error: `Geçersiz değer (${msg})` }, { status: 400 });
     case "P0002": return NextResponse.json({ error: "Ürün bulunamadı" }, { status: 404 });
     case "22023": return NextResponse.json({ error: msg }, { status: 400 });
-    default: return NextResponse.json({ error: msg }, { status: 500 });
+    default:
+      console.error("db hatası", e?.code ?? "", msg.slice(0, 300));
+      return NextResponse.json({ error: `Veritabanı hatası${e?.code ? ` (${e.code})` : ""}; ayrıntı sunucu günlüğünde` }, { status: 500 });
   }
 }

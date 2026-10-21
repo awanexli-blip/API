@@ -16,7 +16,8 @@ export async function PUT(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
   const mp = mpOf(req);
   if (!mp) return bad("Geçersiz pazaryeri");
-  const b = await req.json();
+  const b = await req.json().catch(() => null);
+  if (!b || typeof b !== "object") return bad("Geçersiz istek gövdesi");
   // Tek kayıt veya { items: [...] } ile toplu onay
   const list: any[] = Array.isArray(b?.items) ? b.items : [b];
   if (!list.length || list.length > 1000) return bad("Kayıt listesi boş veya çok uzun");

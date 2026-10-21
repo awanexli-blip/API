@@ -8,7 +8,7 @@ const MODES = ["preview", "update", "create", "auto"];
 // GitHub Actions workflow'unu tetikler
 export async function POST(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
-  const { mode, marketplace = "trendyol" } = await req.json();
+  const { mode, marketplace = "trendyol" } = (await req.json().catch(() => ({}))) ?? {};
   if (!MODES.includes(mode)) return bad("Geçersiz mod");
   if (!MARKETPLACES.includes(marketplace)) return bad("Geçersiz pazaryeri");
   if (!process.env.GH_TOKEN || !process.env.GH_REPO) return bad("GH_TOKEN veya GH_REPO ayarlı değil");

@@ -1,13 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { resolveRole, type Role } from "./auth-rules.ts";
 
-export const admin = () =>
-  createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false },
-  });
+// Tek service_role istemcisi (modül düzeyinde, her çağrıda yeniden kurulmaz)
+const make = () => createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+let client: ReturnType<typeof make> | null = null;
+export const admin = () => (client ??= make());
 
-// Rol bazlı erişim: ADMIN_EMAIL her zaman admin; diğer kullanıcılar user_roles tablosundan.
-export type Role = "viewer" | "editor" | "admin";
+// Rol bazlı erişim: ADMIN_EMAIL her zaman admin; diğer kullanıcılar user_roles tablosundan. E-postası doğrulanmamış kullanıcı reddedilir.
+export type { Role };
 const RANK: Record<Role, number> = { viewer: 1, editor: 2, admin: 3 };
 export type Actor = { email: string; role: Role };
 
@@ -15,11 +16,10 @@ export async function getActor(req: NextRequest): Promise<Actor | null> {
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
   if (!token) return null;
   const { data } = await admin().auth.getUser(token);
-  const email = data.user?.email?.toLowerCase();
-  if (!email) return null;
-  if (process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL.toLowerCase()) return { email, role: "admin" };
-  const { data: r } = await admin().from("user_roles").select("role").eq("email", email).maybeSingle();
-  return r?.role ? { email, role: r.role as Role } : null;
+  return resolveRole(data.user, process.env.ADMIN_EMAIL, async (email) => {
+    const { data: r } = await admin().from("user_roles").select("role").eq("email", email).maybeSingle();
+    return ((r as any)?.role as Role) ?? null;
+  });
 }
 
 // En az bu role sahip kullanıcıyı döndürür, yoksa null
@@ -35,13 +35,11 @@ export async function guard(req: NextRequest): Promise<boolean> {
 
 export const forbidden = (need: Role) => NextResponse.json({ error: `Bu işlem için "${need}" yetkisi gerekli` }, { status: 403 });
 
-// Nedeni açıkça söyle: eksik ortam değişkeni panelde "Yetkisiz" diye sessizce görünmesin
+// Kimliksiz isteğe yapılandırma ayrıntısı (eksik ortam değişkeni adları) söylenmez; ayrıntı sunucu günlüğünde ve /api/health'te (yalnızca admin)
 export const unauthorized = () => {
   const missing = ["ADMIN_EMAIL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"].filter((k) => !process.env[k]);
-  const error = missing.length
-    ? `Vercel ortam değişkeni eksik: ${missing.join(", ")}. Vercel > Settings > Environment Variables'a ekleyip yeniden dağıt.`
-    : "Yetkisiz: giriş yaptığın e-posta ADMIN_EMAIL değil ve user_roles tablosunda rolü yok";
-  return NextResponse.json({ error }, { status: 401 });
+  if (missing.length) console.error(`Vercel ortam değişkeni eksik: ${missing.join(", ")}`);
+  return NextResponse.json({ error: "Yetkisiz: giriş yaptığın e-posta doğrulanmamış ya da bu panelde rolü yok" }, { status: 401 });
 };
 export const bad = (error: string) => NextResponse.json({ error }, { status: 400 });
 

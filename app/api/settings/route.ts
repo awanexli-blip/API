@@ -60,7 +60,8 @@ export async function PUT(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
   const mp = mpOf(req);
   if (!mp) return bad("Geçersiz pazaryeri");
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") return bad("Geçersiz istek gövdesi");
   const patch: Record<string, number | boolean | string> = {};
   for (const [k, [min, max, int]] of Object.entries(NUM)) {
     if (!(k in body)) continue;

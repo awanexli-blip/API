@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin } from "@/lib/server";
 import { authorize, dbError } from "@/lib/products";
+import { queueSend } from "@/lib/listings-send";
 
 export const dynamic = "force-dynamic";
 
@@ -46,9 +47,9 @@ export async function POST(req: NextRequest) {
     if (error) return dbError(error);
     const list = (ids ?? []) as string[];
     if (!list.length) return NextResponse.json({ error: "Gönderilecek onaylı ürün yok" }, { status: 400 });
-    // Gönderim API'siyle aynı yol (doğrulama, ilan satırları, kuyruk)
-    const r = await fetch(new URL("/api/listings/send", req.nextUrl.origin), { method: "POST", headers: { "Content-Type": "application/json", authorization: req.headers.get("authorization") ?? "" }, body: JSON.stringify({ product_ids: list, marketplace: mp, now: !!b.now }) });
-    return NextResponse.json(await r.json(), { status: r.status });
+    // Gönderim API'siyle aynı yol (doğrulama, ilan satırları, kuyruk); doğrudan çağrı, Bearer başka adrese iletilmez
+    const r = await queueSend(a, { product_ids: list, marketplace: mp, now: !!b.now });
+    return NextResponse.json(r.body, { status: r.status });
   }
 
   const limit = Math.max(1, Math.min(300, Number(b.limit) || 100));
