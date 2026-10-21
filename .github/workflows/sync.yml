@@ -66,6 +66,8 @@ jobs:
           TRENDYOL_BRAND_NAME: ${{ vars.TRENDYOL_BRAND_NAME }}
           TRENDYOL_SHIPMENT_ADDRESS_ID: ${{ secrets.TRENDYOL_SHIPMENT_ADDRESS_ID }}
           TRENDYOL_RETURN_ADDRESS_ID: ${{ secrets.TRENDYOL_RETURN_ADDRESS_ID }}
+          MODE: ${{ github.event.inputs.mode || 'auto' }}
+          MP: ${{ matrix.marketplace }}
           CREATE_LIMIT: ${{ github.event.inputs.limit || '100' }}   # zamanlı çalışmada en fazla 100 yeni ürün
           HB_MERCHANT_ID: ${{ secrets.HB_MERCHANT_ID }}
           HB_USERNAME: ${{ secrets.HB_USERNAME }}
@@ -76,19 +78,11 @@ jobs:
           AMAZON_LWA_CLIENT_SECRET: ${{ secrets.AMAZON_LWA_CLIENT_SECRET }}
           AMAZON_REFRESH_TOKEN: ${{ secrets.AMAZON_REFRESH_TOKEN }}
           AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
-        run: node --experimental-strip-types worker/sync.ts "${{ github.event.inputs.mode || 'auto' }}" "${{ matrix.marketplace }}"
+        run: node --experimental-strip-types worker/sync.ts "$MODE" "$MP"   # girdiler ortam değişkeniyle: kabuk komutu olarak yorumlanmaz
       - name: İş kuyruğu (Faz 3)
         if: always() && matrix.marketplace == 'trendyol'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node --experimental-strip-types worker/jobs.ts 240
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: ${{ matrix.marketplace == 'trendyol' && 'preview-csv' || format('preview-{0}', matrix.marketplace) }}
-          path: |
-            preview*.csv
-            xml_dump.csv
-          if-no-files-found: ignore
-          retention-days: 7
+      # preview.csv / xml_dump.csv yüklenmez: maliyet içerir ve depo herkese açık (denetim S1.2). Önizleme panelde: Fiyat önizleme.

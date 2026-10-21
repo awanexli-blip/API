@@ -3,7 +3,7 @@
 // Trendyol: GET /product/brands?page=&size=1000 (https://developers.trendyol.com/v3.0/docs/5-trendyol-brand-list-1)
 // Hepsiburada marka listesi API'si yok (marka serbest metin, HB eşler); N11/Amazon/ÇiçekSepeti bağlanınca eklenecek.
 import { createClient } from "@supabase/supabase-js";
-import { env, sleep, chunk } from "./core/util.ts";
+import { env, sleep, chunk, arg } from "./core/util.ts";
 
 const normBrand = (s: string) => s.toLocaleLowerCase("tr").replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u").replace(/\s+/g, " ").trim();
 
@@ -35,7 +35,7 @@ async function trendyolBrands(): Promise<{ id: number; name: string }[]> {
 const SOURCES: Record<string, () => Promise<{ id: number; name: string }[]>> = { trendyol: trendyolBrands };
 
 {
-  const mp = process.argv[2] ?? "trendyol";
+  const mp = arg(process.argv[2], "trendyol", Object.keys(SOURCES), "pazaryeri");
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
   const brands = await SOURCES[mp]();
   if (brands.length < 100) throw new Error(`${mp}: yalnızca ${brands.length} marka geldi, tablo güncellenmedi`);

@@ -55,4 +55,4 @@ jobs:
             hb_categories.csv
             hb_category_suggestions.csv
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1

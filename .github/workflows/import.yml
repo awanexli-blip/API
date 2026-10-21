@@ -36,4 +36,5 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           XML_URL: ${{ secrets.XML_URL }}   # BayilikXML (url_from_env); diğer tedarikçilerin adresi veritabanında
           ACTOR: ${{ github.event.inputs.actor || 'zamanlı' }}
-        run: node --experimental-strip-types worker/import-xml.ts "${{ github.event.inputs.supplier || 'nightly' }}"
+          SUPPLIER: ${{ github.event.inputs.supplier || 'nightly' }}
+        run: node --experimental-strip-types worker/import-xml.ts "$SUPPLIER"

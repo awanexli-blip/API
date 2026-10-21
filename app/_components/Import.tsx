@@ -23,7 +23,7 @@ function batches(groups: Group[], max = 400): Group[][] {
   if (cur.length) out.push(cur);
   return out;
 }
-const csvCell = (v: unknown) => { const s = String(v ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+const csvCell = (v: unknown) => { const s0 = String(v ?? ""), s = /^[=+\-@\t\r]/.test(s0) ? `'${s0}` : s0; return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 function download(name: string, rows: unknown[][]) {
   const blob = new Blob(["﻿" + rows.map((r) => r.map(csvCell).join(";")).join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);

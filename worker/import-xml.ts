@@ -7,7 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
-import { env, chunk } from "./core/util.ts";
+import { env, chunk, arg, SUPPLIER_ARG } from "./core/util.ts";
 import { findItems, itemsToGroups, supplierPayload, type Supplier } from "../lib/supplier-xml.ts";
 
 const stable = (v: any): string => Array.isArray(v) ? `[${v.map(stable).join(",")}]`
@@ -105,7 +105,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
 }
 
 async function main() {
-  const which = process.argv[2] ?? "all";
+  const which = arg(process.argv[2], "all", SUPPLIER_ARG, "tedarikçi");
   const dry = process.argv.includes("--dry");
   const actor = process.env.ACTOR || "xml-import";
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });

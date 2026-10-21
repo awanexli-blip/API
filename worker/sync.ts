@@ -13,15 +13,15 @@ import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
-import { env, chunk, num, normTitle } from "./core/util.ts";
+import { env, chunk, num, normTitle, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
 import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
 
-const mode = process.argv[2] ?? "preview";
-const marketplaceId = process.argv[3] ?? process.env.MARKETPLACE ?? "trendyol";
+const mode = arg(process.argv[2], "preview", MODES, "mod");
+const marketplaceId = arg(process.argv[3] ?? process.env.MARKETPLACE, "trendyol", MARKETPLACES, "pazaryeri");
 const trigger = process.env.TRIGGER ?? "manual";
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 // Trendyol dosya adı eskisi gibi kalır (panel/CLAUDE.md buna atıfta bulunuyor)
@@ -113,7 +113,7 @@ async function main() {
   // Eski tedarikçi (BayilikXML) kaldırıldıysa XML okunmaz; ilanları arşivlenip silinir (aşağıda)
   const raw = s.retire_legacy ? [] : await loadXml();
   {
-    const c = (v: any) => String(v ?? "").replace(/;/g, ",").replace(/\r?\n/g, " ");
+    const c = csvCell;
     const dump = ["barcode;productCode;brand;category;quantity;price;currency;name"];
     for (const r of raw) dump.push([r.barcode, r.productCode, r.brand, r.category, r.quantity, r.price, r.currency, String(r.name ?? "").slice(0, 120)].map(c).join(";"));
     writeFileSync("xml_dump.csv", "﻿" + dump.join("\n"), "utf8");
@@ -160,7 +160,7 @@ async function main() {
   const skipped: Record<string, number> = {};
   const skip = (why: string) => { skipped[why] = (skipped[why] ?? 0) + 1; };
   const csv: string[] = ["barcode;name;category;maliyet;satis;kargoSende;netKar;kar%;durum"];
-  const q = (v: any) => String(v ?? "").replace(/;/g, ",").replace(/\r?\n/g, " ");
+  const q = csvCell;
 
   const toUpdate: InventoryItem[] = [];
   const toCreate: NewProduct[] = [];

@@ -29,4 +29,5 @@ jobs:
           TRENDYOL_API_KEY: ${{ secrets.TRENDYOL_API_KEY }}
           TRENDYOL_API_SECRET: ${{ secrets.TRENDYOL_API_SECRET }}
           TRENDYOL_STOREFRONT: ${{ vars.TRENDYOL_STOREFRONT }}
-        run: node --experimental-strip-types worker/brands.ts "${{ github.event.inputs.marketplace || 'trendyol' }}"
+          MP: ${{ github.event.inputs.marketplace || 'trendyol' }}
+        run: node --experimental-strip-types worker/brands.ts "$MP"
