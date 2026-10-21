@@ -20,7 +20,7 @@ export default function Unsent({ api, notify, marketplace }: Props) {
     if (open === it.listing_key) return setOpen(null);
     const attrs: Row = {};
     for (const m of it.missing) attrs[m] = String(it.attributes?.[m] ?? "");
-    setForm({ attrs, category_id: String(it.attributes?.["Trendyol kategori"] ?? "") });
+    setForm({ attrs, category_id: String(it.attributes?.["Trendyol kategori"] ?? it.suggestion?.id ?? "") });
     setOpen(it.listing_key);
   };
   async function send(it: Row) {
@@ -74,9 +74,10 @@ export default function Unsent({ api, notify, marketplace }: Props) {
                   <label className="f">Trendyol kategorisi
                     <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
                       <option value="">— seç —</option>
+                      {it.suggestion && !d.categories.some((x: Row) => String(x.category_id) === it.suggestion.id) && <option value={it.suggestion.id}>Öneri: {it.suggestion.name}</option>}
                       {d.categories.map((x: Row) => <option key={x.category_id} value={x.category_id}>{x.category_name || x.category_id} ({x.n} ürün)</option>)}
                     </select>
-                    <small>Mağazanda kullanılan kategoriler</small>
+                    <small>{it.suggestion ? <>Sistemin tahmini: <b>{it.suggestion.name}</b> (önceden seçildi; doğruysa doğrudan gönder)</> : "Mağazanda kullanılan kategoriler"}</small>
                   </label>
                 )}
                 <div className="grid" style={{ marginTop: it.needsCategory ? 10 : 0 }}>
