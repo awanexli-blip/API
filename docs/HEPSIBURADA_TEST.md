@@ -8,10 +8,14 @@ GitHub → repo → Settings → Secrets and variables → Actions:
 
 | Ad | Tür | Değer |
 |---|---|---|
-| `HB_MERCHANT_ID` | Secret | Mağaza ID: `cac692e1-ad3f-4dcf-aaa0-6fc77c3d21e3` (test ortamı farklı ID verirlerse onu yaz) |
-| `HB_USERNAME` | Secret | Hepsiburada'nın verdiği API / entegratör kullanıcı adı |
-| `HB_PASSWORD` | Secret | Şifresi |
-| `HB_USER_AGENT` | Variable (isteğe bağlı) | Hepsiburada belirli bir User-Agent isterse (örn. `kullaniciadi - uygulama`). Boşsa kullanıcı adı gönderilir |
+| `HB_MERCHANT_ID` | Secret | Merchant ID (test ve canlıda farklı) |
+| `HB_USERNAME` | Secret | **Merchant ID ile aynı** (e-postada "Username (Merchantid)") |
+| `HB_PASSWORD` | Secret | Secret key (e-postada "Password (Secretkey)") |
+| `HB_USER_AGENT` | Variable veya Secret | **Developer Username** (e-postada "User-Agent (Developer Username)", örn. `xxx_dev`). Zorunlu: yoksa 401 |
+
+Test Portal kullanıcı adı/şifresi yalnızca tarayıcıdan Merchant SIT Portal'a giriş içindir, API'de kullanılmaz.
+
+**Doğrulandı (21.10.2026, SIT):** listing (stok/fiyat) ve sipariş servisleri bu biçimle 200; `stock` ve `price` komutları test listing'inde çalıştı (fiyat 249,90, stok 5, satılabilir). Katalog servisi (`mpop-sit…/product/api/...`) 403 "Access Denied": kimlik doğru, test hesabına katalog yetkisi Hepsiburada tarafından açılmalı.
 
 Şifreyi sohbete, koda veya ekran paylaşımına yazma.
 
