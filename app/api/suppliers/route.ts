@@ -48,6 +48,7 @@ export async function PUT(req: NextRequest) {
   }
   if ("default_vat" in b) row.default_vat = [0, 1, 10, 20].includes(Number(b.default_vat)) ? Number(b.default_vat) : 20;
   if ("default_brand" in b) row.default_brand = String(b.default_brand ?? "").trim().slice(0, 100);
+  if ("marketplace_brand" in b) row.marketplace_brand = String(b.marketplace_brand ?? "").trim().slice(0, 100) || null;
   if ("currency" in b) row.currency = ["TRY", "USD", "EUR"].includes(b.currency) ? b.currency : "TRY";
   if ("mapping" in b) {
     const m = b.mapping && typeof b.mapping === "object" ? b.mapping : {};

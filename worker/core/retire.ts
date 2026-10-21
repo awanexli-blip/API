@@ -12,7 +12,7 @@ export type RetireRow = { listing_key: string; archived_at: string | null; delet
 export const isRetireTarget = (id: string) => RETIRE_PREFIXES.some((p) => id.startsWith(p));
 
 // Bu çalışmada ne yapılacağı (saf fonksiyon, test edilir)
-export function planRetire(listings: Listing[], rows: Map<string, RetireRow>, now: number) {
+export function planRetire(listings: Listing[], rows: Map<string, RetireRow>, now: number, canArchive = true) {
   const archive: string[] = [], del: string[] = [];
   const h = (t: string | null) => (t ? (now - Date.parse(t)) / 3600_000 : Infinity);
   const seen = new Set<string>();
@@ -23,7 +23,7 @@ export function planRetire(listings: Listing[], rows: Map<string, RetireRow>, no
     if (r?.deleted_at) continue;
     const retryOk = !r?.last_attempt_at || h(r.last_attempt_at) >= RETRY_H;
     if (l.status === "pending") { if (retryOk) del.push(l.id); continue; } // onay bekleyen / reddedilen: doğrudan sil
-    if (!r?.archived_at) { if (retryOk || !r) archive.push(l.id); continue; }
+    if (!r?.archived_at) { if (!canArchive) { if (retryOk) del.push(l.id); } else if (retryOk || !r) archive.push(l.id); continue; }
     if (h(r.archived_at) >= DELETE_AFTER_H && retryOk) del.push(l.id);
   }
   // Arşivlenip listeden düşenler: silme tablodan yürür
@@ -50,15 +50,16 @@ async function upsert(db: any, rows: any[]) {
 }
 
 export async function retireLegacy(db: any, mp: Marketplace, marketplace: string, listings: Listing[]): Promise<Record<string, unknown>> {
-  if (!mp.archiveProducts || !mp.deleteProducts) return { skipped: `${mp.label} arşiv/silme desteklemiyor` };
+  if (!mp.deleteProducts) return { skipped: `${mp.label} silme desteklemiyor` };
   const rows = await loadRows(db, marketplace);
-  const { archive, del } = planRetire(listings, rows, Date.now());
+  // Arşivi olmayan pazaryeri (Amazon): barkod kuralı yok, yalnızca tabloya yazılmış ilanlar doğrudan silinir
+  const { archive, del } = mp.archiveProducts ? planRetire(listings, rows, Date.now()) : planRetire([], rows, Date.now(), false);
   const nowIso = new Date().toISOString();
   const out: Record<string, unknown> = { targets: listings.filter((l) => isRetireTarget(l.id)).length, archived: 0, deleteSent: 0, failed: 0, errors: [] as string[] };
   const fail = new Map<string, string>();
 
   if (archive.length) {
-    const r = await mp.archiveProducts(archive);
+    const r = await mp.archiveProducts!(archive);
     for (const f of r.failedItems ?? []) fail.set(f.id, f.reason);
     const chk = r.batchIds.length && mp.checkBatches ? await mp.checkBatches(r.batchIds) : null;
     for (const f of chk?.failed ?? []) fail.set(f.id, f.reason);

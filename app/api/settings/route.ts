@@ -44,7 +44,6 @@ async function read(mp: string) {
   const merged: Record<string, unknown> = { ...base, enabled: false, ...Object.fromEntries(Object.entries(own ?? {}).filter(([, v]) => v != null)) };
   // Pazaryerine özel: ortak ayardan miras alınmaz (worker/sync.ts loadSettings ile aynı)
   merged.sales_paused = own?.sales_paused === true;
-  merged.retire_legacy = false;
   return { data: { ...merged, marketplace: mp } };
 }
 

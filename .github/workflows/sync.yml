@@ -41,6 +41,17 @@ jobs:
       - run: npm install --prefix worker
       - name: Test (sahte servislerle, canlıya yazmaz)
         run: node worker/test/run.mjs
+      # Tedarikçi stokları ve maliyetleri her çalışmada (15 dk) XML'den tazelenir; pazaryeri stokları bu veriden gönderilir
+      - name: Tedarikçi XML -> ürünler
+        if: matrix.marketplace == 'trendyol'
+        continue-on-error: true
+        timeout-minutes: 8
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACTOR: zamanlı-senkron
+        run: node --experimental-strip-types worker/import-xml.ts all
       - name: Sync
         env:
           NODE_OPTIONS: --max-old-space-size=4096

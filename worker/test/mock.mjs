@@ -117,6 +117,7 @@ globalThis.fetch = async (url, init = {}) => {
         { id: "p3", sku: "AAA", title: "Urun A Kopya", description: "", brand: "", category: "Cat1", vat_rate: 20, desi: 1, cost_price: 50, currency: "TRY", status: "active", source: "xml:bayilik",
           product_variants: [{ id: "v3", sku: "NEWPC1", barcode: "BX3", stock: 5, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/z.jpg", position: 0 }] },
       ]);
+      if (t === "suppliers") return json([{ code: "toptanci", marketplace_brand: "Eco Lounge" }]);
       if (t === "pricing_rules") return json(process.env.MOCK_RULES === "1" ? [{ name: "Test kuralı", enabled: true, position: 1, marketplace: "all", cond: { cost_max: 1000000 }, min_net_profit: 400 }, { name: "Başka pazaryeri", enabled: true, position: 2, marketplace: "hepsiburada", cond: {}, target_profit_rate: 0.5 }] : []);
       if (t === "create_failures") return json([{ barcode: "OS13-FAILED1" }]);
     }

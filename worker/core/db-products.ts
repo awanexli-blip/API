@@ -80,6 +80,10 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
   }
 
   const brandRisk = await loadBrandMatcher(ctx.db);
+  // Tedarikçi ürünlerinin pazaryerindeki markası: tedarikçi ayarı "Pazaryeri markası" (ör. Toptancım -> Tcx, yetki belgesiyle).
+  // Boşsa tedarikçi ürünü gönderilmez (mağaza markasıyla açmak istenmiyor; XML markası başkasına kayıtlı olabilir)
+  const supBrand = new Map<string, string>();
+  { const r = await ctx.db.from("suppliers").select("code, marketplace_brand"); for (const x of r.data ?? []) if (x.marketplace_brand) supBrand.set(`xml:${x.code}`, String(x.marketplace_brand)); }
 
   const keyFor = (source: string, v: any) => (ctx.mp.listingKeyFor ? ctx.mp.listingKeyFor(source, v) : listingKeyOf(source, v));
   const needsCategory = ctx.mp.requiresCategory !== false;
@@ -128,6 +132,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
               else { fail(key, p, v, cands.length ? `${ctx.mp.label} eşleşmesi onay bekliyor: ürün detayında doğru ürünü seç (${cands.length} aday)` : `${ctx.mp.label}'da eşleşen ürün bulunamadı (gerçek EAN yok; yeni ürün açmak için GTIN muafiyeti gerekir)`); continue; }
             }
           }
+          if (String(p.source ?? "").startsWith("xml:") && !supBrand.has(p.source)) { fail(key, p, v, `Tedarikçinin pazaryeri markası ayarlanmadı (Ürünler → Tedarikçiler → "${String(p.source).slice(4)}" → Pazaryeri markası)`); continue; }
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
           const pr = priceFor(ctx, p, v, null, avail);
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
@@ -137,8 +142,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
             refs: pred?.refs, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
-          // Tedarikçi XML'inden gelen marka (TCX, BayilikXML.com...) kullanılmaz: başkasına kayıtlı olabilir -> mağaza markası
-          const brand = !String(p.source ?? "").startsWith("xml:") && (await brandOk(p.brand)) ? p.brand : "";
+          // Tedarikçi ürünü: tedarikçi ayarındaki pazaryeri markası; elle girilen ürün: kendi markası (pazaryerinde kayıtlıysa) yoksa mağaza markası
+          const fromSupplier = String(p.source ?? "").startsWith("xml:");
+          const brand = fromSupplier ? supBrand.get(p.source) ?? "" : (await brandOk(p.brand)) ? p.brand : "";
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
           rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title: p.title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });

@@ -9,9 +9,9 @@ const STATUS_TR: Record<string, string> = { ok: "tamam", partial: "kısmen", err
 const slugify = (s: string) => s.toLocaleLowerCase("tr").replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
 type Draft = {
   id?: string; code: string; name: string; xml_url: string; url_masked?: string; url_from_env?: string | null; active: boolean; nightly: boolean;
-  item_path: string; mapping: Record<string, Field>; sku_prefix: string; sku_ascii: boolean; price_includes_vat: boolean; default_vat: number; default_brand: string; currency: string;
+  item_path: string; mapping: Record<string, Field>; sku_prefix: string; sku_ascii: boolean; price_includes_vat: boolean; default_vat: number; default_brand: string; currency: string; marketplace_brand: string;
 };
-const empty = (): Draft => ({ code: "", name: "", xml_url: "", active: true, nightly: true, item_path: "", mapping: {}, sku_prefix: "", sku_ascii: true, price_includes_vat: true, default_vat: 20, default_brand: "", currency: "TRY" });
+const empty = (): Draft => ({ code: "", name: "", xml_url: "", active: true, nightly: true, item_path: "", mapping: {}, sku_prefix: "", sku_ascii: true, price_includes_vat: true, default_vat: 20, default_brand: "", currency: "TRY", marketplace_brand: "" });
 
 export default function Suppliers({ api, notify }: { api: Api; notify: Notify }) {
   const [list, setList] = useState<Row[]>([]);
@@ -58,7 +58,7 @@ export default function Suppliers({ api, notify }: { api: Api; notify: Notify })
               <td data-label="Gece"><input type="checkbox" checked={s.nightly} disabled={!s.active} onChange={() => toggle(s, "nightly")} /></td>
               <td className="n"><div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
                 <button className="btn primary" disabled={!s.active || !s.has_url} onClick={() => run(s.code, s.name)}>İçe aktar</button>
-                <button className="btn" onClick={() => setD({ ...empty(), ...s, xml_url: "", item_path: s.item_path ?? "" })}>Düzenle</button>
+                <button className="btn" onClick={() => setD({ ...empty(), ...s, xml_url: "", item_path: s.item_path ?? "", marketplace_brand: s.marketplace_brand ?? "" })}>Düzenle</button>
                 <button className="btn danger" onClick={() => remove(s)}>Sil</button>
               </div></td>
             </tr>
@@ -157,6 +157,7 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
         <div className="grid">
           <label className="f">SKU öneki<input type="text" value={d.sku_prefix} placeholder="ör. TM-" onChange={(e) => set("sku_prefix", e.target.value.replace(/[^A-Za-z0-9._-]/g, "").slice(0, 12))} /><small>Tedarikçiler arasında kod çakışmasın diye (ör. TM-12345)</small></label>
           <label className="f">Sabit marka<input type="text" value={d.default_brand} placeholder="boş = XML'deki marka" onChange={(e) => set("default_brand", e.target.value)} /><small>XML markası pazaryerinde yoksa (ör. Eco Lounge)</small></label>
+          <label className="f">Pazaryeri markası<input type="text" value={d.marketplace_brand} placeholder="boş = gönderilmez" onChange={(e) => set("marketplace_brand", e.target.value)} /><small>Ürünler Trendyol vb.'de bu markayla açılır (ör. tedarikçinin kendi markası). Başkasına ait markada tedarikçiden yetki belgesi al</small></label>
           <label className="f">Fiyatlar
             <select value={d.price_includes_vat ? "1" : "0"} onChange={(e) => set("price_includes_vat", e.target.value === "1")}><option value="1">KDV dahil</option><option value="0">KDV hariç (KDV eklenir)</option></select>
           </label>

@@ -199,6 +199,20 @@ export function createAmazon(): Marketplace {
       })));
     },
 
+    // İlanı kalıcı sil (Listings Items API, SKU başına). Arşiv yok: eski tedarikçi kaldırmada doğrudan silinir
+    async deleteProducts(ids: string[]): Promise<BatchResult> {
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [], failedItems: [] };
+      for (const sku of ids) {
+        try {
+          const r = await c.sp(`/listings/2021-08-01/items/${encodeURIComponent(c.SELLER)}/${encodeURIComponent(sku)}?marketplaceIds=${c.MKT}`, { method: "DELETE" });
+          if (r.status === "ACCEPTED" || !r.status) res.ok++;
+          else res.failedItems!.push({ id: sku, reason: (issuesText(r.issues) || `Amazon: ${r.status}`).slice(0, 300) });
+        } catch (e: any) { res.failedItems!.push({ id: sku, reason: String(e?.message ?? e).slice(0, 300) }); }
+        await sleep(Number(process.env.AMAZON_GAP_MS ?? 600));
+      }
+      return res;
+    },
+
     async zeroStock(ids: string[]): Promise<BatchResult> {
       return sendMessages(ids.map((sku) => ({ sku, operationType: "PATCH", productType: "PRODUCT", patches: [{ op: "replace", path: "/attributes/fulfillment_availability", value: qty(0) }] })));
     },
