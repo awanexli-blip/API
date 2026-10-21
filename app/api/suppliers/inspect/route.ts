@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { XMLParser } from "fast-xml-parser";
 import { admin } from "@/lib/server";
 import { authorize } from "@/lib/products";
+import { safeFetch } from "@/worker/core/safe-fetch";
 import { fieldStats, findItems, itemsToGroups, suggestMapping, supplierPayload } from "@/lib/supplier-xml";
 
 export const dynamic = "force-dynamic";
@@ -21,17 +22,13 @@ export async function POST(req: NextRequest) {
     if (data?.url_from_env && !data.xml_url) return NextResponse.json({ error: `Bu tedarikçinin adresi GitHub Secret'ta (${data.url_from_env}); panelden incelenemez. Eşleme hazır, doğrudan içe aktarabilirsin.` }, { status: 400 });
     url = data?.xml_url ?? "";
   }
-  let u: URL;
-  try { u = new URL(url); } catch { return NextResponse.json({ error: "Geçerli bir XML adresi gir" }, { status: 400 }); }
-  if (!/^https?:$/.test(u.protocol) || /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[)/.test(u.hostname)) return NextResponse.json({ error: "Bu adrese erişilemez" }, { status: 400 });
-
   let text: string;
   try {
-    const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)" }, signal: AbortSignal.timeout(90000) });
+    // SSRF koruması: DNS çözümü + iç ağ engeli, yönlendirme her adımda doğrulanır, gövde akışla 120 MB sınırı (worker/core/safe-fetch.ts)
+    const r = await safeFetch(url, { maxBytes: MAX, timeoutMs: 90000 });
     if (!r.ok) return NextResponse.json({ error: `XML indirilemedi (HTTP ${r.status})` }, { status: 400 });
-    if (Number(r.headers.get("content-length") ?? 0) > MAX) return NextResponse.json({ error: "XML 120 MB'tan büyük" }, { status: 400 });
-    text = await r.text();
-  } catch (e: any) { return NextResponse.json({ error: `XML indirilemedi: ${e.name === "TimeoutError" ? "90 sn zaman aşımı" : e.message}` }, { status: 400 }); }
+    text = r.text();
+  } catch (e: any) { return NextResponse.json({ error: `XML indirilemedi: ${e.message}` }, { status: 400 }); }
   if (!/^\s*(<\?xml|<)/.test(text.slice(0, 200))) return NextResponse.json({ error: "Adres XML döndürmedi (HTML sayfa veya giriş ekranı olabilir)" }, { status: 400 });
 
   let parsed: any;

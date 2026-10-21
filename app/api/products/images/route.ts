@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { safeFetch } from "@/worker/core/safe-fetch";
 import { randomUUID } from "crypto";
 import { admin } from "@/lib/server";
 import { authorize } from "@/lib/products";
@@ -40,20 +41,13 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ urls });
 }
 
+// SSRF koruması ve 10 MB akış sınırı: worker/core/safe-fetch.ts
 async function fetchImage(url: string) {
-  let u: URL;
-  try { u = new URL(url); } catch { return "Geçerli bir adres değil"; }
-  if (u.protocol !== "https:" && u.protocol !== "http:") return "Adres http(s) ile başlamalı";
-  if (/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[)/.test(u.hostname)) return "Bu adrese erişilemez";
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 15000);
   try {
-    const r = await fetch(u, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)" } });
+    const r = await safeFetch(url, { maxBytes: MAX, timeoutMs: 15000 });
     if (!r.ok) return `Görsel indirilemedi (HTTP ${r.status}). Görsele sağ tıklayıp "Resim adresini kopyala" ile doğrudan adresi al.`;
-    const type = (r.headers.get("content-type") ?? "").split(";")[0].trim();
-    if (!EXT[type]) return `Bu adres bir görsel değil (${type || "tür yok"}). Sayfa adresi değil, görselin kendi adresini yapıştır.`;
-    const data = await r.arrayBuffer();
-    return { type, data };
-  } catch { return "Görsel 15 saniyede indirilemedi"; }
-  finally { clearTimeout(t); }
+    if (!EXT[r.contentType]) return `Bu adres bir görsel değil (${r.contentType || "tür yok"}). Sayfa adresi değil, görselin kendi adresini yapıştır.`;
+    const data = r.body.buffer.slice(r.body.byteOffset, r.body.byteOffset + r.body.byteLength) as ArrayBuffer;
+    return { type: r.contentType, data };
+  } catch (e: any) { return `Görsel indirilemedi: ${e.message}`; }
 }

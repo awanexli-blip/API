@@ -1,0 +1,14 @@
+# Haftalık bağımlılık ve güvenlik güncellemesi önerileri (PR açar, otomatik birleştirmez)
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: "/worker"
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly }

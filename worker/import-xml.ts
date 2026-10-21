@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
 import { env, chunk, arg, SUPPLIER_ARG } from "./core/util.ts";
+import { safeFetch } from "./core/safe-fetch.ts";
 import { findItems, itemsToGroups, supplierPayload, type Supplier } from "../lib/supplier-xml.ts";
 
 const stable = (v: any): string => Array.isArray(v) ? `[${v.map(stable).join(",")}]`
@@ -53,9 +54,10 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
   try {
     const url = sup.xml_url || (sup.url_from_env && /^[A-Z0-9_]+$/.test(sup.url_from_env) ? process.env[sup.url_from_env] : "");
     if (!url) throw new Error(`XML adresi yok${sup.url_from_env ? ` (GitHub Secret ${sup.url_from_env} boş)` : ""}`);
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)" } });
+    // İç ağ adresi, sonsuz yönlendirme ve 300 MB üstü gövde reddedilir (denetim S2.1)
+    const res = await safeFetch(url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
     if (!res.ok) throw new Error(`XML indirilemedi (HTTP ${res.status})`);
-    const built = buildItems(parseXml(await res.text()), sup);
+    const built = buildItems(parseXml(res.text()), sup);
     const { items, total, path } = built;
     errors = built.errors;
     console.log(`${sup.name}: ${total} ürün (${path}), ${items.length} geçerli, ${errors.length} hatalı`);
