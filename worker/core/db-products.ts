@@ -16,6 +16,16 @@ export type DbCtx = {
   clean?: (title: string, description: string) => { title: string; description: string }; // yasaklı kelime / marka eki temizliği
 };
 
+// Görsel adının kök kısmı (tedarikçi CDN'i: "...-model-1-12345-sw1024sh1024.webp" -> "...-model")
+const imageBase = (u?: string) => String(u ?? "").replace(/^.*\//, "").replace(/-\d+-\d+-sw.*$/, "").replace(/\.[a-z]+$/i, "");
+const firstImage = (x: any) => [...(x.product_images ?? [])].sort((a: any, b: any) => a.position - b.position)[0]?.url;
+// Başlığa model kodu: "TCX-LLM-HDY0677" -> "HDY0677" (en fazla 100 karakter)
+function withModel(title: string, ref: string) {
+  const parts = String(ref ?? "").split("-").filter(Boolean);
+  const code = (parts.length > 1 && parts[parts.length - 1].length >= 4 ? parts[parts.length - 1] : parts.join("-")).replace(/^TCX/i, "");
+  if (!code || title.toLowerCase().includes(code.toLowerCase())) return title;
+  return `${title.slice(0, 100 - code.length - 1).trim()} ${code}`;
+}
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
 const supplierOf = (source: string) => String(source ?? "").replace(/^xml:/, "");
 // Pazaryerindeki anahtar: BayilikXML ürünleri mağaza kuralıyla "OS13-" + SKU, diğerleri varyant barkodu
@@ -113,8 +123,21 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const m = vids.length ? await ctx.db.from("marketplace_matches").select("variant_id, external_id").eq("marketplace", ctx.marketplaceId).eq("status", "confirmed").in("variant_id", vids) : { data: [] };
         for (const r of m.data ?? []) confirmed.set(r.variant_id, r.external_id);
       }
+      // Aynı başlıklı ürünler (tedarikçi XML'lerinde): aynı görsel = aynı ürün -> yalnızca en ucuzu; farklı görsel = farklı model -> başlığa model kodu
+      const sameTitle = new Map<string, any[]>();
+      {
+        const titles = [...new Set((products ?? []).map((p: any) => p.title))];
+        for (let i = 0; i < titles.length; i += 100) {
+          const r = await ctx.db.from("products").select("id, title, sku, source_ref, cost_price, status, product_images(url, position)").in("title", titles.slice(i, i + 100)).eq("status", "active");
+          for (const x of r.data ?? []) { const k = normTitle(x.title); sameTitle.set(k, [...(sameTitle.get(k) ?? []), x]); }
+        }
+      }
       for (const p of products ?? []) {
         const images = [...(p.product_images ?? [])].sort((a: any, b: any) => a.position - b.position).map((i: any) => i.url);
+        const sib = (sameTitle.get(normTitle(p.title)) ?? []).filter((x: any) => x.id !== p.id);
+        const myImg = imageBase(images[0]);
+        const cheaper = sib.find((x: any) => imageBase(firstImage(x)) === myImg && myImg && (Number(x.cost_price) < Number(p.cost_price) || (Number(x.cost_price) === Number(p.cost_price) && x.id < p.id)));
+        const title = sib.some((x: any) => imageBase(firstImage(x)) !== myImg) ? withModel(p.title, p.source_ref ?? p.sku) : p.title;
         const pred = ctx.predict ? ctx.predict(p.title, p.category ?? "") : null;
         const categoryId = ctx.catMap.get(p.category)?.category_id ?? (pred?.level === "yuksek" ? pred.categoryId : null);
         for (const v of [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position)) {
@@ -122,7 +145,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
           if (ctx.existing.has(key)) { rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: ctx.lsBy.get(key)?.status === "pending" ? "pending_approval" : "live", updated_at: now }); continue; }
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
-          if (ctx.lsTitles.has(normTitle(p.title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
+          if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
+          if (ctx.lsTitles.has(normTitle(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
           if (!images.length) { fail(key, p, v, "Görsel yok"); continue; }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
@@ -145,7 +169,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const pr = priceFor(ctx, p, v, null, avail);
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
-            ...(() => { const c = ctx.clean ? ctx.clean(p.title, p.description || p.title) : { title: p.title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
+            ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
             refs: pred?.refs, defaults: supDefaults.get(p.source), price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
@@ -155,8 +179,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const brand = fromSupplier ? supBrand.get(p.source) ?? "" : (await brandOk(p.brand)) ? p.brand : "";
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
-          ctx.lsTitles.add(normTitle(p.title)); // aynı başlıklı ikinci ürün (başka tedarikçiden) aynı çalışmada çift ilan açmasın
-          rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title: p.title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
+          ctx.lsTitles.add(normTitle(title)); // aynı başlıklı ikinci ürün (başka tedarikçiden) aynı çalışmada çift ilan açmasın
+          rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
           out.keys.set(key, job.id);
         }
       }

@@ -156,11 +156,13 @@ export function createTrendyol(): Marketplace {
       }
       // Tedarikçi varsayılanı (ör. Menşei -> Çin): değer listesinde adıyla aranır, yoksa serbest metin kabul ediliyorsa yazılır
       const def = Object.entries(p.defaults ?? {}).find(([k]) => lo(k) === lo(name))?.[1];
+      // Birden çok seçenek "|" ile: "Garanti Yok|0 Ay|0" -> listedeki ilk eşleşen, yoksa (serbest metne izin varsa) sonuncusu
       if (!val && def) {
         const vals = await attributeValues(cid, id);
-        const hit = vals.find((v) => lo(v.name) === lo(def));
+        const opts = def.split("|").map((x) => x.trim()).filter(Boolean);
+        const hit = opts.map((o) => vals.find((v) => lo(v.name) === lo(o))).find(Boolean);
         if (hit) val = { attributeId: id, attributeValueId: hit.id };
-        else if (ca.allowCustom) val = { attributeId: id, customAttributeValue: def };
+        else if (ca.allowCustom && opts.length) val = { attributeId: id, customAttributeValue: opts[opts.length - 1] };
       }
       if (!val) for (const b of refs) {
         const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);
