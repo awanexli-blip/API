@@ -8,12 +8,22 @@ export default function Brands({ api, notify, marketplace }: Props) {
   const [d, setD] = useState<Row | null>(null);
   const [brand, setBrand] = useState("");
   const [busy, setBusy] = useState(false);
+  const [block, setBlock] = useState<Row[] | null>(null);
+  const [word, setWord] = useState("");
   const label = marketplace === "hepsiburada" ? "Hepsiburada" : "Trendyol";
 
   const load = useCallback(async () => {
     try { const r = await api(`/api/brands?mp=${marketplace}`); setD(r); setBrand(r.current ?? ""); } catch (e: any) { notify("err", e.message); }
   }, [api, notify, marketplace]);
   useEffect(() => { load(); }, [load]);
+  const loadBlock = useCallback(() => api("/api/brand-blocklist").then((r) => setBlock(r.words)).catch(() => setBlock([])), [api]);
+  useEffect(() => { loadBlock(); }, [loadBlock]);
+  async function addWord() {
+    try { await api("/api/brand-blocklist", { method: "POST", body: JSON.stringify({ word }) }); setWord(""); loadBlock(); } catch (e: any) { notify("err", e.message); }
+  }
+  async function delWord(w: string) {
+    try { await api(`/api/brand-blocklist?word=${encodeURIComponent(w)}`, { method: "DELETE" }); loadBlock(); } catch (e: any) { notify("err", e.message); }
+  }
 
   async function put(body: unknown, ok: string) {
     setBusy(true);
@@ -53,6 +63,24 @@ export default function Brands({ api, notify, marketplace }: Props) {
           <summary>Değişiklik geçmişi ({d.history.length})</summary>
           <table style={{ marginTop: 6 }}><tbody>{d.history.map((h: Row, i: number) => <tr key={i}><td className="muted" style={{ width: 180 }}>{when(h.at)}</td><td>önceki marka: {h.brand || `${d.default} (varsayılan)`}</td></tr>)}</tbody></table>
         </details>}
+      </div>
+
+      <div className="card">
+        <h2>Gönderilmeyen markalar</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          Başlığında veya açıklamasında bu markalardan / karakterlerden biri geçen ürün <b>hiçbir pazaryerine gönderilmez</b> (marka ihlali uyarısı mağazayı kapatabilir).
+          Ürün, ilan listesinde "Marka riski" nedeniyle görünür. Tedarikçi markaları (TCX, BayilikXML.com) zaten kullanılmaz; ürünler mağaza markasıyla açılır.
+        </p>
+        <div className="row">
+          <input type="text" value={word} placeholder="ör. philips veya hello kitty" onChange={(e) => setWord(e.target.value)} style={{ maxWidth: 260 }} onKeyDown={(e) => { if (e.key === "Enter" && word.trim().length >= 2) addWord(); }} />
+          <button className="btn" disabled={word.trim().length < 2} onClick={addWord}>Ekle</button>
+          <span className="muted" style={{ fontSize: 13 }}>{block ? `${block.length} marka` : "Yükleniyor..."}</span>
+        </div>
+        <div className="row" style={{ marginTop: 10, gap: 6 }}>
+          {(block ?? []).map((b: Row) => (
+            <span key={b.word} className="pill" style={{ gap: 4 }}>{b.word}<button onClick={() => delWord(b.word)} style={{ border: 0, background: "none", cursor: "pointer", color: "var(--muted)" }} aria-label="Sil">×</button></span>
+          ))}
+        </div>
       </div>
 
       <div className="card">

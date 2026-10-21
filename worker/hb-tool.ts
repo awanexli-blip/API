@@ -18,6 +18,7 @@ import { writeFileSync } from "node:fs";
 import { calcPrice } from "./pricing.ts";
 import { env, num, san } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
+import { loadBrandMatcher } from "./core/brand-risk.ts";
 import { createHepsiburada, firstArray, hbAttributeValues, hbCategoryAttributes, hbClient } from "./marketplaces/hepsiburada.ts";
 import type { NewProduct } from "./marketplaces/types.ts";
 
@@ -150,7 +151,7 @@ async function main() {
     };
     // Kaynak: ürün veritabanı (aktif tedarikçiler; BayilikXML bırakıldı). Başlığında bilinen marka geçen ürünler atlanır (marka ihlali)
     const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
-    const BRANDS = /(?<![a-zçğıöşü])(philips|samsung|xiaomi|apple|iphone|sony|bosch|tefal|arzum|karaca|nike|adidas|puma|disney|marvel|barbie|lego|hasbro|mattel|pok[eé]mon|stanley|dyson|braun|remington|rowenta|fakir|sinbo|casio|swarovski|pandora|hello kitty|paw patrol|spider-?man|frozen|sonic|minecraft|fisher price|tupperware|emsan|korkmaz|pa[sş]abah[cç]e|huawei|lenovo|anker|baseus|jbl|logitech|hoco|ugreen|ally|duzzona|uslion)(?![a-zçğıöşü])/i;
+    const brandRisk = await loadBrandMatcher(db);
     const picked: NewProduct[] = [];
     for (let from = 0; picked.length < n && from < 20000; from += 500) {
       const { data, error } = await db.from("products").select("id, sku, title, description, category, desi, cost_price, vat_rate, source, product_variants(sku, barcode, stock, cost_price), product_images(url, position)")
@@ -162,7 +163,7 @@ async function main() {
         const v = p.product_variants?.[0];
         const id = String(v?.sku ?? p.sku ?? "");
         const images = [...(p.product_images ?? [])].sort((a: any, b: any) => a.position - b.position).map((i: any) => String(i.url));
-        if (!id || existing.has(id) || !images.length || Number(v?.stock ?? 0) < minStock || BRANDS.test(p.title)) continue;
+        if (!id || existing.has(id) || !images.length || Number(v?.stock ?? 0) < minStock || brandRisk(p.title, p.description ?? "")) continue;
         if (filter && !lo(`${p.title} ${p.category ?? ""}`).includes(filter)) continue;
         const desi = Math.max(1, Math.ceil(Number(p.desi) || Number(s.default_desi ?? 2)));
         const pcfg = { ...cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(s.shipping_mode === "desi" ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };

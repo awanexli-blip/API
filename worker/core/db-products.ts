@@ -7,6 +7,7 @@ import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle } from "./util.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
+import { loadBrandMatcher } from "./brand-risk.ts";
 
 export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
@@ -78,6 +79,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     return knownBrand.get(b)!;
   }
 
+  const brandRisk = await loadBrandMatcher(ctx.db);
+
   const keyFor = (source: string, v: any) => (ctx.mp.listingKeyFor ? ctx.mp.listingKeyFor(source, v) : listingKeyOf(source, v));
   const needsCategory = ctx.mp.requiresCategory !== false;
 
@@ -109,6 +112,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
           if (ctx.lsTitles.has(normTitle(p.title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
           if (!images.length) { fail(key, p, v, "Görsel yok"); continue; }
+          const risky = brandRisk?.(p.title, p.description ?? "");
+          if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           if (needsCategory && !categoryId) { fail(key, p, v, `${ctx.mp.label} kategorisi yok: Kategoriler sekmesinde "${p.category || "kategorisiz"}" eşleştirilmeli`); continue; }
           // Amazon: var olan ürüne teklif için ASIN (onaylı eşleşme > EAN ile tek sonuç > başlıkla adaylar -> panelde onay)
           let asin: string | undefined;
@@ -132,7 +137,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
             refs: pred?.refs, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
-          const brand = (await brandOk(p.brand)) ? p.brand : "";
+          // Tedarikçi XML'inden gelen marka (TCX, BayilikXML.com...) kullanılmaz: başkasına kayıtlı olabilir -> mağaza markası
+          const brand = !String(p.source ?? "").startsWith("xml:") && (await brandOk(p.brand)) ? p.brand : "";
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
           rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title: p.title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
