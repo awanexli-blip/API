@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-21 (16) — BayilikXML ilanlarını kaldırma, yeni tedarikçi Toptancım
+- K: BayilikXML bırakıldı (panel tedarikçi kaydı silindi), yeni tedarikçi Toptancım (`toptacim`, 20.760 ürün DB'de; ayrıca `toptancim2` kaydı). K kararı: **arşivle + 1 gün sonra otomatik sil**.
+- `retire_legacy` (settings, migration 022) + `listing_retire` tablosu + `worker/core/retire.ts`: ÖS13-/OS13- ilanları (20.744; 103 başka barkodlu ilana dokunulmaz) önce `archive-state` ile arşivlenir, onaysızlar doğrudan silinir, arşivde 25 saat dolunca `DELETE /products` ile silinir; hata alanlar 6 saatte bir yeniden denenir; sonuç `summary.retire`. Açıkken BayilikXML okunmaz; yeni ürün kategori tahmini ilan tablosundaki (silinenler dahil) başlık/kategorilerden öğrenilir. Satış durdurma (`sales_paused`) açıkken de çalışır. Testler: `retire.test.ts`.
+- Açık: Toptancım ürünlerini Trendyol'a gönderme (panel "Trendyol'a gönder" → send_products kuyruğu), sonra `sales_paused` kapatılmalı.
+
 ## 2026-10-20 (15) — Satışı durdur
 - K isteği: Trendyol satışı kapatılsın. `sales_paused` (settings + marketplace_settings, migration 021): açıkken senkron (otomatik senkron kapalı olsa da) satıştaki bütün ilanlara stok 0 gönderir, fiyat/ürün açma/gönderim yapmaz. Panel: Pazaryeri → Özet → "Satış durumu" (durdur/aç + hemen güncelleme başlatır). Trendyol'da açıldı (20.10).
 - 19.10 analiz: XML veritabanına `http` eklentisiyle alındı (geçici `tmp_xml_raw`, `tmp_xml_costs`, görünüm `tmp_profit`; silme K tarafından reddedildi, duruyor). Yeni formül 25.377 ürün × 5 komisyonda en az 40 TL net (tek ve çok adet).

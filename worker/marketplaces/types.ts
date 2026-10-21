@@ -68,6 +68,8 @@ export interface Marketplace {
   commission(listingId: string | null, xmlCategory: string, panelRate: number | null, defaultRate: number): Commission;
   pushInventory(items: InventoryItem[]): Promise<BatchResult>;
   zeroStock(ids: string[]): Promise<BatchResult>;
+  archiveProducts?(ids: string[], archived?: boolean): Promise<BatchResult>; // arşivle / arşivden çıkar
+  deleteProducts?(ids: string[]): Promise<BatchResult>;                    // kalıcı sil (Trendyol: onaysız ya da 1 günden fazla arşivde)
   createProducts(items: NewProduct[], ctx: { vatRate: number; skip: (why: string) => void; brandName?: string }): Promise<BatchResult>;
   /** İsteğe bağlı: desi tarifesine göre kargo ücreti (KDV durumu ayarlarda) */
   shippingCost?(desi: number, carrier?: string): number;

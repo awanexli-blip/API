@@ -270,7 +270,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 }
 
 // 10) birim testleri
-for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts"]) {
+for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
 }

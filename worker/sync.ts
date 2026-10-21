@@ -15,6 +15,7 @@ import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./co
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { env, chunk, num, normTitle } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
+import { retireLegacy } from "./core/retire.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
 import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
@@ -70,6 +71,7 @@ async function main() {
     const ids = listings.filter((l) => (l.status ?? "active") === "active" && l.quantity !== 0).map((l) => l.id);
     const z = ids.length ? await mp.zeroStock(ids) : { ok: 0, failed: 0, batchIds: [] as string[] };
     const summary: any = { marketplace: mp.id, salesPaused: true, listings: listings.length, zeroed: z.ok, failedBatches: z.failed, batchIds: z.batchIds, updated: 0, created: 0 };
+    if (s.retire_legacy) summary.retire = await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
     if (z.batchIds.length && mp.checkBatches) summary.batchCheck = await mp.checkBatches(z.batchIds.slice(0, 40)).catch((e: any) => ({ error: String(e?.message ?? e) }));
     summary.listingsTable = await snapshotListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
     return summary;
@@ -105,7 +107,8 @@ async function main() {
   const banned: string[] = (bw.error ? [] : bw.data ?? []).map((r: any) => r.word);
   const clean = (title: string, description: string) => (marketplaceId === "trendyol" ? cleanForMarketplace(title, description, banned) : { title, description });
 
-  const raw = await loadXml();
+  // Eski tedarikçi (BayilikXML) kaldırıldıysa XML okunmaz; ilanları arşivlenip silinir (aşağıda)
+  const raw = s.retire_legacy ? [] : await loadXml();
   {
     const c = (v: any) => String(v ?? "").replace(/;/g, ",").replace(/\r?\n/g, " ");
     const dump = ["barcode;productCode;brand;category;quantity;price;currency;name"];
@@ -113,6 +116,7 @@ async function main() {
     writeFileSync("xml_dump.csv", "﻿" + dump.join("\n"), "utf8");
   }
   const listings = await mp.loadListings();
+  const retireRes = s.retire_legacy && (doUpdate || mode === "create") ? await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) })) : null;
   const existing = new Set<string>(listings.map((l) => l.id));
   const lsBy = new Map(listings.map((l) => [l.id, l]));
   const lsTitles = new Set<string>(listings.map((l) => normTitle(l.title)).filter(Boolean));
@@ -123,6 +127,15 @@ async function main() {
   for (const r of raw) {
     const l = lsBy.get(mp.findListing(r, existing) ?? "");
     if (l?.categoryId && l.status !== "pending") examples.push({ title: l.title || String(r.name ?? ""), xmlCategory: String(r.category ?? ""), categoryId: l.categoryId, categoryName: l.categoryName ?? "", commission: l.commission, ref: l.id });
+  }
+  // XML yoksa (eski tedarikçi kaldırıldı): örnekler ilan tablosundan (arşivlenip silinen ilanların kategorileri de öğrenme verisi olarak kalır)
+  if (!raw.length) {
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await db.from("marketplace_listings").select("listing_key, title, category_id, category_name, commission").eq("marketplace", marketplaceId).not("category_id", "is", null).range(from, from + 999);
+      if (error || !data) break;
+      for (const l of data as any[]) if (l.title) examples.push({ title: l.title, xmlCategory: "", categoryId: String(l.category_id), categoryName: l.category_name ?? "", commission: l.commission ?? undefined, ref: l.listing_key });
+      if (data.length < 1000) break;
+    }
   }
   const predict = examples.length >= 50 ? buildClassifier(examples) : null;
 
@@ -277,6 +290,7 @@ async function main() {
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };
   Object.assign(summary, mp.diagnostics?.(raw, matched));
+  if (retireRes) summary.retire = retireRes;
   summary.sampleXml = raw.slice(0, 3).map((r) => ({ barcode: r.barcode, productCode: r.productCode, name: String(r.name ?? "").slice(0, 60) }));
 
   // Eşleşmeyen kategoriler panelde görünsün

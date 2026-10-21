@@ -274,6 +274,30 @@ export function createTrendyol(): Marketplace {
       return res;
     },
 
+    async archiveProducts(ids: string[], archived = true): Promise<BatchResult> {
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      for (const batch of chunk(ids, 1000)) {
+        try {
+          const r = await tg(`/product/sellers/${SELLER_ID}/products/archive-state`, { method: "PUT", body: JSON.stringify({ items: batch.map((barcode) => ({ barcode, archived })) }) });
+          res.ok += batch.length; res.batchIds.push(r.batchRequestId);
+        } catch (e: any) { res.failed++; (res.failedItems ??= []).push(...batch.map((id) => ({ id, reason: String(e.message).slice(0, 300) }))); console.error(e.message); }
+        await sleep(500);
+      }
+      return res;
+    },
+
+    async deleteProducts(ids: string[]): Promise<BatchResult> {
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      for (const batch of chunk(ids, 500)) {
+        try {
+          const r = await tg(`/product/sellers/${SELLER_ID}/products`, { method: "DELETE", body: JSON.stringify({ items: batch.map((barcode) => ({ barcode })) }) });
+          res.ok += batch.length; res.batchIds.push(r.batchRequestId);
+        } catch (e: any) { res.failed++; (res.failedItems ??= []).push(...batch.map((id) => ({ id, reason: String(e.message).slice(0, 300) }))); console.error(e.message); }
+        await sleep(500);
+      }
+      return res;
+    },
+
     async createProducts(items: NewProduct[], ctx): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
       // V2'de adres alanları opsiyonel; tanımlıysa gönderilir
