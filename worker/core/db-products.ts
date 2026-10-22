@@ -257,7 +257,7 @@ export async function requeueFixable(ctx: DbCtx, max = 3000): Promise<{ requeued
   const { data, error } = await ctx.db.from("marketplace_listings").select("listing_key, product_id, last_error")
     .eq("marketplace", ctx.marketplaceId).eq("status", "error").lt("updated_at", since).not("product_id", "is", null).limit(max);
   if (error) return { skipped: error.message };
-  const fixable = (data ?? []).filter((r: any) => /kategorisi yok|zorunlu özellik|Marka riski|özellik listesi/i.test(String(r.last_error ?? "")));
+  const fixable = (data ?? []).filter((r: any) => /kategorisi yok|zorunlu özellik|Marka riski|özellik listesi|görsel hazırlanamadı/i.test(String(r.last_error ?? "")));
   if (!fixable.length) return { requeued: 0, jobs: 0 };
   const now = new Date().toISOString();
   const keys = fixable.map((r: any) => r.listing_key);

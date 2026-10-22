@@ -261,8 +261,20 @@ export function createHepsiburada(): Marketplace {
       }
       const used = new Set<string>();
       const payloads: any[] = [];
+      // Her ürünün ilk görseli gönderimden önce dönüştürücüden geçirilir (önbelleğe alınır, hata varsa ürün bu turda gönderilmez)
+      const imgOk = new Map<string, boolean>();
+      const firstImgs = [...new Set(list.map((p) => p.images[0]).filter((u): u is string => !!u && jpgUrl(u) !== u))];
+      for (let i = 0; i < firstImgs.length; i += 8) {
+        await Promise.all(firstImgs.slice(i, i + 8).map(async (u) => {
+          for (let t = 0; t < 2 && !imgOk.get(u); t++) {
+            try { const r = await fetch(jpgUrl(u), { signal: AbortSignal.timeout(45000) }); imgOk.set(u, r.ok); await r.body?.cancel().catch(() => {}); } catch { imgOk.set(u, false); }
+          }
+        }));
+      }
       for (const p of list) {
         const no = (why: string) => { ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
+        if (!p.images.length) { no("görsel yok"); continue; }
+        if (imgOk.get(p.images[0]) === false) { no("görsel hazırlanamadı (JPG dönüştürücü)"); continue; }
         if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
         used.add(p.id);
         const imgs = p.images.map((u) => jpgUrl(u)); // WebP -> JPG (HB WebP göstermiyor)

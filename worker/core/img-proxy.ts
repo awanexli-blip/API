@@ -5,7 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 const keyOf = () => process.env.IMAGE_PROXY_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 export const PANEL_URL = (process.env.PANEL_URL || "https://trentakip.vercel.app").replace(/\/+$/, "");
 
-export const imgSig = (url: string, key = keyOf()) => createHmac("sha256", key).update("img:" + url).digest("base64url").slice(0, 22);
+export const imgSig = (url: string, key = keyOf()) => createHmac("sha256", key).update("img2:" + url).digest("base64url").slice(0, 22);
 export function imgSigOk(url: string, sig: string, key = keyOf()) {
   if (!key) return false;
   const a = Buffer.from(imgSig(url, key)), b = Buffer.from(String(sig));
