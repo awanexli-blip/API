@@ -96,13 +96,13 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
 }
 
 // "Trendyol'a gönder": kuyruğa al; yönetici isterse senkronu hemen başlat
-async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmin: boolean, marketplace: "trendyol" | "amazon" = "trendyol") {
-  const label = marketplace === "amazon" ? "Amazon" : "Trendyol";
-  const now = isAdmin && confirm(`${ids.length} ürün ${label}'a gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
+async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmin: boolean, marketplace: "trendyol" | "amazon" | "hepsiburada" = "trendyol") {
+  const label = { amazon: "Amazon", trendyol: "Trendyol", hepsiburada: "Hepsiburada" }[marketplace];
+  const now = isAdmin && confirm(`${ids.length} ürün ${label}${marketplace === "hepsiburada" ? "'ya" : "'a"} gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
   try {
     const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace, now }) });
     const extra = r.problems?.length ? ` Atlananlar: ${r.problems.slice(0, 3).join("; ")}${r.problems.length > 3 ? " ..." : ""}` : "";
-    notify("good", `${r.products} ürün (${r.queued} varyant) ${label}'a gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${extra}`);
+    notify("good", `${r.products} ürün (${r.queued} varyant) ${label}${marketplace === "hepsiburada" ? "'ya" : "'a"} gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${extra}`);
     return true;
   } catch (e: any) { notify("err", e.message); return false; }
 }
@@ -239,6 +239,7 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
           <button className="btn" onClick={() => runBulk({ status: "archived" }, "arşivle")}>Arşivle</button>
           <button className="btn primary" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin)) setSel(new Set()); }}><Icon name="store" size={16} />Trendyol'a gönder</button>
           <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin, "amazon")) setSel(new Set()); }}><Icon name="store" size={16} />Amazon'a gönder</button>
+          <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin, "hepsiburada")) setSel(new Set()); }}><Icon name="store" size={16} />Hepsiburada'ya gönder</button>
           <button className="btn" onClick={() => setBulk({ kind: "brand", value: opts.defaultBrand })}>Marka değiştir</button>
           <button className="btn" onClick={() => setBulk({ kind: "category", value: "" })}>Kategori değiştir</button>
           <button className="btn ghost" onClick={() => setSel(new Set())}>Seçimi kaldır</button>
@@ -584,6 +585,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
           {isNew && <button className="btn" disabled={busy || uploading > 0} onClick={() => save("new")}>Kaydet ve yeni ekle</button>}
           {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Trendyol'a gönder</button>}
           {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin", "amazon")) { api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); setMatchKey((k) => k + 1); } }}><Icon name="store" size={16} />Amazon'a gönder</button>}
+          {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin", "hepsiburada")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Hepsiburada'ya gönder</button>}
           {!isNew && <button className="btn" onClick={() => onCopy(f)}>Kopyasını oluştur</button>}
           {!isNew && f.status !== "archived" && <button className="btn" onClick={archive}>Arşivle</button>}
           {role === "admin" && !isNew && <button className="btn danger" onClick={hardDelete}>Kalıcı sil</button>}

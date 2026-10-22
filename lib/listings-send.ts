@@ -14,10 +14,11 @@ const dbFail = (e: { code?: string; message?: string }) => { console.error("db h
 export async function queueSend(a: Actor, b: { product_ids?: unknown; marketplace?: unknown; now?: unknown }): Promise<{ status: number; body: any }> {
   const marketplace = String(b.marketplace ?? "trendyol");
   if (!MARKETPLACES.includes(marketplace)) return fail("Geçersiz pazaryeri");
-  if (marketplace === "hepsiburada") return fail("Hepsiburada'ya gönderim canlı test sonrası açılacak");
-  if (marketplace === "amazon") {
-    const { data: ms } = await admin().from("marketplace_settings").select("enabled").eq("marketplace", "amazon").maybeSingle();
-    if (!ms?.enabled) return fail("Amazon kapalı: kimlik bilgilerini girip Amazon → Fiyat ayarları'ndan aç (docs/AMAZON_KURULUM.md)");
+  if (marketplace !== "trendyol") {
+    const { data: ms } = await admin().from("marketplace_settings").select("enabled").eq("marketplace", marketplace).maybeSingle();
+    if (!ms?.enabled) return fail(marketplace === "amazon"
+      ? "Amazon kapalı: kimlik bilgilerini girip Amazon → Fiyat ayarları'ndan aç (docs/AMAZON_KURULUM.md)"
+      : "Hepsiburada kapalı: Hepsiburada → Fiyat ayarları'ndan aç");
   }
   const ids: string[] = [...new Set<string>((Array.isArray(b.product_ids) ? b.product_ids : []).filter((x: unknown) => typeof x === "string" && UUID.test(x)))];
   if (!ids.length || ids.length > 200) return fail("1-200 ürün seç");
