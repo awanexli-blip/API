@@ -2,6 +2,16 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-22 (22) — Toptancım: gönderilemeyenler (16.509) için akıllı özellik ve kategori
+- Durum (16:50 UTC): 8.320 Trendyol'da, 116 ret, 16.509 hiç gönderilmemiş (yerel hata): ~9.000 zorunlu özellik, ~5.000 kategori yok, ~1.200 kopya/aynı başlık.
+- K kararları: garanti zorunlu kategorilerde İthalatçı Garantili + 2 Yıl (ürünler garantili ve faturalı); kategori "Trendyol gibi ada bakarak, çoğu gitsin".
+- `worker/core/attr-infer.ts`: zorunlu özellik başlık/açıklamadan (var/yok anahtar kelime, mm/mAh/W/L sayı+aralık, değer adı metinde, ada göre tercih: Dil Türkçe, Yaş Grubu, Yaş, 50 Hz, 220 V, Kutu, adet/Paket İçeriği). Gerçek Trendyol değer listeleriyle 29 test. Tedarikçi varsayılanı: garanti İthalatçı/2 Yıl, "Paket İçeriği = 1 Adet" kaldırıldı (metinden).
+- `worker/core/category-tree.ts`: Trendyol kategori ağacı (herkese açık uç) ile başlık eşleşmesi; sıra: elle > eşleme > tahmin yüksek/orta > ağaç (güçlü) > tahmin düşük %50+ > ağaç (zayıf). Örnek 30 başlıkta 17 eşleşme, belirgin yanlış yok.
+- Çoklama koruması ilk 50 harf yerine tam başlık ve yalnızca açık ilanlar (silinmekte olan Bayilik ilanları sayılmıyordu: 522 ürün yanlış engelleniyordu).
+- Trendyol retleri: başlık sonundaki tedarikçi kodu ("-XXUCZZZ...-4", marka sanılıyordu) temizlenir; model eki okunur kod ya da barkod. Yasaklı kelime listesine toplu alım/toplu alımlarda/fm/star master; "sahte", "banknot", "kabza" geçen ürün hiç gönderilmez (silmek ürünü yanıltıcı yapardı).
+- Yeniden sıraya: 76 iş (~15.000 ürün, job 236-311).
+- Açık: sonuç ölçümü (özellik/kategori kalan hatalar), Trendyol "kategori yanlış" revizeleri (Reddedilenler'den), görsel boyutu retleri (tedarikçi webp).
+
 ## 2026-10-22 (21) — Denetim S1/S2 düzeltmeleri, ürün vitrini, toplu gönderim takibi (K uyurken, onaysız yapılabilenler)
 - Güvenlik: S1.1 workflow enjeksiyonu (girdiler env, argüman doğrulama), S1.2 maliyetli CSV artifact kaldırıldı + maskeleme yardımcıları, S1.3 doğrulanmamış e-posta reddi + tek admin istemcisi, S1.4 kilit dosyaları + npm ci + actions SHA + Dependabot, S2.1 SSRF korumalı safeFetch (DNS + iç ağ + yönlendirme + boyut), S2.2 güvenlik başlıkları + CSP rapor modu, S2.3 feed (atomik sayaç 030, CDN önbellek, alış fiyatı uyarısı), S2.4 dahili HTTP çağrısı kaldırıldı, S2.5 genel hata mesajları, S2.6 CSV formül koruması. CI (tsc + build + test) eklendi, Linux'ta yeşil. Testler: worker tümü + 21 birim testi geçti; next build temiz.
 - Panel: **Ürünler → Vitrin** (varsayılan): büyük görsel, büyük satış fiyatı (Trendyol ilan fiyatı; yoksa ayarlar + akıllı kârla "tahmini"), net kâr rozeti (40 TL altı turuncu), alış, stok, tükendi/son N, ilan durumu; sıralama (yeni, fiyat yüksek/düşük, ad); Liste görünümü korunur. Tarayıcı testi: masaüstü/telefon/gece, yatay taşma ve konsol hatası yok. Migration 029 (indeksler).
