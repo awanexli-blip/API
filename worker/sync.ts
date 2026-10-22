@@ -17,7 +17,7 @@ import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
-import { buildLeafMatcher, leavesOf } from "./core/category-tree.ts";
+import { buildLeafMatcher } from "./core/category-tree.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
 import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
 
@@ -146,12 +146,13 @@ async function main() {
   }
   const predict = examples.length >= 50 ? buildClassifier(examples) : null;
   // Trendyol kategori ağacı (herkese açık uç): başlıktan kategori, sınıflandırıcı emin değilse son çare
-  let leafMatch: DbCtx["leafMatch"] = null;
-  if (marketplaceId === "trendyol" && process.env.CATEGORY_TREE_URL !== "off") {
+  let leafMatch: DbCtx["leafMatch"] = null, leafInfo: number | string | null = null;
+  if (mp.categoryLeaves && process.env.CATEGORY_TREE_URL !== "off") {
     try {
-      const r = await fetch(process.env.CATEGORY_TREE_URL || "https://apigw.trendyol.com/integration/product/product-categories", { headers: { "User-Agent": "urun-paneli" }, signal: AbortSignal.timeout(30000) });
-      if (r.ok) leafMatch = buildLeafMatcher(leavesOf((await r.json()).categories ?? []), new Set(examples.map((e) => e.categoryId)));
-    } catch (e: any) { console.error("kategori ağacı alınamadı:", e.message); }
+      const leaves = await mp.categoryLeaves();
+      if (leaves.length) leafMatch = buildLeafMatcher(leaves, new Set(examples.map((e) => e.categoryId)));
+      leafInfo = leaves.length;
+    } catch (e: any) { console.error("kategori ağacı alınamadı:", e.message); leafInfo = "hata: " + String(e.message).slice(0, 300); }
   }
 
   // Panelde ID yerine ad görünsün: adı boş eşleşmelere ilanlardaki kategori adını yaz (migration 004 yoksa sessizce geç)
@@ -300,7 +301,7 @@ async function main() {
   const matched = linked.size;
   const summary: any = {
     marketplace: mp.id,
-    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount, vatRates: vatCount, categoryPrediction: { examples: examples.length, ...predCount },
+    xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount, vatRates: vatCount, categoryPrediction: { examples: examples.length, ...predCount }, categoryLeaves: leafInfo,
     update: toUpdate.length, create: toCreate.length, skipped, pricingRules: ruleCount,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
   };

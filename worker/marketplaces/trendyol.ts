@@ -2,6 +2,7 @@
 // Uç listesi: https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint.md
 import { readFileSync } from "node:fs";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
@@ -134,11 +135,12 @@ export function createTrendyol(): Marketplace {
   const isColor = (name: string) => /renk|color/i.test(name);
 
   // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > benzer onaylı ilan > nötr değer
-  async function fillAttributes(p: NewProduct, cid: string): Promise<{ attributes: any[]; missing: string[] }> {
+  async function fillAttributes(p: NewProduct, cid: string): Promise<{ attributes: any[]; missing: string[]; learned: Record<string, string> }> {
     const out = new Map<number, Attr>();
     for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.attributeId) out.set(Number(a.attributeId), a);
     const refs = [...(p.refs ?? []).filter((b) => catOfBarcode.get(b) === cid), ...(barcodesByCat.get(cid) ?? [])];
     const missing: string[] = [];
+    const learned: Record<string, string> = {};
     for (const ca of await categoryAttributes(cid)) {
       if (!ca.required) continue;
       const id = Number(ca.attribute?.id), name = String(ca.attribute?.name ?? id);
@@ -148,7 +150,7 @@ export function createTrendyol(): Marketplace {
         const vals = await attributeValues(cid, id);
         const title = " " + lo(p.name).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
         const hit = vals.filter((v) => v.name && title.includes(" " + lo(v.name) + " ")).sort((a, b) => b.name.length - a.name.length)[0];
-        if (hit) val = { attributeId: id, attributeValueId: hit.id };
+        if (hit) { val = { attributeId: id, attributeValueId: hit.id }; learned[name] = hit.name; }
         else {
           const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
           if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
@@ -168,12 +170,17 @@ export function createTrendyol(): Marketplace {
       // Ürünün kendi başlık/açıklamasından (Şarjlı, 44 mm, 10000 mAh, Mikrofon var/yok, 50 Hz...); benzer ilanın değerinden önce gelir
       if (!val) {
         const hit = inferAttribute(name, await attributeValues(cid, id), p.name, p.detail ?? "");
-        if (hit) val = { attributeId: id, attributeValueId: hit.id };
-        else if (ca.allowCustom) { const c = inferCustom(name, p.name, p.detail ?? ""); if (c) val = { attributeId: id, customAttributeValue: c }; }
+        if (hit) { val = { attributeId: id, attributeValueId: hit.id }; learned[name] = hit.name; }
+        else if (ca.allowCustom) { const c = inferCustom(name, p.name, p.detail ?? ""); if (c) { val = { attributeId: id, customAttributeValue: c }; learned[name] = c; } }
       }
       if (!val) for (const b of refs) {
         const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);
-        if (a) { val = a.attributeValueId ? { attributeId: id, attributeValueId: a.attributeValueId } : { attributeId: id, customAttributeValue: a.customAttributeValue }; break; }
+        if (a) {
+          val = a.attributeValueId ? { attributeId: id, attributeValueId: a.attributeValueId } : { attributeId: id, customAttributeValue: a.customAttributeValue };
+          const nm = a.attributeValueId ? (await attributeValues(cid, id)).find((v) => v.id === a.attributeValueId)?.name : a.customAttributeValue;
+          if (nm) learned[name] = String(nm);
+          break;
+        }
       }
       if (!val) {
         const vals = await attributeValues(cid, id);
@@ -183,7 +190,7 @@ export function createTrendyol(): Marketplace {
       if (val) out.set(id, val); else missing.push(name);
     }
     const attributes = [...out.values()].map(({ attributeId, attributeValueId, customAttributeValue }) => (attributeValueId ? { attributeId, attributeValueId } : { attributeId, customAttributeValue }));
-    return { attributes, missing };
+    return { attributes, missing, learned };
   }
 
   return {
@@ -332,8 +339,9 @@ export function createTrendyol(): Marketplace {
         const bId = await brandId(brand);
         if (!bId) { no(`marka Trendyol'da bulunamadı: ${brand}`); continue; }
         const cid = String(p.cat.category_id);
-        const { attributes, missing } = await fillAttributes(p, cid);
+        const { attributes, missing, learned } = await fillAttributes(p, cid);
         if (missing.length) { no(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
+        p.learned = learned;
         payloads.push({
           barcode: p.id, title: p.name.slice(0, 100), productMainId: p.id, brandId: bId,
           categoryId: Number(p.cat.category_id), quantity: Math.min(Math.floor(p.qty), 20000), stockCode: p.id,
@@ -351,6 +359,13 @@ export function createTrendyol(): Marketplace {
         await sleep(500);
       }
       return res;
+    },
+
+    // Kategori ağacı (herkese açık uç; CATEGORY_TREE_URL ile değiştirilebilir)
+    async categoryLeaves() {
+      const r = await fetch(process.env.CATEGORY_TREE_URL || "https://apigw.trendyol.com/integration/product/product-categories", { headers: { "User-Agent": "urun-paneli" }, signal: AbortSignal.timeout(30000) });
+      if (!r.ok) throw new Error(`Trendyol kategori ağacı ${r.status}`);
+      return leavesOf((await r.json()).categories ?? []);
     },
 
     // Reddedilen ürünü düzeltip yeniden onaya gönder: yalnızca değişen alanlar (gönderilmeyen alan korunur)

@@ -43,6 +43,8 @@ export interface NewProduct {
   refs?: string[];      // benzer mevcut ilanlar (zorunlu özellikleri kopyalamak için)
   defaults?: Record<string, string>; // tedarikçi varsayılan özellikleri (özellik adı -> değer adı, ör. Menşei -> Çin)
   asin?: string;        // Amazon: var olan ürüne teklif (LISTING_OFFER_ONLY) için eşleşen ASIN
+  pid?: string; known?: Record<string, unknown>; catName?: string | null; // ürün kaydı (öğrenilen özelliklerin yazılacağı yer)
+  learned?: Record<string, string>; // adaptörün başlık/açıklama/benzer ilandan bulduğu özellikler (özellik adı -> değer); ürün kaydına yazılır, diğer pazaryerleri tekrar aramaz
   price: number;
   qty: number;
 }
@@ -84,6 +86,8 @@ export interface Marketplace {
   findCatalogMatches?(q: { ean?: string | null; title?: string }): Promise<CatalogMatch[]>;
   /** İsteğe bağlı: reddedilen ürünleri düzeltip yeniden onaya gönder (Trendyol: unapproved-bulk-update) */
   updateRejected?(items: RejectedUpdate[]): Promise<BatchResult>;
+  /** İsteğe bağlı: yaprak kategoriler (başlıktan kategori bulmak için, core/category-tree.ts) */
+  categoryLeaves?(): Promise<{ id: string; name: string; path: string[] }[]>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */
   diagnostics?(xml: any[], linkedCount: number): Record<string, unknown>;
 }

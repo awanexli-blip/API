@@ -4,6 +4,7 @@
 // test (SIT) ortamında doğrulanmalı. Varsayılan ortam SIT'tir; canlı için HB_ENV=prod.
 import { readFileSync } from "node:fs";
 import { env, sleep, chunk, san } from "../core/util.ts";
+import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
 // Trendyol ile aynı kural: yeni ürünler "OS13-" + XML productCode (ASCII). Eşleştirme ÖS13- de dener.
@@ -84,21 +85,47 @@ async function fetchAttributeValues(c: ReturnType<typeof hbClient>, categoryId: 
 const BASE_KEYS = new Set(["merchantsku", "varyantgroupid", "barcode", "urunadi", "urunaciklamasi", "marka", "garantisuresi", "kg", "tax_vat_rate", "price", "stock", "image1", "image2", "image3", "image4", "image5", "video1"]);
 const NEUTRAL = ["çok renkli", "karışık", "renkli", "standart", "tek ebat", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
-export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}) {
+// Sıra: panel/ürün değeri (given) > ürün kaydındaki özellik (defaults: tedarikçi varsayılanı + Trendyol gönderiminde öğrenilen, adıyla) >
+// başlık/açıklamadan çıkarım (attr-infer) > başlıkta geçen değer > nötr değer
+export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "") {
   const out: Record<string, unknown> = { ...given };
   const missing: string[] = [];
+  const learned: Record<string, string> = {};
   for (const a of await hbCategoryAttributes(c, categoryId)) {
     if (!a.mandatory || BASE_KEYS.has(lo(a.id)) || out[a.id] != null) continue;
     let vals: string[] = [];
     try { vals = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin olabilir */ }
+    // Ürün kaydındaki değer: "A|B|C" seçeneklerinden listede olan ilk değer, liste yoksa sonuncusu
+    const def = Object.entries(defaults).find(([k]) => lo(k) === lo(a.name) || lo(k) === lo(a.id))?.[1];
+    const opts = String(def ?? "").split("|").map((x) => x.trim()).filter(Boolean);
+    const fromDef = vals.length ? opts.map((o) => vals.find((v) => lo(v) === lo(o))).find(Boolean) : opts[opts.length - 1];
+    const inferred = fromDef ? undefined : vals.length ? inferAttribute(a.name, vals.map((v, i) => ({ id: i, name: v })), title, description)?.name : inferCustom(a.name, title, description) ?? undefined;
     const t = " " + lo(title).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
     const hit = vals.filter((v) => v && t.includes(" " + lo(v) + " ")).sort((x, y) => y.length - x.length)[0];
     const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v) === n)).find(Boolean);
-    const val = hit ?? neutral ?? (!vals.length && /renk|color/i.test(a.name) ? "Çok Renkli" : undefined);
+    const val = fromDef ?? inferred ?? hit ?? neutral ?? (!vals.length && /renk|color/i.test(a.name) ? "Çok Renkli" : undefined);
     if (val) out[a.id] = val; else missing.push(a.name);
+    if (!fromDef && (inferred || hit)) learned[a.name] = String(inferred ?? hit);
     await sleep(200);
   }
-  return { attributes: out, missing };
+  return { attributes: out, missing, learned };
+}
+
+// Yaprak kategoriler (başlıktan kategori bulmak için); yol: üst kategoriler + ad
+export async function hbCategoryLeaves(c: ReturnType<typeof hbClient>) {
+  const out: { id: string; name: string; path: string[] }[] = [];
+  for (let page = 0; page < 100; page++) {
+    const r = await c.hb(`${c.MPOP}/product/api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=${page}&size=1000`);
+    const list = firstArray(r);
+    for (const x of list) {
+      const name = String(x.name ?? x.displayName ?? "");
+      const path = Array.isArray(x.paths) ? x.paths.map(String) : typeof x.paths === "string" ? x.paths.split(">").map((s: string) => s.trim()) : [];
+      if (name) out.push({ id: String(x.categoryId ?? x.id), name, path: path[path.length - 1] === name ? path : [...path, name] });
+    }
+    if (list.length < 1000 || (r?.totalPages && page + 1 >= r.totalPages)) break;
+    await sleep(300);
+  }
+  return out;
 }
 
 export function createHepsiburada(): Marketplace {
@@ -198,9 +225,10 @@ export function createHepsiburada(): Marketplace {
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
         try {
-          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra);
+          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "");
           if (f.missing.length) { no(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
           extra = f.attributes;
+          p.learned = f.learned;
         } catch (e: any) { console.error("özellik listesi alınamadı:", e.message); }
         payloads.push({
           categoryId: Number(p.cat.category_id),
@@ -208,7 +236,7 @@ export function createHepsiburada(): Marketplace {
           attributes: {
             merchantSku: p.id, VaryantGroupID: p.id, Barcode: p.id,
             UrunAdi: p.name.slice(0, 200), UrunAciklamasi: p.detail.slice(0, 30000) || p.name,
-            Marka: BRAND_NAME, GarantiSuresi: 24, kg: String(p.desi), tax_vat_rate: String(Number(p.cat.vat_rate ?? ctx.vatRate)),
+            Marka: ctx.brandName || BRAND_NAME, GarantiSuresi: 24, kg: String(p.desi), tax_vat_rate: String(Number(p.cat.vat_rate ?? ctx.vatRate)),
             price: String(p.price).replace(".", ","), stock: String(Math.min(Math.floor(p.qty), 20000)),
             ...Object.fromEntries(p.images.slice(0, 5).map((u, i) => [`Image${i + 1}`, u])),
             ...extra,
@@ -226,6 +254,8 @@ export function createHepsiburada(): Marketplace {
       }
       return res;
     },
+
+    categoryLeaves: () => hbCategoryLeaves(client),
 
     async checkBatches(ids: string[]): Promise<BatchCheck> {
       const out: BatchCheck = { checked: 0, pending: 0, failedItems: 0, reasons: [] };

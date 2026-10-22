@@ -31,7 +31,7 @@ function withModel(title: string, ref: string, barcode?: string | null) {
   return `${title.slice(0, 100 - code.length - 1).trim()} ${code}`;
 }
 // Ürüne elle girilen özellikler (panel: Gönderilemeyenler) tedarikçi varsayılanını ezer; kategori anahtarı özellik değildir
-const productAttrs = (a: any): Record<string, string> => Object.fromEntries(Object.entries(a && typeof a === "object" && !Array.isArray(a) ? a : {}).filter(([k, v]) => k !== "Trendyol kategori" && typeof v === "string" && v.trim()).map(([k, v]) => [k, String(v)]));
+const productAttrs = (a: any): Record<string, string> => Object.fromEntries(Object.entries(a && typeof a === "object" && !Array.isArray(a) ? a : {}).filter(([k, v]) => !k.startsWith("Trendyol kategori") && typeof v === "string" && v.trim()).map(([k, v]) => [k, String(v)]));
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
 const supplierOf = (source: string) => String(source ?? "").replace(/^xml:/, "");
 // Pazaryerindeki anahtar: BayilikXML ürünleri mağaza kuralıyla "OS13-" + SKU, diğerleri varyant barkodu
@@ -149,7 +149,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const manualCat = /^\d+$/.test(String(p.attributes?.["Trendyol kategori"] ?? "")) ? String(p.attributes["Trendyol kategori"]) : null;
         // Sıra (K kararı 22.10: ürünlerin çoğu gitsin, Trendyol gibi ada bakılsın): elle > kategori eşlemesi > tahmin (yüksek/orta) > ağaç eşleşmesi (güçlü)
         // > tahmin (düşük, %50+) > ağaç eşleşmesi (zayıf). Yanlış kategori Trendyol'dan revize olarak döner (Reddedilenler).
-        const leaf = ctx.leafMatch ? ctx.leafMatch(p.title, p.category ?? "") : null;
+        const tyName = ctx.marketplaceId !== "trendyol" ? String(p.attributes?.["Trendyol kategori adı"] ?? "") : "";
+        const leaf = !ctx.leafMatch ? null : (tyName && ctx.leafMatch(`${tyName} ${p.title}`, `${p.category ?? ""} ${tyName}`)) || ctx.leafMatch(p.title, p.category ?? "");
+        const catName = manualCat ? null : ctx.catMap.get(p.category)?.category_id ? null : pred && pred.level !== "dusuk" ? pred.categoryName : leaf && leaf.score >= 10 ? leaf.categoryName : pred && pred.confidence >= 0.5 ? pred.categoryName : leaf?.categoryName;
         const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id
           ?? (pred && pred.level !== "dusuk" ? pred.categoryId : null)
           ?? (leaf && leaf.score >= 10 ? leaf.categoryId : null)
@@ -188,6 +190,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
+            pid: p.id, known: p.attributes ?? {}, catName,
             refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes) }, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
           // Tedarikçi ürünü: tedarikçi ayarındaki pazaryeri markası; elle girilen ürün: kendi markası (pazaryerinde kayıtlıysa) yoksa mağaza markası
@@ -210,6 +213,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         // Hiçbiri gönderilemediyse grubun ilanları "error"; kısmi hatalar toplu sonuç kontrolünde ürün bazında işaretlenir
         if (r.ok === 0) { const ids = new Set(items.map((i) => i.id)); for (const row of rows) if (row.status === "sent" && ids.has(row.listing_key)) { row.status = "error"; row.last_error = (skipped[0] ?? "Pazaryeri isteği başarısız").slice(0, 500); } }
         if (skipped.length && r.ok > 0) for (const why of skipped) ctx.skip(`gönderim: ${why}`);
+        if (r.ok > 0) await rememberLearned(ctx, items, new Set((r.failedItems ?? []).map((f) => f.id)));
       }
       out.sent += sentInJob;
       if (rows.length) await ctx.db.from("marketplace_listings").upsert(rows, { onConflict: "marketplace,listing_key" });
@@ -222,6 +226,22 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     }
   }
   return out;
+}
+
+// Gönderimde başlık/açıklamadan bulunan özellikler ve tahmin edilen kategori ürün kaydına yazılır (yalnızca boş anahtarlar):
+// sonraki gönderimlerde ve diğer pazaryerlerinde (Hepsiburada, N11) yeniden aranmaz, panelde (Gönderilemeyenler) düzeltilebilir.
+// Kategori numarası yazılmaz (elle seçim sayılırdı); adı "Trendyol kategori adı" olarak durur, diğer pazaryerinin kategori eşleşmesine ipucu olur.
+async function rememberLearned(ctx: DbCtx, items: any[], failed: Set<string>) {
+  for (const np of items) {
+    if (failed.has(np.id) || !np.pid) continue;
+    const known = np.known && typeof np.known === "object" && !Array.isArray(np.known) ? np.known : {};
+    const add: Record<string, string> = {};
+    for (const [k, v] of Object.entries(np.learned ?? {})) if (v && known[k] == null) add[k] = String(v).slice(0, 200);
+    if (np.catName && ctx.marketplaceId === "trendyol" && known["Trendyol kategori adı"] == null) add["Trendyol kategori adı"] = String(np.catName).slice(0, 200);
+    if (!Object.keys(add).length) continue;
+    const { error } = await ctx.db.from("products").update({ attributes: { ...add, ...known } }).eq("id", np.pid);
+    if (error) ctx.skip(`özellik kaydı: ${error.message}`);
+  }
 }
 
 // Toplu katalog eşleştirme (Amazon): jobs "match_products:<pazaryeri>" { product_ids }.
