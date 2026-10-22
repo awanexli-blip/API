@@ -15,6 +15,8 @@ GitHub → repo → Settings → Secrets and variables → Actions:
 
 Test Portal kullanıcı adı/şifresi yalnızca tarayıcıdan Merchant SIT Portal'a giriş içindir, API'de kullanılmaz.
 
+**Canlı (22.10.2026):** entegratör `ozsaray_dev`, Merchant Panel’de servis anahtarı oluşturuldu; Secrets güncellendi (HB_MERCHANT_ID = HB_USERNAME = canlı Merchant ID, HB_PASSWORD = servis anahtarı, HB_USER_AGENT = ozsaray_dev). `ping` (prod): kullanıcı adı:şifre + UA biçimi çalıştı. Katalog yetkisi henüz denenmedi. HB senkronu panelde kapalı.
+
 **Doğrulandı (21.10.2026, SIT):** listing (stok/fiyat) ve sipariş servisleri bu biçimle 200; `stock` ve `price` komutları test listing'inde çalıştı (fiyat 249,90, stok 5, satılabilir). Katalog servisi (`mpop-sit…/product/api/...`) 403 "Access Denied": kimlik doğru, test hesabına katalog yetkisi Hepsiburada tarafından açılmalı.
 
 Şifreyi sohbete, koda veya ekran paylaşımına yazma.
