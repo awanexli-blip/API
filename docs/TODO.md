@@ -8,9 +8,9 @@ Son güncelleme: 22.10.2026.
 
 > **Önce: güvenlik ve hata düzeltmeleri** (`docs/DENETIM_GOREVLERI.md`). 22.10: S0 (S0.4/S0.5 K hariç) ve S1 tamam, S2 büyük ölçüde tamam. **Sıradaki:** K kararları (S0.4 Auth ayarları, S0.5 depo özel mi); Claude: S3.1 ikinci tur, sonra Faz 6 F0.
 > **Sonra aktif aşama: F (Faz 6 — operasyon merkezi).** Plan: `docs/FAZ6_PLAN.md`. Çalışma kuralları: `docs/CALISMA_KURALLARI.md`.
-> **F'de ilk madde: F0 — önkoşullar** (Trendyol sipariş yetkisi, tedarikçi sipariş yöntemleri tablosu `docs/TEDARIKCILER.md`, KVKK kararı).
+> **F (23.10):** F1-F3 siparişler canlı (salt okunur, kişisel veri yok), F7 soru gelen kutusu + F10 Telegram kodu hazır (K: anahtarlar). Sıradaki: F0 K bilgileri (Toptancım sipariş yöntemi, KVKK) -> F4 tedarikçiye iletme.
 > HB (22.10): kargo baremi ve gönderim hazırlığı tamam (PROGRESS 23). Sıradaki: K `hb-tool categories`/`listings` (canlı katalog yetkisi), sonra 20 ürünle deneme (K onayı).
-> Not: Trendyol satışı açık (sales_paused=false, 21.10 K kararı); Toptancım toplu gönderimi sürüyor (PROGRESS 21). Siparişler şimdilik Trendyol panelinden elle.
+> Not: Trendyol satışı açık. Siparişler panelde görünür (Siparişler); tedarikçiye iletme henüz elle.
 > Bu kutuyu her dilim bitince güncelle (aşama + sıradaki madde).
 
 ## Çizelge
@@ -78,16 +78,16 @@ Son güncelleme: 22.10.2026.
 ## F — Faz 6: operasyon (ayrıntı, kabul ölçütleri ve veri modeli: `docs/FAZ6_PLAN.md`)
 
 - [ ] F0 Önkoşullar: Trendyol sipariş yetkisi/test siparişi (K), tedarikçi sipariş yöntemleri `docs/TEDARIKCILER.md` (K), Trendyol servis doğrulamaları (D), KVKK kararı (K)
-- [ ] F1 Veri modeli: `orders`, `order_lines`, `order_events`, `supplier_orders`, `suppliers` genişletme, `order_upsert` (migration 027-028, RLS, DB testi)
-- [ ] F2 Trendyol sipariş çekme: `fetchOrders`, `worker/orders.ts` (15 dk), webhook ucu, statü haritası, sahte servis testi
-- [ ] F3 Siparişler ekranı: liste, filtre, detay, zaman çizelgesi, kâr özeti, "Dikkat gerektirenler", telefon uyumlu
+- [~] F1 Veri modeli: orders/order_lines/order_events + order_upsert tamam (migration 037, DB testi); `supplier_orders`/`suppliers` genişletme F4 ile
+- [~] F2 Trendyol sipariş çekme: fetchOrders + order-status + test tamam, canlıda 33 sipariş (23.10); webhook ucu kaldı
+- [~] F3 Siparişler ekranı: liste, filtre, detay, zaman çizelgesi, kâr özeti, dikkat tamam; tarayıcı tıklama denemesi kaldı
 - [ ] F4 Tedarikçi sipariş motoru: manual (tek tık) → email → semi (hazırla + onay) → api; ön kontroller; idempotent; tam otomatik en son ve varsayılan kapalı
 - [ ] F5 Takip kodu ve kargo: elle giriş, pazaryerine bildirme, gecikme uyarıları
 - [ ] F6 Stok rezervasyonu (`reserved`) ve çok pazaryeri stok düşümü
-- [ ] F7 Müşteri soruları: gelen kutusu, yapay zeka cevap taslağı (insan onaylı, otomatik gönderim yok); yorum servisi var mı doğrula (D)
+- [~] F7 Müşteri soruları: gelen kutusu + Claude taslağı + insan onayı (panel/Telegram) kodu tamam; K: ANTHROPIC_API_KEY; QnA uçları canlıda doğrulanmadı; yorum servisi (D)
 - [ ] F8 İadeler: claims çekme, neden sınıfı, tedarikçi alacağı, `return_rate/return_cost` kalibrasyonu
 - [ ] F9 Analitik ve gerçek net kâr: gösterge kartları, en çok satan/iade, ilk 2 hafta yalnızca veri topla sonra araştırma raporu
-- [ ] F10 Bildirimler (Telegram/e-posta/panel) ve hata merkezi
+- [~] F10 Bildirimler: Telegram (yeni sipariş, soru + onay düğmesi) kodu tamam, K: bot + TELEGRAM_* secret'ları; hata merkezi kaldı
 - [ ] F11 Diğer pazaryerlerinin siparişleri: Hepsiburada, Amazon TR, N11, ÇiçekSepeti
 - [ ] F12 Sertleştirme: uçtan uca test, mobil denetim, güvenlik, runbook, güncel sürüm denetimi
 
