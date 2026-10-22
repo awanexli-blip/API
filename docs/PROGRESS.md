@@ -10,6 +10,7 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 - Özellik hafızası: Trendyol onaylı ilanlarının özellikleri ve "Trendyol kategori adı" her senkronda ürün kaydına (learnFromListings, en fazla 4.000/çalışma; 20:38'de 4.769 ürün). K: "önce bilgileri al, sonra HB'ye" -> HB işleri 75 dk ertelendi (run_after).
 - Otomatik yeniden deneme: HB kuyruğu boşalınca 2 saatten eski düzeltilebilir hatalar yeniden sıraya (requeueFixable).
 - HB sonuç biçimi doğrulandı: importStatus SUCCESS, productStatus "Satışa Hazır"/"Incelenecek", rejectReasonsMessages; tüm sayfalar okunur, ret ilan "rejected" + neden. HB barkodla mevcut katalog kartına eşliyor (ör. marka TCX).
+- K onayı (22.10 ~20:45): Trendyol da net kâr 40-60 TL (settings.net_profit_min/max). Mevcut ilanlar smart politikayla her çalışmada en fazla %10 iner. Örnek: maliyet 500 -> 889,90 yerine 789,90; ucuz ürünlerde çoklu adet koruması (40 TL) fiyatı korur.
 - Toplu: 26.403 ürün HB sırasında (265 iş, senkron başına 25 iş); HB auto_sync açık (auto_create kapalı).
 
 ## 2026-10-22 (23) — Hepsiburada kargo baremi, öğrenilen özellikler ürün kaydında, HB gönderim hazırlığı
