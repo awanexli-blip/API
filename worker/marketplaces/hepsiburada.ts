@@ -154,6 +154,7 @@ export function createHepsiburada(): Marketplace {
   const { MERCHANT, prod, MPOP, LISTING, hb, trackingId } = client;
 
   const items: any[] = [];
+  let imgCheck: string | null = null;
 
   return {
     id: "hepsiburada",
@@ -238,6 +239,19 @@ export function createHepsiburada(): Marketplace {
     // Ürün açma: JSON dosyası multipart olarak gönderilir (en fazla 100 ürün)
     async createProducts(list: NewProduct[], ctx): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      // Görselsiz ilan açılmasın: JPG dönüştürücü (panel /api/img) bu çalışmada bir kez denenir; çalışmıyorsa hiçbir ürün gönderilmez
+      const probe = list.flatMap((p) => p.images).find((u) => jpgUrl(u) !== u);
+      if (probe && imgCheck === null) {
+        try {
+          const r = await fetch(jpgUrl(probe), { signal: AbortSignal.timeout(60000) });
+          imgCheck = r.ok && /image\/jpeg/.test(r.headers.get("content-type") ?? "") ? "ok" : `HTTP ${r.status}`;
+          await r.body?.cancel().catch(() => {});
+        } catch (e: any) { imgCheck = String(e?.message ?? e).slice(0, 100); }
+      }
+      if (probe && imgCheck !== "ok") {
+        for (const p of list) { ctx.skip("görsel dönüştürücü çalışmıyor"); (res.failedItems ??= []).push({ id: p.id, reason: `Görsel JPG dönüştürücü çalışmıyor (${imgCheck}); panel adresi (PANEL_URL) ve anahtar Vercel ile aynı olmalı` }); }
+        return res;
+      }
       const used = new Set<string>();
       const payloads: any[] = [];
       for (const p of list) {
