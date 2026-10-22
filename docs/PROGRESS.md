@@ -6,6 +6,10 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 - HB canlı: katalog yetkisi var (4.785 yaprak kategori). 5 ürün denemesi: zorunlu "Görsel1" alanı düzeltildi; WebP görseller HB'de görünmüyordu -> panel `/api/img` imzalı JPG dönüştürücü (sharp), gönderim öncesi dönüştürücü denetimi. Garanti yalnızca başlığı elektrikli/elektronik olanlarda 24 ay, diğerleri 0.
 - K: sildiği 5 ürün + 1 yeni yeniden gönderildi; HB'de yalnızca 1'i (yeni barkod) eklendi. Sonuç okuma (checkBatches) HB cevap biçimini kaçırıyordu: ürün bazlı nedenler + ham cevap örneği özete yazılıyor.
 - K kararı: net kâr 40-60 TL (yüzde hedefi çok pahalı yapıyordu). `netProfitMin/Max` (migration 032, Ayarlar'da alan): doluysa yüzde hedefi, kâr kuralları ve 1,3x taban yok; fiyat en az 40 TL net bırakan en ucuz x9,90. HB'de açık (40/60), mevcut ilan politikası formula. Trendyol: HB başarılı olunca aynısı (K).
+- İlk toplu çalışma: 1.445 gönderildi, 1.055 yerel hata (kategori yok 520, Cinsiyet/Araç Markası/Işık Yönü, kitap kategorisi, marka riski). Düzeltmeler: HB'de marka riski listesi yok (K), kitap/dergi kategorisi eşleşmez, zorunlu özellikte genel seçenek (Unisex, Universal, Diğer), serbest metin varsayılanı.
+- Özellik hafızası: Trendyol onaylı ilanlarının özellikleri ve "Trendyol kategori adı" her senkronda ürün kaydına (learnFromListings, en fazla 4.000/çalışma; 20:38'de 4.769 ürün). K: "önce bilgileri al, sonra HB'ye" -> HB işleri 75 dk ertelendi (run_after).
+- Otomatik yeniden deneme: HB kuyruğu boşalınca 2 saatten eski düzeltilebilir hatalar yeniden sıraya (requeueFixable).
+- HB sonuç biçimi doğrulandı: importStatus SUCCESS, productStatus "Satışa Hazır"/"Incelenecek", rejectReasonsMessages; tüm sayfalar okunur, ret ilan "rejected" + neden. HB barkodla mevcut katalog kartına eşliyor (ör. marka TCX).
 - Toplu: 26.403 ürün HB sırasında (265 iş, senkron başına 25 iş); HB auto_sync açık (auto_create kapalı).
 
 ## 2026-10-22 (23) — Hepsiburada kargo baremi, öğrenilen özellikler ürün kaydında, HB gönderim hazırlığı
