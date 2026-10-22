@@ -211,11 +211,13 @@ export function createTrendyol(): Marketplace {
           const bs = brandStats.get(bn) ?? { n: 0, closed: 0 }; bs.n++; if (closed) bs.closed++; brandStats.set(bn, bs);
           const comm = Number(v.commission);
           if (Number.isFinite(comm) && comm > 0) liveComm.set(barcode, comm > 1 ? comm / 100 : comm);
+          const attrs = [...toAttrs(c.attributes), ...toAttrs(v.attributes)];
           out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), vatRate: Number(v.vatRate), status: closed ? "closed" : "active",
-            categoryId: c.category?.id != null ? String(c.category.id) : undefined, categoryName: c.category?.name ?? "", commission: liveComm.get(barcode) });
+            categoryId: c.category?.id != null ? String(c.category.id) : undefined, categoryName: c.category?.name ?? "", commission: liveComm.get(barcode),
+            attributes: Object.fromEntries(attrs.filter((a) => a.name && a.value != null && String(a.value).trim()).map((a) => [String(a.name), String(a.value)])) });
           if (!closed && c.category?.id != null) {
             const cid = String(c.category.id);
-            attrsByBarcode.set(barcode, [...toAttrs(c.attributes), ...toAttrs(v.attributes)]);
+            attrsByBarcode.set(barcode, attrs);
             catOfBarcode.set(barcode, cid);
             const l = barcodesByCat.get(cid); if (l) { if (l.length < 50) l.push(barcode); } else barcodesByCat.set(cid, [barcode]);
           }

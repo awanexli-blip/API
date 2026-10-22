@@ -11,6 +11,7 @@ export interface Listing {
   categoryName?: string;
   commission?: number;   // ilanın komisyon oranı (0-1)
   asin?: string;         // Amazon: ilanın bağlı olduğu ASIN
+  attributes?: Record<string, string>; // onaylı ilanın özellikleri (özellik adı -> değer), ürün kaydına öğrenilir
   // Reddedilen ilan (Trendyol): ret türleri ve açıklamaları + düzeltme için mevcut içerik
   reject?: { types: string[]; details: string[]; title?: string; description?: string; images?: string[]; categoryId?: string; categoryName?: string };
   // active: güncellenir · closed: pazaryeri kapatmış (kilitli/arşiv), dokunulmaz · pending: onay bekliyor/reddedildi, dokunulmaz ama yeniden açılmaz

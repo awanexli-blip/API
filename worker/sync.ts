@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
-import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
+import { dbInventory, learnFromListings, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
@@ -360,6 +360,8 @@ async function main() {
       summary.rejectFixes = { rejected: rejected.length, ...stat, resubmitted: sent, newBannedWords: [...newWords] };
     }
   }
+  // Onaylı ilanlardan öğrenilen özellikler ürün kaydına (her modda; yalnızca veritabanına yazar)
+  summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
   summary.dbProducts = dbInv.stats;
   if (doUpdate) toUpdate.push(...dbInv.items);

@@ -246,6 +246,38 @@ async function rememberLearned(ctx: DbCtx, items: any[], failed: Set<string>) {
   }
 }
 
+// Onaylı Trendyol ilanlarının özellikleri ve kategori adı ürün kaydına (yalnızca boş anahtarlar; elle girilen ezilmez).
+// Daha önce gönderilmiş ürünler için de geçerli: Hepsiburada/N11 gönderiminde aynı özellikler yeniden çıkarılmaz.
+export async function learnFromListings(db: any, marketplace: string, listings: Listing[], max = 4000): Promise<{ checked: number; updated: number; errors: number }> {
+  const out = { checked: 0, updated: 0, errors: 0 };
+  if (marketplace !== "trendyol") return out;
+  const byKey = new Map(listings.filter((l) => l.status !== "closed" && (l.attributes || l.categoryName)).map((l) => [l.id, l]));
+  if (!byKey.size) return out;
+  const todo: { id: string; attributes: Record<string, unknown> }[] = [];
+  for (let from = 0; todo.length < max; from += 1000) {
+    const { data, error } = await db.from("marketplace_listings").select("listing_key, product_id, products(attributes)")
+      .eq("marketplace", marketplace).not("product_id", "is", null).range(from, from + 999);
+    if (error || !data?.length) break;
+    for (const r of data as any[]) {
+      const l = byKey.get(r.listing_key);
+      if (!l || !r.product_id) continue;
+      out.checked++;
+      const known = r.products?.attributes && typeof r.products.attributes === "object" && !Array.isArray(r.products.attributes) ? r.products.attributes : {};
+      const add: Record<string, string> = {};
+      for (const [k, v] of Object.entries(l.attributes ?? {})) if (known[k] == null && v) add[k] = String(v).slice(0, 200);
+      if (l.categoryName && known["Trendyol kategori adı"] == null) add["Trendyol kategori adı"] = String(l.categoryName).slice(0, 200);
+      if (Object.keys(add).length && !todo.some((t) => t.id === r.product_id)) todo.push({ id: r.product_id, attributes: { ...add, ...known } });
+      if (todo.length >= max) break;
+    }
+    if (data.length < 1000) break;
+  }
+  for (let i = 0; i < todo.length; i += 10) {
+    const res = await Promise.all(todo.slice(i, i + 10).map((t) => db.from("products").update({ attributes: t.attributes }).eq("id", t.id)));
+    for (const r of res) if (r.error) out.errors++; else out.updated++;
+  }
+  return out;
+}
+
 // Toplu katalog eşleştirme (Amazon): jobs "match_products:<pazaryeri>" { product_ids }.
 // Pazaryerine yazmaz (yalnızca katalog araması): önizleme modunda da çalışır. EAN ile tek sonuç otomatik onaylanır, diğerleri aday.
 export async function processMatchJobs(ctx: DbCtx, worker: string): Promise<{ jobs: number; searched: number; auto: number; suggested: number; none: number }> {

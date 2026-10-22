@@ -90,6 +90,10 @@ async function fetchAttributeValues(c: ReturnType<typeof hbClient>, categoryId: 
 // Zorunlu kategori özelliklerini doldur (base alanları: merchantSku, UrunAdi vb. ayrıca doldurulur)
 const BASE_KEYS = new Set(["merchantsku", "varyantgroupid", "barcode", "urunadi", "urunaciklamasi", "marka", "garantisuresi", "kg", "tax_vat_rate", "price", "stock", "image1", "image2", "image3", "image4", "image5", "video1"]);
 const NEUTRAL = ["çok renkli", "karışık", "renkli", "standart", "tek ebat", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
+// Değer listesinde tam ad yoksa içinde geçen genel seçenek ("Unisex (Kadın/Erkek)", "Universal / Tüm Araçlar", "Diğer Markalar")
+const GENERIC = [/unisex/, /universal|üniversal|evrensel|tüm araç|tüm model|tüm marka|her araç/, /^standart/, /belirtilmemi/, /^diğer/, /karışık|çok renk/];
+// Değer listesi olmayan (serbest metin) zorunlu alanlar için ada göre güvenli değer
+const FREE_TEXT: [RegExp, string][] = [[/cinsiyet/i, "Unisex"], [/araç (marka|model)|arac (marka|model)|uyumlu (marka|model)/i, "Universal"], [/renk|color/i, "Çok Renkli"]];
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
 // Sıra: panel/ürün değeri (given) > ürün kaydındaki özellik (defaults: tedarikçi varsayılanı + Trendyol gönderiminde öğrenilen, adıyla) >
 // başlık/açıklamadan çıkarım (attr-infer) > başlıkta geçen değer > nötr değer
@@ -124,7 +128,9 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
     const t = " " + lo(title).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
     const hit = vals.filter((v) => v && t.includes(" " + lo(v) + " ")).sort((x, y) => y.length - x.length)[0];
     const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v) === n)).find(Boolean);
-    const val = fromDef ?? inferred ?? hit ?? neutral ?? (!vals.length && /renk|color/i.test(a.name) ? "Çok Renkli" : undefined);
+    const generic = neutral ? undefined : GENERIC.map((re) => vals.find((v) => re.test(lo(v)))).find(Boolean);
+    const free = vals.length ? undefined : FREE_TEXT.find(([re]) => re.test(a.name))?.[1];
+    const val = fromDef ?? inferred ?? hit ?? neutral ?? generic ?? free;
     if (val) out[a.id] = val; else missing.push(a.name);
     if (!fromDef && (inferred || hit)) learned[a.name] = String(inferred ?? hit);
     await sleep(200);
