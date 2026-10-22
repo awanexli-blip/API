@@ -88,11 +88,18 @@ const NEUTRAL = ["çok renkli", "karışık", "renkli", "standart", "tek ebat", 
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
 // Sıra: panel/ürün değeri (given) > ürün kaydındaki özellik (defaults: tedarikçi varsayılanı + Trendyol gönderiminde öğrenilen, adıyla) >
 // başlık/açıklamadan çıkarım (attr-infer) > başlıkta geçen değer > nötr değer
-export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "") {
+export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "", images: string[] = []) {
   const out: Record<string, unknown> = { ...given };
   const missing: string[] = [];
   const learned: Record<string, string> = {};
   for (const a of await hbCategoryAttributes(c, categoryId)) {
+    // Görsel alanları ("Görsel1", canlıda kimliği Image1 değil): ürünün N. görseli, kimliğiyle yazılır
+    const img = /^(görsel|gorsel|image)\s*(\d+)$/i.exec(lo(a.name).trim()) ?? /^(görsel|gorsel|image)\s*(\d+)$/i.exec(lo(a.id).trim());
+    if (img) {
+      const url = images[Number(img[2]) - 1];
+      if (url) out[a.id] = url; else if (a.mandatory) missing.push(a.name);
+      continue;
+    }
     if (!a.mandatory || BASE_KEYS.has(lo(a.id)) || out[a.id] != null) continue;
     let vals: string[] = [];
     try { vals = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin olabilir */ }
@@ -228,7 +235,7 @@ export function createHepsiburada(): Marketplace {
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
         try {
-          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "");
+          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "", p.images);
           if (f.missing.length) { no(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
           extra = f.attributes;
           p.learned = f.learned;
