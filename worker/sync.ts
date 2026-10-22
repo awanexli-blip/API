@@ -13,6 +13,7 @@ import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, learnFromListings, requeueFixable, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
+import { recordBatches, applyStates, refreshBatches } from "./core/mp-status.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
@@ -441,8 +442,14 @@ async function main() {
     const sentFails = (summary.batchCheck.failed ?? []).filter((f: any) => sendRes?.keys.has(f.id));
     for (const f of sentFails) await db.from("marketplace_listings").update({ status: "rejected", last_error: String(f.reason ?? "").slice(0, 500), updated_at: new Date().toISOString() }).eq("marketplace", marketplaceId).eq("listing_key", f.id);
     if (sentFails.length) summary.sendRejected = sentFails.length;
-    delete summary.batchCheck.failed; // özet şişmesin
+    // Ürün başına inceleme durumu; sonucu çıkmayan gruplar sonraki çalışmalarda yeniden sorulur
+    if (marketplaceId === "hepsiburada") {
+      await recordBatches(db, marketplaceId, summary.batchIds).catch(() => {});
+      summary.batchCheck.statesApplied = await applyStates(db, marketplaceId, summary.batchCheck.states, summary.batchCheck.done).catch((e: any) => String(e?.message ?? e));
+    }
+    delete summary.batchCheck.failed; delete summary.batchCheck.states; delete summary.batchCheck.done; // özet şişmesin
   }
+  if (marketplaceId === "hepsiburada" && mode !== "preview") summary.statusRefresh = await refreshBatches(db, mp).catch((e: any) => ({ error: String(e?.message ?? e) }));
   summary.batchIds = summary.batchIds.slice(0, 20);
   // Faz 3: ilan tablosu (pazaryerinin gördüğü durum, ürün veritabanına bağlantı)
   if (listings.length) summary.listingsTable = await snapshotListings(db, marketplaceId, listings, calcBy).catch((e: any) => ({ error: String(e?.message ?? e) }));

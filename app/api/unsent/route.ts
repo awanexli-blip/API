@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const items = (ls.data ?? []).map((l: any) => {
     const p = l.products ?? {};
     const img = [...(p.product_images ?? [])].sort((a: any, b: any) => a.position - b.position)[0]?.url ?? null;
-    const sug = /öneri:s*(.+?)s*[(d+)]/.exec(l.last_error ?? "");
+    const sug = /öneri:\s*(.+?)\s*\[(\d+)\]/.exec(l.last_error ?? "");
     return { suggestion: sug ? { id: sug[2], name: sug[1] } : null, listing_key: l.listing_key, product_id: l.product_id, title: p.title ?? l.title, category: p.category ?? "", image: img, error: l.last_error ?? "", missing: missingOf(l.last_error), needsCategory: /kategorisi yok/i.test(l.last_error ?? ""), attributes: p.attributes ?? {}, updated_at: l.updated_at };
   });
   return NextResponse.json({ items, total: ls.count ?? items.length, counts, categories: cats.data ?? [] });

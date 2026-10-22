@@ -171,7 +171,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           // Tahmin güveni düşükse otomatik seçilmez; en iyi tahmin "öneri" olarak yazılır (panel → Gönderilemeyenler tek tıkla seçer)
-          if (needsCategory && !categoryId) { fail(key, p, v, `${ctx.mp.label} kategorisi yok: Kategoriler sekmesinde "${p.category || "kategorisiz"}" eşleştirilmeli${pred?.categoryId ? ` · öneri: ${String(pred.categoryName ?? "").replace(/[[]]/g, "")} [${pred.categoryId}] (%${Math.round((pred.confidence ?? 0) * 100)})` : ""}`); continue; }
+          if (needsCategory && !categoryId) { fail(key, p, v, `${ctx.mp.label} kategorisi yok: Kategoriler sekmesinde "${p.category || "kategorisiz"}" eşleştirilmeli${pred?.categoryId ? ` · öneri: ${String(pred.categoryName ?? "").replace(/[\[\]]/g, "")} [${pred.categoryId}] (%${Math.round((pred.confidence ?? 0) * 100)})` : ""}`); continue; }
           // Amazon: var olan ürüne teklif için ASIN (onaylı eşleşme > EAN ile tek sonuç > başlıkla adaylar -> panelde onay)
           let asin: string | undefined;
           if (ctx.mp.findCatalogMatches) {

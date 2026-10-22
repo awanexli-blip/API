@@ -9,7 +9,7 @@ import { hbCommissionMatcher } from "./hepsiburada-commission.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
 
 // Garanti (K, 22.10): yalnızca elektrikli/elektronik ürünlerde 24 ay (ithalatçı garantili, faturalı); diğerlerinde 0
-const ELECTRONIC = /elektron|elektrik|şarj|pilli|usb|bluetooth|kulaklık|hoparlör|led|makine|makinası|cihaz|akıllı saat|powerbank|adaptör|lamba|vantilatör|fan|ısıtıcı|kamera|mikrofon|tıraş|epilatör|süpürge|terazi|tartı|baskül|radyo|drone|konsol|projeksiyon|kettle|blender|kompresör|watt|d+s?w|d+s?v|mah/i;
+const ELECTRONIC = /elektron|elektrik|şarj|pilli|usb|bluetooth|kulaklık|hoparlör|\bled\b|makine|makinası|cihaz|akıllı saat|powerbank|adaptör|lamba|vantilatör|\bfan\b|ısıtıcı|kamera|mikrofon|tıraş|epilatör|süpürge|terazi|tartı|baskül|radyo|drone|konsol|projeksiyon|kettle|blender|kompresör|watt|\d+\s?w\b|\d+\s?v\b|\d+\s?mah\b/i;
 export const hbWarrantyMonths = (title: string, category = "") => (ELECTRONIC.test(`${title} ${category}`) ? 24 : 0);
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
@@ -314,8 +314,9 @@ export function createHepsiburada(): Marketplace {
 
     categoryLeaves: () => hbCategoryLeaves(client),
 
-    async checkBatches(ids: string[]): Promise<BatchCheck> {
-      const out: BatchCheck = { checked: 0, pending: 0, failedItems: 0, reasons: [] };
+    // quick: sonradan yenileme (worker/core/mp-status.ts) için beklemeden tek tur
+    async checkBatches(ids: string[], opts: { quick?: boolean } = {}): Promise<BatchCheck> {
+      const out: BatchCheck = { checked: 0, pending: 0, failedItems: 0, reasons: [], states: [], done: [] };
       const url = (id: string) => {
         const [kind, tid] = id.split(":");
         if (!tid) return null;
@@ -324,8 +325,8 @@ export function createHepsiburada(): Marketplace {
         return `${MPOP}/product/api/products/status/${tid}`;
       };
       let todo = ids.filter((i) => url(i));
-      for (let round = 0; round < 5 && todo.length; round++) {
-        await sleep(round === 0 ? 10000 : 20000);
+      for (let round = 0; round < (opts.quick ? 1 : 5) && todo.length; round++) {
+        if (!opts.quick) await sleep(round === 0 ? 10000 : 20000);
         const next: string[] = [];
         for (const id of todo) {
           try {
@@ -346,10 +347,25 @@ export function createHepsiburada(): Marketplace {
               }
             }
             const msgs = (x: any) => [...(x?.validationResults ?? []), ...(x?.rejectReasonsMessages ?? []), ...(x?.importMessages ?? []), ...(x?.errors ?? [])]
-              .map((m: any) => (typeof m === "string" ? m : m?.message ?? m?.description ?? JSON.stringify(m))).filter(Boolean);
-            const bad = (x: any) => (x?.importStatus && String(x.importStatus).toUpperCase() !== "SUCCESS") || /red|reject|hata|fail|error|invalid|başarısız/i.test(String(x?.productStatus ?? x?.status ?? ""))
-              || (Array.isArray(x?.validationResults) && x.validationResults.length) || (Array.isArray(x?.rejectReasonsMessages) && x.rejectReasonsMessages.length) || (Array.isArray(x?.errors) && x.errors.length);
+              .map((m: any) => (typeof m === "string" ? m : m?.message ? [m.attributeName, m.message].filter(Boolean).join(": ") : m?.description ?? JSON.stringify(m))).filter(Boolean);
+            // importStatus PROCESSING: HB henüz işliyor (hata değil, sonra yeniden sorulur)
+            const busy = (x: any) => /^(PROCESSING|PENDING|IN_PROGRESS|WAITING)$/i.test(String(x?.importStatus ?? ""));
+            const bad = (x: any) => !busy(x) && ((x?.importStatus && String(x.importStatus).toUpperCase() !== "SUCCESS") || /red|reject|hata|fail|error|invalid|başarısız/i.test(String(x?.productStatus ?? x?.status ?? ""))
+              || (Array.isArray(x?.validationResults) && x.validationResults.length) || (Array.isArray(x?.rejectReasonsMessages) && x.rejectReasonsMessages.length) || (Array.isArray(x?.errors) && x.errors.length));
             for (const x of list) if (x?.productStatus) { const k = String(x.productStatus); (out.statuses ??= {})[k] = (out.statuses[k] ?? 0) + 1; }
+            if (id.startsWith("product:")) {
+              let open = 0;
+              for (const x of list) {
+                const sku = String(x?.merchantSku ?? "");
+                if (!sku) continue;
+                const b = !!bad(x), status = String(x.productStatus ?? (busy(x) ? "HB işliyor" : x.importStatus ?? ""));
+                // Kesin sonuç: satışa hazır ya da hatalı; "İncelenecek" ve işleniyor sonra yeniden sorulur
+                const final = b || /satışa hazır|satista|aktif/i.test(status);
+                if (!final) open++;
+                out.states!.push({ id: sku, status, reasons: msgs(x).join(" · ").slice(0, 500), bad: b, final });
+              }
+              if (!open && list.length) out.done!.push(id);
+            } else out.done!.push(id);
             const errs = list.filter(bad);
             out.failedItems += errs.length;
             for (const e of errs) {

@@ -27,7 +27,11 @@ export interface BatchCheck {
   reasons: string[];    // ilk hatalar: "barkod: neden"
   failed?: { id: string; reason: string }[]; // tüm başarısız ürünler (ürün açmanın tekrar denenmesini engellemek için)
   statuses?: Record<string, number>; // ürün durumu sayıları (Hepsiburada: Satışa Hazır, İncelenecek, Reddedildi...)
+  states?: ItemState[]; // ürün başına durum (ilan tablosuna mp_status olarak yazılır)
+  done?: string[];      // sonucu kesinleşen toplu istekler (bir daha sorulmaz)
 }
+
+export interface ItemState { id: string; status: string; reasons: string; bad: boolean; final: boolean }
 
 export interface InventoryItem {
   id: string;
@@ -83,7 +87,8 @@ export interface Marketplace {
   /** İsteğe bağlı: desi tarifesine göre kargo ücreti (KDV durumu ayarlarda) */
   shippingCost?(desi: number, carrier?: string): number;
   /** İsteğe bağlı: gönderilen toplu isteklerin ürün bazlı sonucu */
-  checkBatches?(ids: string[]): Promise<BatchCheck>;
+  /** quick: beklemeden tek tur sor (sonradan yenileme, worker/core/mp-status.ts) */
+  checkBatches?(ids: string[], opts?: { quick?: boolean }): Promise<BatchCheck>;
   /** Yeni ürün açmak için pazaryeri kategorisi şart mı (Trendyol/HB evet, Amazon teklif modunda hayır) */
   requiresCategory?: boolean;
   /** Panelden gönderimde pazaryerindeki anahtar (varsayılan: BayilikXML "OS13-"+SKU, diğerleri barkod) */
