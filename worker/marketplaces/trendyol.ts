@@ -1,6 +1,7 @@
 // Trendyol adaptörü — Product V2 servisleri (V1 15.10.2026'da kapandı).
 // Uç listesi: https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint.md
 import { readFileSync } from "node:fs";
+import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
@@ -163,6 +164,12 @@ export function createTrendyol(): Marketplace {
         const hit = opts.map((o) => vals.find((v) => lo(v.name) === lo(o))).find(Boolean);
         if (hit) val = { attributeId: id, attributeValueId: hit.id };
         else if (ca.allowCustom && opts.length) val = { attributeId: id, customAttributeValue: opts[opts.length - 1] };
+      }
+      // Ürünün kendi başlık/açıklamasından (Şarjlı, 44 mm, 10000 mAh, Mikrofon var/yok, 50 Hz...); benzer ilanın değerinden önce gelir
+      if (!val) {
+        const hit = inferAttribute(name, await attributeValues(cid, id), p.name, p.detail ?? "");
+        if (hit) val = { attributeId: id, attributeValueId: hit.id };
+        else if (ca.allowCustom) { const c = inferCustom(name, p.name, p.detail ?? ""); if (c) val = { attributeId: id, customAttributeValue: c }; }
       }
       if (!val) for (const b of refs) {
         const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);

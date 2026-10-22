@@ -112,7 +112,7 @@ globalThis.fetch = async (url, init = {}) => {
       if (t === "products" && process.env.MOCK_SEND === "1") return json([
         { id: "p1", sku: "TD-1", title: "Gonderilecek Urun Yepyeni", description: "aciklama", brand: "Eco Lounge", category: "Cat3", vat_rate: 20, desi: 2, cost_price: 100, currency: "TRY", status: "active", source: "xml:toptanci",
           product_variants: [{ id: "v1", sku: "TD-1", barcode: "8690000000012", stock: 9, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/x.jpg", position: 0 }] },
-        { id: "p2", sku: "TD-2", title: "Kategorisi Olmayan Urun", description: "", brand: "", category: "Yok", vat_rate: 20, desi: 1, cost_price: 50, currency: "TRY", status: "active", source: "manual",
+        { id: "p2", sku: "TD-2", title: "Zzqx Wvpk Qjhb", description: "", brand: "", category: "Yok", vat_rate: 20, desi: 1, cost_price: 50, currency: "TRY", status: "active", source: "manual",
           product_variants: [{ id: "v2", sku: "TD-2", barcode: "2000000000017", stock: 5, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/y.jpg", position: 0 }] },
         { id: "p3", sku: "AAA", title: "Urun A Kopya", description: "", brand: "", category: "Cat1", vat_rate: 20, desi: 1, cost_price: 50, currency: "TRY", status: "active", source: "xml:bayilik",
           product_variants: [{ id: "v3", sku: "NEWPC1", barcode: "BX3", stock: 5, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/z.jpg", position: 0 }] },

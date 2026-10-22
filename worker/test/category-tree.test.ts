@@ -1,0 +1,23 @@
+// Başlıktan kategori ağacı eşleşmesi (son çare). node --experimental-strip-types worker/test/category-tree.test.ts
+import { buildLeafMatcher, leavesOf, type TreeNode } from "../core/category-tree.ts";
+let fails = 0;
+const check = (n: string, got: string | null, want: string | null) => { const ok = got === want; console.log(`${ok ? "OK  " : "HATA"} ${n}${ok ? "" : `  beklenen ${want}, gelen ${got}`}`); if (!ok) fails++; };
+const node = (id: number, name: string, subs: TreeNode[] = []): TreeNode => ({ id, name, subCategories: subs });
+const tree = [
+  node(1, "Elektronik", [node(10, "Bluetooth Hoparlör"), node(11, "Şarj Kablosu"), node(12, "Süpürgelik")]),
+  node(2, "Oyuncak", [node(20, "Peluş Oyuncak"), node(21, "Köpek Oyuncağı"), node(22, "Diğer Oyuncaklar")]),
+  node(3, "Oto", [node(30, "Oto Pompa"), node(31, "Kilit")]),
+  node(4, "Ev", [node(40, "Lambader"), node(41, "Kamp Lambası")]),
+];
+const m = buildLeafMatcher(leavesOf(tree));
+const id = (t: string) => m(t)?.categoryName ?? null;
+check("iki kelimeli tam eşleşme", id("Ahşap Bluetooth Hoparlör 1800 Mah"), "Bluetooth Hoparlör");
+check("ekli kelime (oyuncağı)", id("Yatmaz Kedi Köpek Oyuncağı"), "Köpek Oyuncağı");
+check("lambası -> Kamp Lambası", id("Şarjlı Kamp Lambası 2000 mAh"), "Kamp Lambası");
+check("kısa kelime tam olmalı (oto ≠ otomatik)", id("Otomatik Su Pompası"), null);
+check("-siz eki eşleşmez (kilitsiz)", id("Kilitsiz Tekerlek 6 Cm"), null);
+check("uzun ek eşleşmez (süpürgesi ≠ süpürgelik)", id("Mini El Süpürgesi"), null);
+check("lambası ≠ lambader", id("Bahçe Duvar Lambası"), null);
+check("eşleşme yoksa null", id("Tendon Bandı Diz Desteği"), null);
+if (fails) { console.log(`\n${fails} kategori ağacı testi başarısız`); process.exit(1); }
+console.log("\nKategori ağacı testleri geçti");

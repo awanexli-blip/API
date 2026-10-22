@@ -12,6 +12,8 @@ export const num = (v: any) => Number(String(v ?? "0").replace(",", "."));
 export const san = (v: string) => v.replace(/[^A-Za-z0-9._\-]/g, "");
 // Başlık karşılaştırması (çoklama koruması)
 export const normTitle = (v: string) => v.toLocaleLowerCase("tr").replace(/[^0-9a-zçğıöşü]+/g, " ").trim().slice(0, 50);
+// Çoklama koruması için tam başlık (ilk 50 harfi aynı, devamı farklı ürünler engellenmesin)
+export const normFull = (v: string) => v.toLocaleLowerCase("tr").replace(/[^0-9a-zçğıöşü]+/g, " ").trim();
 
 // Komut satırı argümanı doğrulama (workflow girdileri buraya gelir): izinli değilse süreç hata ile durur
 export const arg = (v: string | undefined, fallback: string, allowed: readonly string[] | RegExp, name: string) => {

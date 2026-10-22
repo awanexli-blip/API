@@ -40,8 +40,9 @@ export function stripBrandSuffix(title: string): { title: string; brand: string 
 }
 
 // Yeni ürün metinlerini göndermeden temizle (ret almamak için)
+export const stripCodeSuffix = (t: string) => t.replace(/\s+[-–]\s*[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9._-]{5,}$/u, (m) => (/\d/.test(m) ? "" : m)).trim();
 export function cleanForMarketplace(title: string, description: string, banned: string[]) {
-  const { title: t, brand } = stripBrandSuffix(title);
+  const { title: t, brand } = stripBrandSuffix(stripCodeSuffix(title));
   let d = description;
   if (brand) d = removeWords(d, [brand]);
   return { title: removeWords(t, banned) || title, description: removeWords(d, banned) || d };

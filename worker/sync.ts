@@ -13,10 +13,11 @@ import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
-import { env, chunk, num, normTitle, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
+import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
+import { buildLeafMatcher, leavesOf } from "./core/category-tree.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
 import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
 
@@ -122,7 +123,8 @@ async function main() {
   const retireRes = s.retire_legacy && (doUpdate || mode === "create") ? await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) })) : null;
   const existing = new Set<string>(listings.map((l) => l.id));
   const lsBy = new Map(listings.map((l) => [l.id, l]));
-  const lsTitles = new Set<string>(listings.map((l) => normTitle(l.title)).filter(Boolean));
+  // Çoklama koruması: yalnızca açık ilanlar (kapalı/arşiv ve kaldırılan eski tedarikçi ilanları sayılmaz), tam başlık
+  const lsTitles = new Set<string>(listings.filter((l) => l.status !== "closed" && !(s.retire_legacy && /^(ÖS13|OS13)-/.test(l.id))).map((l) => normFull(l.title)).filter(Boolean));
   const linked = new Set<string>();
 
   // Yeni ürün kategori/komisyon tahmini: mağazadaki eşleşmiş ilanlar örnek (başlık + XML kategorisi -> pazaryeri kategorisi)
@@ -142,6 +144,14 @@ async function main() {
     }
   }
   const predict = examples.length >= 50 ? buildClassifier(examples) : null;
+  // Trendyol kategori ağacı (herkese açık uç): başlıktan kategori, sınıflandırıcı emin değilse son çare
+  let leafMatch: DbCtx["leafMatch"] = null;
+  if (marketplaceId === "trendyol" && process.env.CATEGORY_TREE_URL !== "off") {
+    try {
+      const r = await fetch(process.env.CATEGORY_TREE_URL || "https://apigw.trendyol.com/integration/product/product-categories", { headers: { "User-Agent": "urun-paneli" }, signal: AbortSignal.timeout(30000) });
+      if (r.ok) leafMatch = buildLeafMatcher(leavesOf((await r.json()).categories ?? []), new Set(examples.map((e) => e.categoryId)));
+    } catch (e: any) { console.error("kategori ağacı alınamadı:", e.message); }
+  }
 
   // Panelde ID yerine ad görünsün: adı boş eşleşmelere ilanlardaki kategori adını yaz (migration 004 yoksa sessizce geç)
   const catNames = new Map<string, string>();
@@ -264,7 +274,7 @@ async function main() {
     // Kategori gerektirmeyen pazaryeri (Amazon): yeni ürün XML'den açılmaz, panelde eşleştirme + gönderim ile
     if (mp.requiresCategory === false) { skip(`yeni ürün: ${mp.label}'a eşleştirme ekranından gönderilir`); continue; }
     // Yeni ürün: önce aynı başlıklı ürün mağazada var mı (çoklama riski)
-    if (lsTitles.has(normTitle(name))) { skip(`${mp.label}'da aynı başlık var (çoklama riski)`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: aynı başlık ${mp.label}'da var`); continue; }
+    if (lsTitles.has(normFull(name))) { skip(`${mp.label}'da aynı başlık var (çoklama riski)`); csv.push(`${barcode};${q(name)};${q(category)};${r.price};${price};;;;ATLANDI: aynı başlık ${mp.label}'da var`); continue; }
     // kategori eşleşmesi, resim ve stok şart
     // Kategori: panel eşleşmesi > yüksek güvenli tahmin. Orta/düşük güvenli tahmin elle onay bekler.
     const guess = pred ? ` (tahmin: ${pred.categoryName} #${pred.categoryId}, ${pred.level}, en benzer: ${q(pred.nearest).slice(0, 60)})` : "";
@@ -314,7 +324,7 @@ async function main() {
   }
 
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
-  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean };
+  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean };
 
   // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında; sistemin açtığı OS13- ürünler)
   if ((doUpdate || mode === "create") && mp.updateRejected) {

@@ -5,7 +5,7 @@
 import { calcPrice, existingPriceSafe, type PricingConfig } from "../pricing.ts";
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
-import { normTitle } from "./util.ts";
+import { normTitle, normFull } from "./util.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher } from "./brand-risk.ts";
 
@@ -13,6 +13,7 @@ export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
   minStock: number; policy: string; catMap: Map<string, any>; existing: Set<string>; lsBy: Map<string, Listing>; lsTitles: Set<string>;
   linked: Set<string>; predict: ((title: string, xmlCategory: string) => any) | null; skip: (why: string) => void; defaultVatRate: number;
+  leafMatch?: ((title: string, supplierCategory: string) => { categoryId: string; categoryName: string; score: number } | null) | null; // kategori ağacından başlıkla (son çare)
   clean?: (title: string, description: string) => { title: string; description: string }; // yasaklı kelime / marka eki temizliği
 };
 
@@ -20,9 +21,11 @@ export type DbCtx = {
 const imageBase = (u?: string) => String(u ?? "").replace(/^.*\//, "").replace(/-\d+-\d+-sw.*$/, "").replace(/\.[a-z]+$/i, "");
 const firstImage = (x: any) => [...(x.product_images ?? [])].sort((a: any, b: any) => a.position - b.position)[0]?.url;
 // Başlığa model kodu: "TCX-LLM-HDY0677" -> "HDY0677" (en fazla 100 karakter)
-function withModel(title: string, ref: string) {
+function withModel(title: string, ref: string, barcode?: string | null) {
   const parts = String(ref ?? "").split("-").filter(Boolean);
-  const code = (parts.length > 1 && parts[parts.length - 1].length >= 4 ? parts[parts.length - 1] : parts.join("-")).replace(/^TCX/i, "");
+  let code = (parts.length > 1 && parts[parts.length - 1].length >= 4 ? parts[parts.length - 1] : parts.join("-")).replace(/^TCX/i, "");
+  // Kod okunur değilse (Türkçe harf, tire, 14+ karakter: "XXUCZZZ20WSİLİKONTABANCASI-4") barkod kullanılır; Trendyol tireli eki marka sanıyor
+  if (!/^[A-Za-z0-9]{3,13}$/.test(code)) code = String(barcode ?? "").replace(/[^A-Za-z0-9]/g, "");
   if (!code || title.toLowerCase().includes(code.toLowerCase())) return title;
   return `${title.slice(0, 100 - code.length - 1).trim()} ${code}`;
 }
@@ -139,18 +142,25 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const sib = (sameTitle.get(normTitle(p.title)) ?? []).filter((x: any) => x.id !== p.id);
         const myImg = imageBase(images[0]);
         const cheaper = sib.find((x: any) => imageBase(firstImage(x)) === myImg && myImg && (Number(x.cost_price) < Number(p.cost_price) || (Number(x.cost_price) === Number(p.cost_price) && x.id < p.id)));
-        const title = sib.some((x: any) => imageBase(firstImage(x)) !== myImg) ? withModel(p.title, p.source_ref ?? p.sku) : p.title;
+        const title = sib.some((x: any) => imageBase(firstImage(x)) !== myImg) ? withModel(p.title, p.source_ref ?? p.sku, p.product_variants?.[0]?.barcode) : p.title;
         const pred = ctx.predict ? ctx.predict(p.title, p.category ?? "") : null;
         // Panelde (Gönderilemeyenler) ürüne elle girilen kategori numarası önce gelir
         const manualCat = /^\d+$/.test(String(p.attributes?.["Trendyol kategori"] ?? "")) ? String(p.attributes["Trendyol kategori"]) : null;
-        const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id ?? (pred?.level === "yuksek" ? pred.categoryId : null);
+        // Sıra (K kararı 22.10: ürünlerin çoğu gitsin, Trendyol gibi ada bakılsın): elle > kategori eşlemesi > tahmin (yüksek/orta) > ağaç eşleşmesi (güçlü)
+        // > tahmin (düşük, %50+) > ağaç eşleşmesi (zayıf). Yanlış kategori Trendyol'dan revize olarak döner (Reddedilenler).
+        const leaf = ctx.leafMatch ? ctx.leafMatch(p.title, p.category ?? "") : null;
+        const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id
+          ?? (pred && pred.level !== "dusuk" ? pred.categoryId : null)
+          ?? (leaf && leaf.score >= 10 ? leaf.categoryId : null)
+          ?? (pred && pred.confidence >= 0.5 ? pred.categoryId : null)
+          ?? leaf?.categoryId ?? null;
         for (const v of [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position)) {
           const key = keyFor(p.source, v);
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
           if (ctx.existing.has(key)) { rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: ctx.lsBy.get(key)?.status === "pending" ? "pending_approval" : "live", updated_at: now }); continue; }
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
           if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
-          if (ctx.lsTitles.has(normTitle(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
+          if (ctx.lsTitles.has(normFull(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
           if (!images.length) { fail(key, p, v, "Görsel yok"); continue; }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
@@ -184,7 +194,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const brand = fromSupplier ? supBrand.get(p.source) ?? "" : (await brandOk(p.brand)) ? p.brand : "";
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
-          ctx.lsTitles.add(normTitle(title)); // aynı başlıklı ikinci ürün (başka tedarikçiden) aynı çalışmada çift ilan açmasın
+          ctx.lsTitles.add(normFull(title)); // aynı başlıklı ikinci ürün (başka tedarikçiden) aynı çalışmada çift ilan açmasın
           rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
           out.keys.set(key, job.id);
         }
