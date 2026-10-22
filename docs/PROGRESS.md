@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-22 (24) — Hepsiburada canlı gönderim, net kâr TL aralığı
+- HB canlı: katalog yetkisi var (4.785 yaprak kategori). 5 ürün denemesi: zorunlu "Görsel1" alanı düzeltildi; WebP görseller HB'de görünmüyordu -> panel `/api/img` imzalı JPG dönüştürücü (sharp), gönderim öncesi dönüştürücü denetimi. Garanti yalnızca başlığı elektrikli/elektronik olanlarda 24 ay, diğerleri 0.
+- K: sildiği 5 ürün + 1 yeni yeniden gönderildi; HB'de yalnızca 1'i (yeni barkod) eklendi. Sonuç okuma (checkBatches) HB cevap biçimini kaçırıyordu: ürün bazlı nedenler + ham cevap örneği özete yazılıyor.
+- K kararı: net kâr 40-60 TL (yüzde hedefi çok pahalı yapıyordu). `netProfitMin/Max` (migration 032, Ayarlar'da alan): doluysa yüzde hedefi, kâr kuralları ve 1,3x taban yok; fiyat en az 40 TL net bırakan en ucuz x9,90. HB'de açık (40/60), mevcut ilan politikası formula. Trendyol: HB başarılı olunca aynısı (K).
+- Toplu: 26.403 ürün HB sırasında (265 iş, senkron başına 25 iş); HB auto_sync açık (auto_create kapalı).
+
 ## 2026-10-22 (23) — Hepsiburada kargo baremi, öğrenilen özellikler ürün kaydında, HB gönderim hazırlığı
 - Araştırma (Kargonomi/EZV, 21.09.2026'dan geçerli): HB'de kargoyu **her siparişte satıcı öder**; 0–199,99 TL 43,99 + KDV, 200–399,99 TL 75,99 + KDV, 400 TL ve üstü desi tarifesi (hepsiJET 0–2 desi 81,99 + KDV), ayrıca teslimat başına hizmet bedeli 10,99 + KDV. Barem şartı: hepsiJET/Sürat, 0–1 gün kargolama, zamanında teslim ≥ %90. "300 altı müşteri 60 öder" bilgisi güncel değil.
 - `worker/pricing.ts`: `shippingBands` (basamaklı kargo): her basamakta hedef fiyat, sığmazsa sınırın altı (199,90 / 399,90) "299,90 kuralı" ile denenir; basamaksız yapılandırma eskisiyle aynı. Migration 031 `marketplace_settings.shipping_bands`; panel Ayarlar'da "Kargo basamakları" alanı; API doğrulaması; testler.
