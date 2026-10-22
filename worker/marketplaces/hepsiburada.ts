@@ -147,7 +147,8 @@ export async function hbCategoryLeaves(c: ReturnType<typeof hbClient>) {
     for (const x of list) {
       const name = String(x.name ?? x.displayName ?? "");
       const path = Array.isArray(x.paths) ? x.paths.map(String) : typeof x.paths === "string" ? x.paths.split(">").map((s: string) => s.trim()) : [];
-      if (name) out.push({ id: String(x.categoryId ?? x.id), name, path: path[path.length - 1] === name ? path : [...path, name] });
+      // Kitap/dergi kategorileri atlanır: tedarikçide kitap yok, "Boyama Kitabı" gibi başlıklar yazar/yayın tarihi isteyen kategoriye düşüyordu
+      if (name && !/\b(e-)?kitap(lar|ları)?\b|\bdergi/i.test([...path, name].slice(-2).join(" "))) out.push({ id: String(x.categoryId ?? x.id), name, path: path[path.length - 1] === name ? path : [...path, name] });
     }
     if (list.length < 1000 || (r?.totalPages && page + 1 >= r.totalPages)) break;
     await sleep(300);

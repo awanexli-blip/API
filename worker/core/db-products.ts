@@ -97,7 +97,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     return knownBrand.get(b)!;
   }
 
-  const brandRisk = await loadBrandMatcher(ctx.db);
+  // Marka riski listesi Trendyol/Amazon içindir; Hepsiburada'da marka ihlali sorunu yok (K, 22.10): "Galaxy uyumlu kılıf" gibi ürünler gönderilir
+  const brandRisk = ctx.marketplaceId === "hepsiburada" ? null : await loadBrandMatcher(ctx.db);
   // Tedarikçi ürünlerinin pazaryerindeki markası: tedarikçi ayarı "Pazaryeri markası" (ör. Toptancım -> Tcx, yetki belgesiyle).
   // Boşsa tedarikçi ürünü gönderilmez (mağaza markasıyla açmak istenmiyor; XML markası başkasına kayıtlı olabilir)
   const supBrand = new Map<string, string>();
