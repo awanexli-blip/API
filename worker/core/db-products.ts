@@ -15,6 +15,7 @@ export type DbCtx = {
   linked: Set<string>; predict: ((title: string, xmlCategory: string) => any) | null; skip: (why: string) => void; defaultVatRate: number;
   leafMatch?: ((title: string, supplierCategory: string) => { categoryId: string; categoryName: string; score: number } | null) | null; // kategori ağacından başlıkla (son çare)
   clean?: (title: string, description: string) => { title: string; description: string }; // yasaklı kelime / marka eki temizliği
+  shipFor?: ((desi: number | null) => number) | null; // desi tarifesi (Hepsiburada): ürünün desisine göre kargo, yoksa cfg.shippingCost
 };
 
 // Görsel adının kök kısmı (tedarikçi CDN'i: "...-model-1-12345-sw1024sh1024.webp" -> "...-model")
@@ -43,7 +44,7 @@ function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number)
   if (!(cost > 0)) return { ok: false as const, reason: "maliyet yok", cost, comm: ctx.cfg.commissionRate, pcfg: ctx.cfg };
   const panelRate = ctx.catMap.get(p.category)?.commission_rate;
   const comm = ctx.mp.commission(key, p.category ?? "", panelRate != null ? Number(panelRate) : null, ctx.cfg.commissionRate).rate;
-  const base: PricingConfig = { ...ctx.cfg, vatRate: Number(p.vat_rate ?? 20) / 100 };
+  const base: PricingConfig = { ...ctx.cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(ctx.shipFor ? { shippingCost: ctx.shipFor(p.desi != null ? Number(p.desi) : null) } : {}) };
   const pcfg = ctx.rules.length ? applyRules(base, ctx.rules, { cost, supplier: supplierOf(p.source), category: p.category, brand: p.brand, stock }).cfg : base;
   const r = calcPrice(cost, pcfg, comm);
   return r.ok ? { ok: true as const, price: r.price, cost, comm, pcfg } : { ok: false as const, reason: r.reason ?? "fiyat hesaplanamadı", cost, comm, pcfg };
@@ -54,7 +55,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
   const stats: Record<string, number> = { listings: 0, updated: 0, zeroed: 0, notLive: 0 };
   for (let from = 0; ; from += 1000) {
     const { data, error } = await ctx.db.from("marketplace_listings")
-      .select("listing_key, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand)")
+      .select("listing_key, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi)")
       .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).range(from, from + 999);
     if (error || !data) break; // tablo yoksa (migration 013 öncesi) sessizce geç
     for (const r of data as any[]) {

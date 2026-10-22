@@ -1,6 +1,6 @@
 // Fiyat formülü ve mevcut ilan politikası birim testleri.
 // node --experimental-strip-types worker/test/pricing.test.ts
-import { calcPrice, defaultConfig as cfg, existingPrice, breakdown } from "../pricing.ts";
+import { calcPrice, defaultConfig as cfg, existingPrice, breakdown, shippingAt, bandsFrom } from "../pricing.ts";
 
 let fails = 0;
 const check = (name: string, cond: boolean, info: unknown = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + JSON.stringify(info)}`); if (!cond) fails++; };
@@ -71,6 +71,31 @@ const netOf = (p: number, cost: number, k: number) => breakdown(p, cost, cfg, k)
   const s2 = existingPrice("smart", 330, 249.9, cfg, k)!;
   check("smart: eşik altına kademeli geçiş", s2 === 299.9 && netOf(299.9, 100, k) > netOf(330, 100, k), s2);
   check("smart: bilinmeyen fiyat -> formül", existingPrice("smart", NaN, 400, cfg, k) === 400);
+}
+
+// Kargo basamakları (Hepsiburada barem): her siparişte satıcı öder, KDV hariç tutarlar
+{
+  const hb = { ...cfg, commissionRate: 0.15, commissionPlusVat: true, shippingVatIncluded: false, shippingCost: 81.99, fixedCost: 13.19,
+    shippingBands: bandsFrom([{ below: 400, cost: 75.99 }, { below: 200, cost: 43.99 }]) };
+  check("bant: sıralı", hb.shippingBands![0].below === 200, hb.shippingBands);
+  check("bant: geçersiz satır atılır", bandsFrom([{ below: 0, cost: 5 }, { below: 200, cost: 10 }])!.length === 1);
+  check("bant: null -> null", bandsFrom(null) === null);
+  check("bant: 150 TL -> 43,99", shippingAt(150, hb) === 43.99);
+  check("bant: 199,90 -> 43,99", shippingAt(199.9, hb) === 43.99);
+  check("bant: 200 -> 75,99", shippingAt(200, hb) === 75.99);
+  check("bant: 400 -> desi", shippingAt(400, hb) === 81.99);
+  for (const c of [20, 50, 90, 130, 180, 260, 600]) {
+    const r = calcPrice(c, hb, 0.15);
+    const b = breakdown(r.price, c, hb, 0.15);
+    const want = r.price < 200 ? 43.99 : r.price < 400 ? 75.99 : 81.99;
+    check(`bant: ${c} TL maliyet -> ${r.price} kargo basamağı doğru, kâr > 0`, r.ok && Math.abs(b.shipping - want * 1.2) < 0.02 && b.net > 0, [r, b]);
+    check(`bant: ${c} TL hedef kâr ya da sıkıştırma`, r.profitRate >= 0.15 || (r.note ?? "").includes("sabitlendi"), r);
+  }
+  // Fiyat bir basamağa sığmıyorsa sınırın hemen altına (199,90 / 399,90) sıkıştırma denenir
+  const sq = [...Array(400).keys()].map((i) => calcPrice(40 + i * 0.5, { ...hb, squeezeMinNet: 1 }, 0.15)).filter((r) => r.ok && (r.price === 199.9 || r.price === 399.9));
+  check("bant: 199,90 / 399,90 sıkıştırması oluşur", sq.length > 0 && sq.every((r) => (r.note ?? "").includes("sabitlendi") || r.profitRate >= 0.15), sq.length);
+  // Basamaksız yapılandırma eskisi gibi
+  check("bant yok: eski davranış", calcPrice(200, { ...cfg, shippingBands: null }, 0.18).price === 299.9);
 }
 
 console.log(fails ? `\n${fails} birim testi başarısız` : "\nBirim testleri geçti");

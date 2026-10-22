@@ -1,11 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { breakdown, calcPrice, defaultConfig } from "@/worker/pricing";
+import { bandsFrom, breakdown, calcPrice, defaultConfig } from "@/worker/pricing";
 import { tl, type Props, type Row } from "./shared";
 import cargo from "@/worker/data/hepsiburada/cargo.json";
 
 const tariff = cargo as { carriers: string[]; byDesi: Record<string, number[]> };
+// Kargo basamakları metni: "200=43,99; 400=75,99" (sipariş tutarı bu değerin altındaysa satıcının ödediği kargo)
+const bandsText = (v: unknown) => (Array.isArray(v) ? v.map((b: any) => `${b.below}=${String(b.cost).replace(".", ",")}`).join("; ") : "");
+function parseBands(t: string): { below: number; cost: number }[] | null | false {
+  const parts = t.split(/[;\n]/).map((x) => x.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const out = parts.map((p) => { const [a, b] = p.split("=").map((x) => Number(String(x ?? "").replace(",", ".").trim())); return { below: a, cost: b }; });
+  return out.every((b) => Number.isFinite(b.below) && b.below > 0 && Number.isFinite(b.cost) && b.cost >= 0) ? out.sort((a, b) => a.below - b.below) : false;
+}
 const cargoPrice = (desi: number, carrier: string) => tariff.byDesi[String(Math.min(60, Math.max(0, Math.ceil(desi))))]?.[Math.max(0, tariff.carriers.indexOf(carrier))] ?? NaN;
 
 type Field = { key: string; label: string; kind: "pct" | "num" | "int"; hint?: string; advanced?: boolean; optional?: boolean };
@@ -43,6 +51,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     for (const x of FIELDS) if (x.kind === "pct") o[x.key] = String(Math.round(Number(d[x.key]) * 10000) / 100);
     for (const x of FIELDS) if (x.kind !== "pct") o[x.key] = x.optional && d[x.key] == null ? "" : String(d[x.key]);
     if (d.update_prices === false) o.existing_price_policy = "keep";
+    if ("shipping_bands" in d) o.shipping_bands_text = bandsText(d.shipping_bands);
     return o;
   };
 
@@ -60,7 +69,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     squeezeMinNet: String(f.squeeze_min_net ?? "").trim() === "" ? null : num("squeeze_min_net"),
     multiUnitMinNet: String(f.multi_unit_min_net ?? "").trim() === "" ? null : num("multi_unit_min_net"),
     vatRate: simVat / 100,
-    commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false,
+    commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false, shippingBands: bandsFrom(parseBands(String(f.shipping_bands_text ?? "")) || null),
   };
   const byDesi = f.shipping_mode === "desi";
   if (byDesi) cfg.shippingCost = cargoPrice(simDesi, f.cargo_carrier || "hepsiJET");
@@ -68,6 +77,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
   // Yalnızca sayısal alanlar kontrol edilir (true/false ayarlar Number.isFinite'te hep geçersiz sayılıyordu)
   const badFields = FIELDS.filter((x) => !(x.optional && String(f[x.key] ?? "").trim() === "") && !Number.isFinite(num(x.key))).map((x) => x.label);
   if (byDesi && !Number.isFinite(cfg.shippingCost)) badFields.push("Desi kargo tarifesi");
+  if ("shipping_bands_text" in f && parseBands(String(f.shipping_bands_text)) === false) badFields.push("Kargo basamakları");
   const sumOk = cfg.commissionRate + cfg.targetProfitRate < 1;
   const valid = badFields.length === 0 && sumOk;
 
@@ -81,6 +91,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     for (const [k] of BOOLS) body[k] = f![k];
     // Pazaryerine özel alanlar (yalnızca sunucudan geldiyse gönderilir: migration öncesi kayıt bozulmasın)
     for (const k of ["commission_plus_vat", "shipping_vat_included", "enabled", "shipping_mode", "cargo_carrier"]) if (k in f!) body[k] = f![k];
+    if ("shipping_bands_text" in f!) body.shipping_bands = parseBands(String(f!.shipping_bands_text)) || null;
     if ("default_desi" in f!) body.default_desi = Number(String(f!.default_desi).replace(",", "."));
     body.update_prices = true; // fiyat davranışı yalnızca politika seçimiyle belirlenir ("Fiyata dokunma" = keep)
     body.existing_price_policy = f!.existing_price_policy;
@@ -141,6 +152,11 @@ export default function Settings({ api, notify, marketplace }: Props) {
               </label>
               <label className="f">Varsayılan desi<input type="text" inputMode="decimal" value={f.default_desi} onChange={(e) => setF({ ...f, default_desi: e.target.value })} /><small>XML'de desi yoksa</small></label>
             </div>}
+            {"shipping_bands_text" in f && <label className="f" style={{ maxWidth: 520 }}>Kargo basamakları (barem)
+              <input type="text" placeholder="200=43,99; 400=75,99" value={f.shipping_bands_text} onChange={(e) => setF({ ...f, shipping_bands_text: e.target.value })} />
+              <small>Sipariş tutarı bu değerin altındaysa satıcının ödediği sabit kargo; son basamağın üstünde desi tarifesi. Doluysa ücretsiz kargo eşiği kullanılmaz. Boş = basamak yok.
+                {marketplace === "hepsiburada" ? " Hepsiburada 21.09.2026: 0–199,99 TL 43,99 + KDV, 200–399,99 TL 75,99 + KDV (hepsiJET/Sürat, 0–1 gün kargolama)." : ""}</small>
+            </label>}
             <label className="check"><input type="checkbox" checked={f.shipping_vat_included !== false} onChange={(e) => setF({ ...f, shipping_vat_included: e.target.checked })} />Kargo tutarları KDV dahil (Hepsiburada tarifesi KDV hariçtir: işareti kaldır)</label>
           </>}
         </div>

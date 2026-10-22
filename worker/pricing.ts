@@ -22,6 +22,9 @@ export interface PricingConfig {
   squeezeMinNet?: number | null; // 300 TL eşiğinin altına (299,90) çekerken kabul edilen en az net kâr (TL). Doluysa yüzde eşiği ve kural TL şartı yerine geçer
   returnRate?: number;           // iade oranı (0.05 = siparişlerin %5'i iade)
   returnCost?: number;           // iade başına maliyet (KDV dahil TL: iade kargosu, gidiş kargosu, paketleme/hasar payı)
+  // Kargo basamakları (Hepsiburada barem, 21.09.2026): kargoyu HER siparişte satıcı öder; fiyat < below ise o basamağın sabit ücreti,
+  // son basamağın üstünde desi tarifesi (shippingCost). Doluysa ücretsiz kargo eşiği ve çoklu adet koruması kullanılmaz. Tutarlar shippingVatIncluded'a göre.
+  shippingBands?: { below: number; cost: number }[] | null;
   multiUnitMinNet?: number | null; // çoklu adet koruması: 300 TL altı üründen eşiği geçecek kadar (2-3 adet) alınınca kargo sonrası en az net kâr (TL). Boş = kapalı
 }
 
@@ -60,6 +63,17 @@ const vatOf = (cfg: PricingConfig) => cfg.vatRate ?? 0.2;
 // Sipariş başı beklenen iade gideri: iade oranı × iade başına maliyet (kargo faturası gibi KDV'li hizmet sayılır)
 export const returnsOf = (cfg: PricingConfig) => r2((cfg.returnRate ?? 0) * (cfg.returnCost ?? 0));
 const fixedOf = (cfg: PricingConfig) => cfg.fixedCost + returnsOf(cfg);
+// Ayar satırındaki shipping_bands (jsonb) -> geçerli basamaklar ya da null
+export const bandsFrom = (v: unknown): PricingConfig["shippingBands"] =>
+  Array.isArray(v) ? v.map((b: any) => ({ below: Number(b?.below), cost: Number(b?.cost) })).filter((b) => b.below > 0 && b.cost >= 0).sort((a, b) => a.below - b.below) : null;
+const bandsOf = (cfg: PricingConfig) => (cfg.shippingBands ?? []).filter((b) => b && b.below > 0 && b.cost >= 0).sort((a, b) => a.below - b.below);
+// Bu fiyattaki siparişte satıcının ödediği kargo (girildiği gibi, KDV düzeltmesi yapılmadan)
+export function shippingAt(price: number, cfg: PricingConfig): number {
+  const bands = bandsOf(cfg);
+  if (bands.length) return (bands.find((b) => price < b.below)?.cost) ?? cfg.shippingCost;
+  return price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0;
+}
+const shipIncl = (raw: number, cfg: PricingConfig) => raw * (cfg.shippingVatIncluded === false ? 1 + svatOf(cfg) : 1);
 const svatOf = (cfg: PricingConfig) => cfg.serviceVatRate ?? 0.2;
 
 export interface Breakdown {
@@ -73,7 +87,7 @@ export interface Breakdown {
 export function breakdown(price: number, cost: number, cfg: PricingConfig, commission: number = cfg.commissionRate): Breakdown {
   const v = vatOf(cfg), sv = svatOf(cfg);
   // Tüm hizmet kalemleri KDV dahil tutara çevrilir (cebinden çıkan para)
-  const shipping = r2((price >= cfg.freeShippingThreshold ? cfg.shippingCost : 0) * (cfg.shippingVatIncluded === false ? 1 + sv : 1));
+  const shipping = r2(shipIncl(shippingAt(price, cfg), cfg));
   const comm = price * commission * (cfg.commissionPlusVat ? 1 + sv : 1);
   const services = comm + shipping + fixedOf(cfg);
   const vatDue = (price - cost) * v / (1 + v) - services * sv / (1 + sv);
@@ -87,26 +101,25 @@ export function profitOf(price: number, cost: number, cfg: PricingConfig, commis
   return { shipping: b.shipping, net: b.net, rate: b.rate };
 }
 
-// Hedef kârı veren fiyat (yuvarlamadan önce). withShipping: kargo satıcıda
-function targetPrice(cost: number, cfg: PricingConfig, commission: number, withShipping: boolean): number {
+// Hedef kârı veren fiyat (yuvarlamadan önce). ship: satıcının ödediği kargo (girildiği gibi; 0 = alıcı öder)
+function targetPrice(cost: number, cfg: PricingConfig, commission: number, ship: number): number {
   const sv = svatOf(cfg);
   const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + sv);
   const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);                                   // KDV dahil komisyon oranı
-  const ship = withShipping ? cfg.shippingCost * (cfg.shippingVatIncluded === false ? 1 + sv : 1) : 0; // KDV dahil kargo
+  const shipV = shipIncl(ship, cfg); // KDV dahil kargo
   // net = a(P - cost) - b(cP + kargo + sabit) = t·a·P  =>  P = (a·cost + b(kargo + sabit)) / (a(1 - t) - b·c)
   const den = a * (1 - cfg.targetProfitRate) - b * c;
-  return den > 0 ? (a * cost + b * (ship + fixedOf(cfg))) / den : Infinity;
+  return den > 0 ? (a * cost + b * (shipV + fixedOf(cfg))) / den : Infinity;
 }
 
 // Net kârı tam N TL yapan fiyat: net = a(P - maliyet) - b(cP + kargo + sabit)  =>  P = (N + a·maliyet + b(kargo + sabit)) / (a - b·c)
-function priceForNet(cost: number, cfg: PricingConfig, commission: number, withShipping: boolean, n: number): number {
+function priceForNet(cost: number, cfg: PricingConfig, commission: number, ship: number, n: number): number {
   if (!(n > 0)) return 0;
   const sv = svatOf(cfg);
   const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + sv);
   const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);
-  const ship = withShipping ? cfg.shippingCost * (cfg.shippingVatIncluded === false ? 1 + sv : 1) : 0;
   const den = a - b * c;
-  return den > 0 ? (n + a * cost + b * (ship + fixedOf(cfg))) / den : Infinity;
+  return den > 0 ? (n + a * cost + b * (shipIncl(ship, cfg) + fixedOf(cfg))) / den : Infinity;
 }
 
 // Çoklu adet koruması. Eşik sepet toplamına bakar: 300 TL altı üründen n adet (n·fiyat >= eşik) alınınca kargo satıcıya geçer.
@@ -124,7 +137,7 @@ function multiUnitFloor(price: number, cost: number, cfg: PricingConfig, commiss
     const net = profitOf(price, cost, cfg, commission).net;
     if (multiUnitOk(price, net, cfg)) break;
     const need = (shipNetOf(cfg) + (cfg.multiUnitMinNet ?? 0)) / unitsToThreshold(price, cfg);
-    const next = roundUpPsych(priceForNet(cost, cfg, commission, false, need));
+    const next = roundUpPsych(priceForNet(cost, cfg, commission, 0, need));
     price = next > price ? next : roundUpPsych(price + 0.2);
   }
   return price;
@@ -139,14 +152,15 @@ export function calcPrice(
     ok: false, reason, price: 0, sellerPaysShipping: false, shipping: 0, netProfit: 0, profitRate: 0,
   });
   if (!(cost > 0)) return fail("maliyet yok");
-  if (!Number.isFinite(targetPrice(cost, cfg, commissionRate, false))) return fail("komisyon + kâr %100 üstü");
+  if (!Number.isFinite(targetPrice(cost, cfg, commissionRate, 0))) return fail("komisyon + kâr %100 üstü");
+  if (bandsOf(cfg).length) return finish(cost, cfg, commissionRate, banded(cost, cfg, commissionRate), fail);
 
   const floor = cost * cfg.minMarkup;
   const T = cfg.freeShippingThreshold;
 
   // 1) Kargo ödemiyormuşuz gibi hesapla (fiyat < 300 senaryosu)
   const minNet = cfg.minNetProfit ?? 0;
-  let price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, false), priceForNet(cost, cfg, commissionRate, false, minNet), floor));
+  let price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, 0), priceForNet(cost, cfg, commissionRate, 0, minNet), floor));
   let note: string | undefined;
   const single = price;
   price = multiUnitFloor(price, cost, cfg, commissionRate);
@@ -164,25 +178,46 @@ export function calcPrice(
       note = "299,90'a sabitlendi (kargo alıcıda, kâr hedefin biraz altında)";
     } else {
       // 3) Kargoyu maliyete ekleyerek yeniden hesapla
-      price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, true), priceForNet(cost, cfg, commissionRate, true, minNet), floor));
+      price = roundUpPsych(Math.max(targetPrice(cost, cfg, commissionRate, cfg.shippingCost), priceForNet(cost, cfg, commissionRate, cfg.shippingCost, minNet), floor));
       note = undefined;
     }
   }
 
-  if (price > cfg.maxPrice) return fail("fiyat üst sınırı aştı");
+  return finish(cost, cfg, commissionRate, { price, note }, fail);
+}
 
-  const p = profitOf(price, cost, cfg, commissionRate);
+function finish(cost: number, cfg: PricingConfig, commissionRate: number, r: { price: number; note?: string }, fail: (reason: string) => PriceResult): PriceResult {
+  if (r.price > cfg.maxPrice) return fail("fiyat üst sınırı aştı");
+  const p = profitOf(r.price, cost, cfg, commissionRate);
   if (p.net <= 0) return fail("zarar");
-
   return {
     ok: true,
-    price,
+    price: r.price,
     sellerPaysShipping: p.shipping > 0,
     shipping: p.shipping,
     netProfit: p.net,
     profitRate: Math.round(p.rate * 1000) / 1000,
-    note,
+    note: r.note,
   };
+}
+
+// Kargo basamaklı pazaryeri (Hepsiburada): her basamakta o basamağın kargosuyla hedef fiyat hesaplanır, basamağa sığan ilk (en ucuz) fiyat seçilir.
+// Sığmıyorsa basamak sınırının hemen altı (199,90 / 399,90) denenir: net kâr "299,90 için en az TL" (squeezeMinNet) ve kural TL şartını karşılıyorsa kabul.
+function banded(cost: number, cfg: PricingConfig, comm: number): { price: number; note?: string } {
+  const bands = bandsOf(cfg);
+  const floor = cost * cfg.minMarkup, minNet = cfg.minNetProfit ?? 0;
+  const regimes = [...bands.map((b, i) => ({ lo: i ? bands[i - 1].below : 0, hi: b.below, ship: b.cost })), { lo: bands[bands.length - 1].below, hi: Infinity, ship: cfg.shippingCost }];
+  for (const r of regimes) {
+    const p = roundUpPsych(Math.max(targetPrice(cost, cfg, comm, r.ship), priceForNet(cost, cfg, comm, r.ship, minNet), floor, r.lo));
+    if (p < r.hi) return { price: p };
+    const sq = roundUpPsych(r.hi - 0.2);
+    if (sq < r.hi && sq >= floor && sq >= r.lo) {
+      const x = profitOf(sq, cost, cfg, comm);
+      const ok = cfg.squeezeMinNet != null && cfg.squeezeMinNet >= 0 ? x.net >= Math.max(cfg.squeezeMinNet, minNet) && x.net > 0 : x.rate >= cfg.minAcceptableProfitRate && x.net >= minNet;
+      if (ok) return { price: sq, note: `${sq.toFixed(2).replace(".", ",")} TL'ye sabitlendi (kargo basamağı ucuz, kâr hedefin biraz altında)` };
+    }
+  }
+  return { price: Infinity };
 }
 
 // Mevcut ilanda gönderilecek fiyat. null = fiyata dokunma.

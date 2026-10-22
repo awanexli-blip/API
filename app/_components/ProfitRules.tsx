@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { calcPrice, defaultConfig, type PricingConfig } from "@/worker/pricing";
+import { bandsFrom, calcPrice, defaultConfig, type PricingConfig } from "@/worker/pricing";
 import { applyRules, describeCond, rulesFor, type PricingRule } from "@/worker/pricing-rules";
 import { tl, type Props, type Row } from "./shared";
 
@@ -68,7 +68,7 @@ export default function ProfitRules({ api, notify, marketplace }: Props) {
       freeShippingThreshold: Number(settings.free_shipping_threshold), minMarkup: Number(settings.min_markup ?? 1.3), fixedCost: Number(settings.fixed_cost),
       returnRate: Number(settings.return_rate ?? 0), returnCost: Number(settings.return_cost ?? 0), squeezeMinNet: settings.squeeze_min_net != null ? Number(settings.squeeze_min_net) : null, multiUnitMinNet: settings.multi_unit_min_net != null ? Number(settings.multi_unit_min_net) : null, 
       minAcceptableProfitRate: Number(settings.min_acceptable_profit_rate), maxPrice: Number(settings.max_price), commissionPlusVat: settings.commission_plus_vat === true,
-      shippingVatIncluded: settings.shipping_vat_included !== false,
+      shippingVatIncluded: settings.shipping_vat_included !== false, shippingBands: bandsFrom(settings.shipping_bands),
     };
     const fx: Record<string, number> = { TRY: 1, USD: Number(settings.fx_usd) || 0, EUR: Number(settings.fx_eur) || 0 };
     const active = rulesFor(rules as PricingRule[], marketplace);

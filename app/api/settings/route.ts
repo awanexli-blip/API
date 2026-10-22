@@ -32,7 +32,7 @@ const POLICIES = ["keep", "floor", "formula", "smart"];
 // Yalnızca ortak (settings) tablosunda olanlar
 const BASE_ONLY = ["xml_price_includes_vat", "min_markup", "vat_rate", "fx_usd", "fx_eur", "update_prices"];
 // Yalnızca marketplace_settings tablosunda olanlar
-const MP_ONLY = ["shipping_mode", "cargo_carrier", "default_desi", "shipping_vat_included", "enabled"];
+const MP_ONLY = ["shipping_mode", "cargo_carrier", "default_desi", "shipping_vat_included", "enabled", "shipping_bands"];
 
 async function read(mp: string) {
   const db = admin();
@@ -44,6 +44,7 @@ async function read(mp: string) {
   const merged: Record<string, unknown> = { ...base, enabled: false, ...Object.fromEntries(Object.entries(own ?? {}).filter(([, v]) => v != null)) };
   // Pazaryerine özel: ortak ayardan miras alınmaz (worker/sync.ts loadSettings ile aynı)
   merged.sales_paused = own?.sales_paused === true;
+  merged.shipping_bands = own?.shipping_bands ?? null; // boş da gösterilsin (panelde alan çıksın)
   return { data: { ...merged, marketplace: mp } };
 }
 
@@ -62,7 +63,7 @@ export async function PUT(req: NextRequest) {
   if (!mp) return bad("Geçersiz pazaryeri");
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return bad("Geçersiz istek gövdesi");
-  const patch: Record<string, number | boolean | string> = {};
+  const patch: Record<string, unknown> = {};
   for (const [k, [min, max, int]] of Object.entries(NUM)) {
     if (!(k in body)) continue;
     if (body[k] === null && OPTIONAL.includes(k)) { (patch as any)[k] = null; continue; }
@@ -80,6 +81,13 @@ export async function PUT(req: NextRequest) {
     patch.shipping_mode = body.shipping_mode;
   }
   if ("cargo_carrier" in body) patch.cargo_carrier = String(body.cargo_carrier).slice(0, 50);
+  if ("shipping_bands" in body) {
+    const b = body.shipping_bands;
+    if (b === null || (Array.isArray(b) && b.length === 0)) patch.shipping_bands = null;
+    else if (Array.isArray(b) && b.length <= 10 && b.every((x: any) => Number.isFinite(Number(x?.below)) && Number(x.below) > 0 && Number(x.below) <= 100000 && Number.isFinite(Number(x?.cost)) && Number(x.cost) >= 0 && Number(x.cost) <= 10000))
+      patch.shipping_bands = b.map((x: any) => ({ below: Number(x.below), cost: Number(x.cost) })).sort((x: any, y: any) => x.below - y.below);
+    else return bad("Geçersiz kargo basamakları");
+  }
 
   // komisyon + hedef kâr %100'ü geçerse fiyat formülü çalışmaz
   const cur = await read(mp);

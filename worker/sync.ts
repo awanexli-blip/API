@@ -8,7 +8,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
-import { calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
+import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
@@ -90,6 +90,7 @@ async function main() {
     returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, multiUnitMinNet: s.multi_unit_min_net != null ? Number(s.multi_unit_min_net) : null, 
     minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price),
     commissionPlusVat: s.commission_plus_vat === true, shippingVatIncluded: s.shipping_vat_included !== false,
+    shippingBands: bandsFrom(s.shipping_bands),
   };
   // Kargo: sabit tutar veya desi tarifesi (pazaryeri adaptörü sağlar)
   const byDesi = s.shipping_mode === "desi" && !!mp.shippingCost;
@@ -324,7 +325,8 @@ async function main() {
   }
 
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
-  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean };
+  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
+    shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null };
 
   // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında; sistemin açtığı OS13- ürünler)
   if ((doUpdate || mode === "create") && mp.updateRejected) {
