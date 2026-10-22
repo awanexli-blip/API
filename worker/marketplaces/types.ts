@@ -24,6 +24,7 @@ export interface BatchCheck {
   failedItems: number;  // başarısız ürün sayısı
   reasons: string[];    // ilk hatalar: "barkod: neden"
   failed?: { id: string; reason: string }[]; // tüm başarısız ürünler (ürün açmanın tekrar denenmesini engellemek için)
+  statuses?: Record<string, number>; // ürün durumu sayıları (Hepsiburada: Satışa Hazır, İncelenecek, Reddedildi...)
 }
 
 export interface InventoryItem {

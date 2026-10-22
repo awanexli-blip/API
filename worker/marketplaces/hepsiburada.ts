@@ -321,15 +321,31 @@ export function createHepsiburada(): Marketplace {
             const status = String(r.status ?? r.data?.status ?? "").toUpperCase();
             if (["PENDING", "IN_PROGRESS", "PROCESSING", "WAITING"].includes(status)) { next.push(id); continue; }
             out.checked++;
-            // Ürün bazlı sonuç: alan adları kesin bilinmiyor (validationResults / errors / productStatus / importStatus / status)
-            const list: any[] = Array.isArray(r.errors) ? r.errors : firstArray(r);
-            const bad = (x: any) => (Array.isArray(x?.validationResults) && x.validationResults.length) || (Array.isArray(x?.errors) && x.errors.length)
-              || /fail|error|reject|invalid|hata|red|basarisiz|başarısız/i.test(String(x?.productStatus ?? x?.importStatus ?? x?.status ?? x?.result ?? ""));
+            // Ürün sonucu (canlıda doğrulandı 22.10): data[] { merchantSku, importStatus: SUCCESS|..., productStatus: "Satışa Hazır"|"Incelenecek"|...,
+            // validationResults[], rejectReasonsMessages[], importMessages[] }, sayfalı (totalPages). Stok/fiyat yüklemesinde errors[].
+            let list: any[] = Array.isArray(r.errors) ? r.errors : firstArray(r);
+            if (id.startsWith("product:") && Number(r.totalPages) > 1) {
+              for (let page = 1; page < Math.min(Number(r.totalPages), 50); page++) {
+                await sleep(300);
+                const rp = await hb(`${url(id)}?page=${page}&size=20`).catch(() => null);
+                const more = rp ? firstArray(rp) : [];
+                if (!more.length) break;
+                list = list.concat(more);
+              }
+            }
+            const msgs = (x: any) => [...(x?.validationResults ?? []), ...(x?.rejectReasonsMessages ?? []), ...(x?.importMessages ?? []), ...(x?.errors ?? [])]
+              .map((m: any) => (typeof m === "string" ? m : m?.message ?? m?.description ?? JSON.stringify(m))).filter(Boolean);
+            const bad = (x: any) => (x?.importStatus && String(x.importStatus).toUpperCase() !== "SUCCESS") || /red|reject|hata|fail|error|invalid|başarısız/i.test(String(x?.productStatus ?? x?.status ?? ""))
+              || (Array.isArray(x?.validationResults) && x.validationResults.length) || (Array.isArray(x?.rejectReasonsMessages) && x.rejectReasonsMessages.length) || (Array.isArray(x?.errors) && x.errors.length);
+            for (const x of list) if (x?.productStatus) { const k = String(x.productStatus); (out.statuses ??= {})[k] = (out.statuses[k] ?? 0) + 1; }
             const errs = list.filter(bad);
             out.failedItems += errs.length;
-            for (const e of errs) if (out.reasons.length < 30) out.reasons.push(`${id.split(":")[0]} ${e.merchantSku ?? e.sku ?? e.barcode ?? ""}: ${JSON.stringify(e.validationResults ?? e.errors ?? e.message ?? e).slice(0, 300)}`);
-            // Ham cevap örneği (biçim doğrulanana kadar): panelde sonucun nasıl okunduğu görülsün
-            if (id.startsWith("product:") && out.reasons.length < 30) out.reasons.push(`ham: ${JSON.stringify(r).slice(0, 700)}`);
+            for (const e of errs) {
+              const sku = String(e.merchantSku ?? e.sku ?? e.barcode ?? "");
+              const why = `Hepsiburada: ${[e.productStatus, e.importStatus !== "SUCCESS" ? e.importStatus : null, ...msgs(e)].filter(Boolean).join(" · ")}`.slice(0, 500);
+              if (sku) (out.failed ??= []).push({ id: sku, reason: why });
+              if (out.reasons.length < 30) out.reasons.push(`${sku}: ${why}`.slice(0, 300));
+            }
           } catch (e: any) { next.push(id); console.error(e.message); }
           await sleep(300);
         }
