@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
-import { dbInventory, learnFromListings, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
+import { dbInventory, learnFromListings, requeueFixable, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
@@ -374,6 +374,7 @@ async function main() {
   if (doUpdate || mode === "create") {
     sendRes = await processSendJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => { summary.sendJobsError = String(e?.message ?? e); return null; });
     if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
+    if (s.auto_sync && marketplaceId === "hepsiburada") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
   }
 
   if (doUpdate) {

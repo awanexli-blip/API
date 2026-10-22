@@ -247,6 +247,30 @@ async function rememberLearned(ctx: DbCtx, items: any[], failed: Set<string>) {
   }
 }
 
+// Gönderim kuyruğu boşalınca, düzeltilebilir yerel hatalar (kategori yok, zorunlu özellik, marka riski) 2 saatte bir yeniden sıraya alınır:
+// bu arada öğrenilen özellikler (Trendyol), kategori örnekleri ve kod düzeltmeleri devreye girer. Pazaryerine yazmaz; yalnızca kuyruk.
+export async function requeueFixable(ctx: DbCtx, max = 3000): Promise<{ requeued: number; jobs: number } | { skipped: string }> {
+  const type = `send_products:${ctx.marketplaceId}`;
+  const { count } = await ctx.db.from("jobs").select("id", { count: "exact", head: true }).eq("type", type).in("status", ["queued", "running"]);
+  if (count) return { skipped: `kuyrukta ${count} iş var` };
+  const since = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+  const { data, error } = await ctx.db.from("marketplace_listings").select("listing_key, product_id, last_error")
+    .eq("marketplace", ctx.marketplaceId).eq("status", "error").lt("updated_at", since).not("product_id", "is", null).limit(max);
+  if (error) return { skipped: error.message };
+  const fixable = (data ?? []).filter((r: any) => /kategorisi yok|zorunlu özellik|Marka riski|özellik listesi/i.test(String(r.last_error ?? "")));
+  if (!fixable.length) return { requeued: 0, jobs: 0 };
+  const now = new Date().toISOString();
+  const keys = fixable.map((r: any) => r.listing_key);
+  for (let i = 0; i < keys.length; i += 500) await ctx.db.from("marketplace_listings").update({ status: "queued", updated_at: now }).eq("marketplace", ctx.marketplaceId).in("listing_key", keys.slice(i, i + 500));
+  const ids = [...new Set(fixable.map((r: any) => r.product_id as string))];
+  let jobs = 0;
+  for (let i = 0; i < ids.length; i += 100) {
+    const { error: je } = await ctx.db.from("jobs").insert({ type, marketplace: ctx.marketplaceId, payload: { product_ids: ids.slice(i, i + 100) }, idempotency_key: `retry:${ctx.marketplaceId}:${now.slice(0, 13)}:${i / 100}`, created_by: "otomatik yeniden deneme" });
+    if (!je) jobs++;
+  }
+  return { requeued: fixable.length, jobs };
+}
+
 // Onaylı Trendyol ilanlarının özellikleri ve kategori adı ürün kaydına (yalnızca boş anahtarlar; elle girilen ezilmez).
 // Daha önce gönderilmiş ürünler için de geçerli: Hepsiburada/N11 gönderiminde aynı özellikler yeniden çıkarılmaz.
 export async function learnFromListings(db: any, marketplace: string, listings: Listing[], max = 4000): Promise<{ checked: number; updated: number; errors: number }> {
