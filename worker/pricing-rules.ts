@@ -17,6 +17,8 @@ export type PricingRule = {
   target_profit_rate?: number | null; // 0.15
   min_net_profit?: number | null;     // TL
   add_profit_rate?: number | null;    // hedef kâra eklenir (ör. az stokta +0.05); diğer kurallardan sonra toplanır
+  net_profit_min?: number | null;     // net kâr TL aralığı (ör. 1500+ TL maliyette 100-150): ayarlardaki aralığı ezer
+  net_profit_max?: number | null;
 };
 export type RuleCtx = { cost: number; supplier?: string; category?: string; brand?: string; stock?: number };
 
@@ -49,6 +51,8 @@ export function applyRules(cfg: PricingConfig, rules: PricingRule[], ctx: RuleCt
     if (has(r.target_profit_rate)) { out.targetProfitRate = Number(r.target_profit_rate); used = true; }
     if (has(r.min_net_profit)) { out.minNetProfit = Number(r.min_net_profit); used = true; }
     if (has(r.add_profit_rate)) { add += Number(r.add_profit_rate); used = true; }
+    if (has(r.net_profit_min)) { out.netProfitMin = Number(r.net_profit_min); used = true; }
+    if (has(r.net_profit_max)) { out.netProfitMax = Number(r.net_profit_max); used = true; }
     if (used) applied.push(r.name);
   }
   // Komisyon + kâr %100'e yaklaşmasın (formül sonsuza gider)

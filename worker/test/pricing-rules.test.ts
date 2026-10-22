@@ -103,5 +103,19 @@ const check = (name: string, cond: boolean, info: unknown = "") => { console.log
   check("çoklu adet: smart adımı korumalı", s >= 300 || order(s, 60, lc, 0.18, Math.ceil(300 / s)) >= 15 - 0.01, { f, s });
 }
 
+// Kademeli net kâr aralığı (K, 22.10): maliyet 1500+ 100-150, 3000+ 150-250, 4000+ 300-350, altı ayarlardaki 40-60
+{
+  const base = { ...cfg, netProfitMin: 40, netProfitMax: 60, multiUnitMinNet: null };
+  const tiers: PricingRule[] = [
+    { name: "1500-3000", enabled: true, position: 70, marketplace: "all", cond: { cost_min: 1500, cost_max: 3000 }, net_profit_min: 100, net_profit_max: 150 },
+    { name: "3000-4000", enabled: true, position: 80, marketplace: "all", cond: { cost_min: 3000, cost_max: 4000 }, net_profit_min: 150, net_profit_max: 250 },
+    { name: "4000+", enabled: true, position: 90, marketplace: "all", cond: { cost_min: 4000 }, net_profit_min: 300, net_profit_max: 350 },
+  ];
+  for (const [c, lo, hi] of [[1000, 40, 60], [1500, 100, 150], [3500, 150, 250], [6000, 300, 350]] as const) {
+    const r = calcPrice(c, applyRules(base, tiers, { cost: c }).cfg, 0.18);
+    check(`kademe: ${c} TL maliyet net ${lo}-${hi} (${r.netProfit})`, r.ok && r.netProfit >= lo - 0.01 && r.netProfit <= hi, r);
+  }
+}
+
 if (fails) { console.log(`\n${fails} kural testi başarısız`); process.exit(1); }
 console.log("\nKâr kuralı testleri geçti");

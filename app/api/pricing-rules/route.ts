@@ -55,8 +55,11 @@ export async function PUT(req: NextRequest) {
   if (t === undefined) return bad("Hedef kâr %0-60 arasında olmalı");
   if (m === undefined) return bad("En az net kâr 0-100.000 TL olmalı");
   if (add === undefined) return bad("Kâra ekleme -%30 ile +%30 arasında olmalı");
-  if (t == null && m == null && add == null) return bad("Kural en az bir şey değiştirmeli: hedef kâr, en az net kâr veya kâra ekleme");
-  const row = { marketplace, name, position: Number(b.position) || 0, enabled: b.enabled !== false, cond, target_profit_rate: t, min_net_profit: m, add_profit_rate: add, updated_at: new Date().toISOString() };
+  const nMin = numOrNull(b.net_profit_min, 0, 100000), nMax = numOrNull(b.net_profit_max, 0, 100000);
+  if (nMin === undefined || nMax === undefined) return bad("Net kâr aralığı 0-100.000 TL olmalı");
+  if (nMin != null && nMax != null && nMax < nMin) return bad("Net kâr aralığında üst sınır alttan küçük olamaz");
+  if (t == null && m == null && add == null && nMin == null && nMax == null) return bad("Kural en az bir şey değiştirmeli: hedef kâr, en az net kâr veya kâra ekleme");
+  const row = { marketplace, name, position: Number(b.position) || 0, enabled: b.enabled !== false, cond, target_profit_rate: t, min_net_profit: m, add_profit_rate: add, net_profit_min: nMin, net_profit_max: nMax, updated_at: new Date().toISOString() };
   const q = b.id ? db.from("pricing_rules").update(row).eq("id", b.id) : db.from("pricing_rules").insert(row);
   const { data, error } = await q.select("*").single();
   if (error) return bad(error.message);

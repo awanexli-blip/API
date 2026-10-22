@@ -5,13 +5,13 @@ import { bandsFrom, calcPrice, defaultConfig, type PricingConfig } from "@/worke
 import { applyRules, describeCond, rulesFor, type PricingRule } from "@/worker/pricing-rules";
 import { tl, type Props, type Row } from "./shared";
 
-type Draft = { id?: string; marketplace: string; name: string; position: number; enabled: boolean; cost_min: string; cost_max: string; supplier: string; category: string; brand: string; stock_max: string; target: string; minNet: string; add: string };
+type Draft = { id?: string; marketplace: string; name: string; position: number; enabled: boolean; cost_min: string; cost_max: string; supplier: string; category: string; brand: string; stock_max: string; target: string; minNet: string; add: string; nMin: string; nMax: string };
 const s = (v: unknown) => (v == null ? "" : String(v));
 const pctIn = (v: unknown) => (v == null || v === "" ? "" : String(Math.round(Number(v) * 1000) / 10));
 const toDraft = (r: Row, mp: string): Draft => ({
   id: r.id, marketplace: r.marketplace ?? mp, name: r.name ?? "", position: r.position ?? 100, enabled: r.enabled !== false,
   cost_min: s(r.cond?.cost_min), cost_max: s(r.cond?.cost_max), supplier: s(r.cond?.supplier), category: s(r.cond?.category), brand: s(r.cond?.brand), stock_max: s(r.cond?.stock_max),
-  target: pctIn(r.target_profit_rate), minNet: s(r.min_net_profit), add: pctIn(r.add_profit_rate),
+  target: pctIn(r.target_profit_rate), minNet: s(r.min_net_profit), add: pctIn(r.add_profit_rate), nMin: s(r.net_profit_min), nMax: s(r.net_profit_max),
 });
 const SAMPLE_COSTS = [15, 30, 50, 80, 120, 180, 250, 400, 700, 1200, 2500];
 const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
@@ -38,7 +38,7 @@ export default function ProfitRules({ api, notify, marketplace }: Props) {
       await api("/api/pricing-rules", { method: "PUT", body: JSON.stringify({
         id: d.id, marketplace: d.marketplace, name: d.name, position: d.position, enabled: d.enabled,
         cond: { cost_min: num(d.cost_min), cost_max: num(d.cost_max), supplier: d.supplier, category: d.category, brand: d.brand, stock_max: num(d.stock_max) },
-        target_profit_rate: pct(d.target), min_net_profit: num(d.minNet), add_profit_rate: pct(d.add),
+        target_profit_rate: pct(d.target), min_net_profit: num(d.minNet), add_profit_rate: pct(d.add), net_profit_min: num(d.nMin), net_profit_max: num(d.nMax),
       }) });
       notify("good", "Kural kaydedildi. Bir sonraki senkronizasyonda fiyatlara yansır."); setD(null); load();
     } catch (e: any) { notify("err", e.message); }
@@ -131,6 +131,8 @@ export default function ProfitRules({ api, notify, marketplace }: Props) {
         <div className="grid">
           <label className="f">Hedef net kâr (%)<input type="text" inputMode="decimal" value={d.target} placeholder="ör. 22" onChange={(e) => setD({ ...d, target: e.target.value })} /><small>Satışın yüzdesi (KDV hariç)</small></label>
           <label className="f">En az net kâr (TL)<input type="text" inputMode="decimal" value={d.minNet} placeholder="ör. 25" onChange={(e) => setD({ ...d, minNet: e.target.value })} /><small>Sipariş başı cebe kalan</small></label>
+          <label className="f">Net kâr aralığı: en az (TL)<input type="text" inputMode="decimal" value={d.nMin} placeholder="ör. 100" onChange={(e) => setD({ ...d, nMin: e.target.value })} /><small>Doluysa yüzde yerine bu TL kâra göre fiyat</small></label>
+          <label className="f">Net kâr aralığı: en çok (TL)<input type="text" inputMode="decimal" value={d.nMax} placeholder="ör. 150" onChange={(e) => setD({ ...d, nMax: e.target.value })} /></label>
           <label className="f">Kâra ekle (± puan)<input type="text" inputMode="decimal" value={d.add} placeholder="ör. 5" onChange={(e) => setD({ ...d, add: e.target.value })} /><small>Diğer kurallardan sonra eklenir</small></label>
         </div>
         <div className="row" style={{ marginTop: 12 }}>
@@ -148,7 +150,7 @@ export default function ProfitRules({ api, notify, marketplace }: Props) {
               <td style={{ whiteSpace: "nowrap" }}><button className="btn" style={{ padding: "2px 7px" }} disabled={i === 0} onClick={() => move(i, -1)}>↑</button> <button className="btn" style={{ padding: "2px 7px" }} disabled={i === rules.length - 1} onClick={() => move(i, 1)}>↓</button></td>
               <td>{r.name}{r.marketplace === "all" && <span className="pill" style={{ marginLeft: 6 }}>tüm pazaryerleri</span>}</td>
               <td style={{ fontSize: 13 }}>{describeCond(r.cond ?? {})}</td>
-              <td style={{ fontSize: 13 }}>{[r.target_profit_rate != null && `kâr %${pctIn(r.target_profit_rate)}`, r.min_net_profit != null && `en az ${r.min_net_profit} TL`, r.add_profit_rate != null && `${Number(r.add_profit_rate) >= 0 ? "+" : ""}${pctIn(r.add_profit_rate)} puan`].filter(Boolean).join(" · ")}</td>
+              <td style={{ fontSize: 13 }}>{[r.target_profit_rate != null && `kâr %${pctIn(r.target_profit_rate)}`, r.min_net_profit != null && `en az ${r.min_net_profit} TL`, r.add_profit_rate != null && `${Number(r.add_profit_rate) >= 0 ? "+" : ""}${pctIn(r.add_profit_rate)} puan`, r.net_profit_min != null && `net ${r.net_profit_min}${r.net_profit_max != null ? "-" + r.net_profit_max : "+"} TL`].filter(Boolean).join(" · ")}</td>
               <td><input type="checkbox" checked={r.enabled} onChange={() => patch(r, { enabled: !r.enabled })} /></td>
               <td className="n"><div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
                 <button className="btn" onClick={() => setD(toDraft(r, marketplace))}>Düzenle</button>
