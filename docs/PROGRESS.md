@@ -10,6 +10,7 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 - Öğrenilen bilgiler ürün kaydına: Trendyol gönderiminde başlık/açıklama/benzer ilandan bulunan özellikler `products.attributes`'a yazılır (yalnızca boş anahtarlar, elle girilen ezilmez) + "Trendyol kategori adı". Sonraki gönderimlerde ve HB'de tekrar aranmaz (ürün değeri olarak kullanılır).
 - HB gönderim: kategori ağacı (get-all-categories) ile başlıktan kategori, Trendyol kategori adı ipucu; özellikler: ürün kaydı > başlık/açıklama çıkarımı > nötr; marka tedarikçi ayarından.
 - Örnek HB fiyatları (komisyon %18 varsayılan): maliyet 30 → 169,90 (Trendyol 89,90), 100 → 339,90 (219,90), 300 → 669,90 (599,90). Ucuz ürünlerde HB pahalı kalır (kargo her siparişte satıcıda).
+- HB komisyonu sabit değil (K, EK.4 PDF): `worker/marketplaces/hepsiburada-commission.ts` 156 satırı ana kategori / kategori / ürün grubu olarak ayırır; oran HB kategori adından (gönderimde bulunan ya da Trendyol'da öğrenilen ad), olmazsa başlıktan (yalnızca güçlü eşleşme) bulunur; ikisi farklıysa yüksek oran. Sıra: panel kategori oranı > EK.4 > varsayılan %18. Oranlar +KDV. Test: hepsiburada-commission.test.ts.
 - Açık: K canlıda `hb-tool categories` ve `listings` çalıştırıp katalog yetkisini doğrulasın; sonra 20 ürünle deneme (K onayı), sonra toplu.
 
 ## 2026-10-22 (22) — Toptancım: gönderilemeyenler (16.509) için akıllı özellik ve kategori

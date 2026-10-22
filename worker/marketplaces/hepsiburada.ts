@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { hbCommissionMatcher } from "./hepsiburada-commission.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
 // Trendyol ile aynı kural: yeni ürünler "OS13-" + XML productCode (ASCII). Eşleştirme ÖS13- de dener.
@@ -171,9 +172,11 @@ export function createHepsiburada(): Marketplace {
       return NEW_PREFIX + san(pc || String(xml.barcode ?? "").trim());
     },
 
-    // Hepsiburada\'da ürün bazlı canlı komisyon kaynağı yok (doğrulanacak): panel kategori oranı > varsayılan
-    commission(_listingId, _xmlCategory, panelRate, defaultRate): Commission {
+    // Komisyon: panel kategori oranı > EK.4 kategori tablosu (HB kategori adı, yoksa başlık) > varsayılan. Oranlar +KDV (commission_plus_vat).
+    commission(_listingId, xmlCategory, panelRate, defaultRate, hint): Commission {
       if (panelRate != null) return { rate: panelRate, source: "panel" };
+      const m = hbCommissionMatcher()(hint?.category ?? "", hint?.title ?? "", xmlCategory);
+      if (m) return { rate: m.rate, source: "kategori" };
       return { rate: defaultRate, source: "varsayilan" };
     },
 

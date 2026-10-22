@@ -39,11 +39,13 @@ export const listingKeyOf = (source: string, variant: { sku: string; barcode: st
   source === "xml:bayilik" ? `OS13-${variant.sku}` : variant.barcode ?? "";
 
 // Fiyat: tedarikçi maliyeti (döviz çevrilir) + pazaryeri komisyonu + akıllı kâr kuralları
-function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number) {
+function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number, catName?: string | null) {
   const cost = Number(v.cost_price ?? p.cost_price) * (ctx.fx[p.currency ?? "TRY"] ?? 0);
   if (!(cost > 0)) return { ok: false as const, reason: "maliyet yok", cost, comm: ctx.cfg.commissionRate, pcfg: ctx.cfg };
   const panelRate = ctx.catMap.get(p.category)?.commission_rate;
-  const comm = ctx.mp.commission(key, p.category ?? "", panelRate != null ? Number(panelRate) : null, ctx.cfg.commissionRate).rate;
+  // Kategori ipucu: pazaryeri kategori adı (gönderimde bulunan) ya da Trendyol'da öğrenilen ad; oran tablosu olan adaptör kullanır (HB EK.4)
+  const hintCat = catName ?? (ctx.marketplaceId !== "trendyol" ? String(p.attributes?.["Trendyol kategori adı"] ?? "") : "");
+  const comm = ctx.mp.commission(key, p.category ?? "", panelRate != null ? Number(panelRate) : null, ctx.cfg.commissionRate, { category: hintCat, title: p.title }).rate;
   const base: PricingConfig = { ...ctx.cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(ctx.shipFor ? { shippingCost: ctx.shipFor(p.desi != null ? Number(p.desi) : null) } : {}) };
   const pcfg = ctx.rules.length ? applyRules(base, ctx.rules, { cost, supplier: supplierOf(p.source), category: p.category, brand: p.brand, stock }).cfg : base;
   const r = calcPrice(cost, pcfg, comm);
@@ -55,7 +57,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
   const stats: Record<string, number> = { listings: 0, updated: 0, zeroed: 0, notLive: 0 };
   for (let from = 0; ; from += 1000) {
     const { data, error } = await ctx.db.from("marketplace_listings")
-      .select("listing_key, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi)")
+      .select("listing_key, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
       .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).range(from, from + 999);
     if (error || !data) break; // tablo yoksa (migration 013 öncesi) sessizce geç
     for (const r of data as any[]) {
@@ -184,7 +186,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           }
           if (String(p.source ?? "").startsWith("xml:") && !supBrand.has(p.source)) { fail(key, p, v, `Tedarikçinin pazaryeri markası ayarlanmadı (Ürünler → Tedarikçiler → "${String(p.source).slice(4)}" → Pazaryeri markası)`); continue; }
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
-          const pr = priceFor(ctx, p, v, null, avail);
+          const pr = priceFor(ctx, p, v, null, avail, leaf && String(leaf.categoryId) === String(categoryId) ? leaf.categoryName : null);
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),

@@ -68,7 +68,8 @@ export interface Marketplace {
   /** XML ürünü yeni açılırsa kullanılacak id */
   newListingId(xml: any): string;
   /** Komisyon: ürün/kategori bazlı kaynaklar adaptöre özgüdür */
-  commission(listingId: string | null, xmlCategory: string, panelRate: number | null, defaultRate: number): Commission;
+  /** hint: pazaryeri kategori adı/yolu ve ürün başlığı (kategori tablosundan oran bulmak için, ör. Hepsiburada EK.4) */
+  commission(listingId: string | null, xmlCategory: string, panelRate: number | null, defaultRate: number, hint?: { category?: string; title?: string }): Commission;
   pushInventory(items: InventoryItem[]): Promise<BatchResult>;
   zeroStock(ids: string[]): Promise<BatchResult>;
   archiveProducts?(ids: string[], archived?: boolean): Promise<BatchResult>; // arşivle / arşivden çıkar
