@@ -314,9 +314,15 @@ export function createHepsiburada(): Marketplace {
             const status = String(r.status ?? r.data?.status ?? "").toUpperCase();
             if (["PENDING", "IN_PROGRESS", "PROCESSING", "WAITING"].includes(status)) { next.push(id); continue; }
             out.checked++;
-            const errs: any[] = r.errors ?? r.data?.errors ?? (r.data ?? r.items ?? []).filter?.((x: any) => x?.status === "FAILED" || x?.errors?.length) ?? [];
+            // Ürün bazlı sonuç: alan adları kesin bilinmiyor (validationResults / errors / productStatus / importStatus / status)
+            const list: any[] = Array.isArray(r.errors) ? r.errors : firstArray(r);
+            const bad = (x: any) => (Array.isArray(x?.validationResults) && x.validationResults.length) || (Array.isArray(x?.errors) && x.errors.length)
+              || /fail|error|reject|invalid|hata|red|basarisiz|başarısız/i.test(String(x?.productStatus ?? x?.importStatus ?? x?.status ?? x?.result ?? ""));
+            const errs = list.filter(bad);
             out.failedItems += errs.length;
-            for (const e of errs) if (out.reasons.length < 30) out.reasons.push(`${id.split(":")[0]} ${e.merchantSku ?? e.sku ?? ""}: ${JSON.stringify(e.errors ?? e.message ?? e).slice(0, 200)}`);
+            for (const e of errs) if (out.reasons.length < 30) out.reasons.push(`${id.split(":")[0]} ${e.merchantSku ?? e.sku ?? e.barcode ?? ""}: ${JSON.stringify(e.validationResults ?? e.errors ?? e.message ?? e).slice(0, 300)}`);
+            // Ham cevap örneği (biçim doğrulanana kadar): panelde sonucun nasıl okunduğu görülsün
+            if (id.startsWith("product:") && out.reasons.length < 30) out.reasons.push(`ham: ${JSON.stringify(r).slice(0, 700)}`);
           } catch (e: any) { next.push(id); console.error(e.message); }
           await sleep(300);
         }

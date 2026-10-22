@@ -98,5 +98,18 @@ const netOf = (p: number, cost: number, k: number) => breakdown(p, cost, cfg, k)
   check("bant yok: eski davranış", calcPrice(200, { ...cfg, shippingBands: null }, 0.18).price === 299.9);
 }
 
+// Net kâr TL aralığı (40-60): yüzde hedefi ve 1,3x taban yok
+{
+  const hb = { ...cfg, commissionRate: 0.15, commissionPlusVat: true, shippingVatIncluded: false, shippingCost: 81.99, fixedCost: 13.19, returnRate: 0.05, returnCost: 180,
+    squeezeMinNet: 40, shippingBands: bandsFrom([{ below: 200, cost: 43.99 }, { below: 400, cost: 75.99 }]), netProfitMin: 40, netProfitMax: 60 };
+  for (const c of [20, 60, 142, 300, 800, 2500]) {
+    const r = calcPrice(c, hb, 0.1);
+    check(`net aralık: ${c} TL maliyet -> ${r.price} net ${r.netProfit}`, r.ok && r.netProfit >= 39.99 && r.netProfit <= 60, r);
+  }
+  const ty = { ...cfg, netProfitMin: 40, netProfitMax: 60, multiUnitMinNet: null };
+  for (const c of [30, 150, 1000]) { const r = calcPrice(c, ty, 0.18); check(`net aralık (Trendyol): ${c} -> ${r.price} net ${r.netProfit}`, r.ok && r.netProfit >= 39.99 && r.netProfit <= 60, r); }
+  check("net aralık: oran modundan ucuz", calcPrice(800, hb, 0.1).price < calcPrice(800, { ...hb, netProfitMin: null }, 0.1).price);
+}
+
 console.log(fails ? `\n${fails} birim testi başarısız` : "\nBirim testleri geçti");
 process.exit(fails ? 1 : 0);

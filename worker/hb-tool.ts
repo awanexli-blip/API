@@ -145,7 +145,7 @@ async function main() {
     const cfg = {
       commissionRate: Number(s.commission_rate), targetProfitRate: Number(s.target_profit_rate), shippingCost: Number(s.shipping_cost),
       freeShippingThreshold: Number(s.free_shipping_threshold), minMarkup: Number(s.min_markup), fixedCost: Number(s.fixed_cost),
-      returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, multiUnitMinNet: s.multi_unit_min_net != null ? Number(s.multi_unit_min_net) : null,
+      returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, multiUnitMinNet: s.multi_unit_min_net != null ? Number(s.multi_unit_min_net) : null, netProfitMin: s.net_profit_min != null ? Number(s.net_profit_min) : null, netProfitMax: s.net_profit_max != null ? Number(s.net_profit_max) : null,
       minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price),
       commissionPlusVat: s.commission_plus_vat === true, shippingVatIncluded: s.shipping_vat_included !== false, shippingBands: bandsFrom(s.shipping_bands), vatRate: Number(s.vat_rate ?? 20) / 100,
     };

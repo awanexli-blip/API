@@ -19,6 +19,10 @@ export interface PricingConfig {
   commissionPlusVat?: boolean;   // komisyon oranı "+KDV" mi (fatura = oran x satış + KDV). Hepsiburada: evet
   shippingVatIncluded?: boolean; // kargo ücreti KDV dahil mi girildi (varsayılan evet). Hepsiburada tarifesi: hayır
   minNetProfit?: number;         // sipariş başı en az net kâr (TL). Ucuz üründe oran tek başına yetmez (kâr kuralları)
+  // Net kâr TL aralığı (K, 22.10: "net kâr 40-60 TL olsun, yüzde hedefi çok pahalı yapıyor"). Doluysa yüzde hedefi, kâr kuralları ve
+  // 1,3x taban kullanılmaz: fiyat, en az netProfitMin bırakan en ucuz x9,90 fiyattır (yuvarlama payıyla netProfitMax'ı geçmez).
+  netProfitMin?: number | null;
+  netProfitMax?: number | null;
   squeezeMinNet?: number | null; // 300 TL eşiğinin altına (299,90) çekerken kabul edilen en az net kâr (TL). Doluysa yüzde eşiği ve kural TL şartı yerine geçer
   returnRate?: number;           // iade oranı (0.05 = siparişlerin %5'i iade)
   returnCost?: number;           // iade başına maliyet (KDV dahil TL: iade kargosu, gidiş kargosu, paketleme/hasar payı)
@@ -152,6 +156,12 @@ export function calcPrice(
     ok: false, reason, price: 0, sellerPaysShipping: false, shipping: 0, netProfit: 0, profitRate: 0,
   });
   if (!(cost > 0)) return fail("maliyet yok");
+  if (cfg.netProfitMin != null && cfg.netProfitMin >= 0 && !(cfg as any)._band) {
+    const lo = cfg.netProfitMin, hi = Math.max(lo, cfg.netProfitMax ?? Infinity);
+    const r = calcPrice(cost, { ...cfg, targetProfitRate: 0, minMarkup: 0, minNetProfit: lo, _band: true } as PricingConfig, commissionRate);
+    if (r.ok && r.netProfit > hi + 0.01) r.note = [r.note, `net kâr aralığın üstünde (${r.netProfit.toFixed(0)} TL)`].filter(Boolean).join(" · ");
+    return r;
+  }
   if (!Number.isFinite(targetPrice(cost, cfg, commissionRate, 0))) return fail("komisyon + kâr %100 üstü");
   if (bandsOf(cfg).length) return finish(cost, cfg, commissionRate, banded(cost, cfg, commissionRate), fail);
 
