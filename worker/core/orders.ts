@@ -19,12 +19,14 @@ export function orderRow(marketplace: string, o: OrderIn, refs: Map<string, Ref>
   const gross = lines.reduce((t, l) => t + l.unit_price * l.qty, 0) || o.total;
   const comm = lines.every((l) => l.commission_rate != null) && gross > 0 ? lines.reduce((t, l) => t + Number(l.commission_rate) * l.unit_price * l.qty, 0) / gross : cfg.commissionRate;
   const net = cost != null && o.total > 0 && !/^(cancelled|returned)$/.test(st.status) ? breakdown(o.total, cost, cfg, comm).net : null;
-  const attention = st.attention ?? (missing.length && st.status !== "cancelled" ? `Maliyeti bilinmeyen ürün: ${missing.map((l) => l.listing_key || l.title).slice(0, 3).join(", ")}` : null);
+  // Maliyeti bilinmeyen satır = ürün tedarikçi XML'inde yok (kalkmış ya da sistem dışında açılmış): tedarikçide olmayabilir, elle bakılmalı
+  const open = !/^(cancelled|returned|delivered)$/.test(st.status);
+  const attention = st.attention ?? (missing.length && open ? `Tedarikçi XML'inde yok / maliyeti bilinmiyor: ${missing.map((l) => l.title || l.listing_key).slice(0, 3).join(", ")}` : null);
   return {
     marketplace, package_id: o.packageId, order_no: o.orderNo || null, status: st.status, marketplace_status: o.status, total: o.total, currency: o.currency,
     ordered_at: o.orderedAt ? new Date(o.orderedAt).toISOString() : null, ship_deadline: o.deadline ? new Date(o.deadline).toISOString() : null,
     cargo_provider: o.cargo, tracking_no: o.tracking, city: o.city, est_cost: cost != null ? Math.round(cost * 100) / 100 : null, est_net: net,
-    needs_attention: !!st.attention, attention_reason: attention, lines, units,
+    needs_attention: !!attention, attention_reason: attention, lines, units,
   };
 }
 

@@ -75,7 +75,7 @@ export default function Orders({ api, notify }: { api: Api; notify: Notify }) {
                   {o.needs_attention && <span className="pill partial" style={{ marginLeft: 4 }}>dikkat</span>}
                   {late && <span className="pill error" style={{ marginLeft: 4 }}>kargo süresi yaklaşıyor</span>}
                   <div className="muted" style={{ fontSize: 12 }}>{when(o.ordered_at)}{o.city ? ` · ${o.city}` : ""}{o.marketplace_status ? ` · ${o.marketplace_status}` : ""}{o.tracking_no ? ` · ${o.cargo_provider ?? "kargo"} ${o.tracking_no}` : ""}</div>
-                  {o.attention_reason && <div style={{ fontSize: 12, color: "var(--warn)" }}>{o.attention_reason}</div>}
+                  {o.needs_attention && o.attention_reason && <div style={{ fontSize: 12, color: "var(--warn)" }}>{o.attention_reason}</div>}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <b>{tl(Number(o.total ?? 0))}</b>

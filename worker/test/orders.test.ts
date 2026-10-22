@@ -24,7 +24,7 @@ check("satır: maliyet sipariş anından", r.lines[0].cost_snapshot === 118.33 &
 check("satır: tahmini net = fiyat motoru", r.est_net === breakdown(459, 118.33, cfg, 0.1).net, { net: r.est_net, exp: breakdown(459, 118.33, cfg, 0.1).net });
 check("satır: kişisel veri alanı yok", !("customer_name" in r) && !("address" in r) && r.city === "İstanbul");
 const noCost = orderRow("trendyol", { ...o, lines: [{ ...o.lines[0], key: "BILINMEYEN" }] }, refs, cfg);
-check("satır: maliyet yoksa kâr boş + dikkat nedeni", noCost.est_net === null && /Maliyeti bilinmeyen/.test(noCost.attention_reason ?? ""), noCost);
+check("satır: maliyet yoksa kâr boş + dikkat", noCost.est_net === null && noCost.needs_attention && /maliyeti bilinmiyor/.test(noCost.attention_reason ?? ""), noCost);
 const cancelled = orderRow("trendyol", { ...o, status: "Cancelled" }, refs, cfg);
 check("satır: iptalde kâr yok", cancelled.status === "cancelled" && cancelled.est_net === null, cancelled);
 const two = orderRow("trendyol", { ...o, total: 918, lines: [{ ...o.lines[0], qty: 2 }] }, refs, cfg);
