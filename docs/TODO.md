@@ -9,6 +9,7 @@ Son güncelleme: 22.10.2026.
 > **Önce: güvenlik ve hata düzeltmeleri** (`docs/DENETIM_GOREVLERI.md`). 22.10: S0 (S0.4/S0.5 K hariç) ve S1 tamam, S2 büyük ölçüde tamam. **Sıradaki:** K kararları (S0.4 Auth ayarları, S0.5 depo özel mi); Claude: S3.1 ikinci tur, sonra Faz 6 F0.
 > **Sonra aktif aşama: F (Faz 6 — operasyon merkezi).** Plan: `docs/FAZ6_PLAN.md`. Çalışma kuralları: `docs/CALISMA_KURALLARI.md`.
 > **F'de ilk madde: F0 — önkoşullar** (Trendyol sipariş yetkisi, tedarikçi sipariş yöntemleri tablosu `docs/TEDARIKCILER.md`, KVKK kararı).
+> HB (22.10): kargo baremi ve gönderim hazırlığı tamam (PROGRESS 23). Sıradaki: K `hb-tool categories`/`listings` (canlı katalog yetkisi), sonra 20 ürünle deneme (K onayı).
 > Not: Trendyol satışı açık (sales_paused=false, 21.10 K kararı); Toptancım toplu gönderimi sürüyor (PROGRESS 21). Siparişler şimdilik Trendyol panelinden elle.
 > Bu kutuyu her dilim bitince güncelle (aşama + sıradaki madde).
 

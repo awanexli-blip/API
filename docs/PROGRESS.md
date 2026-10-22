@@ -2,6 +2,16 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-22 (23) — Hepsiburada kargo baremi, öğrenilen özellikler ürün kaydında, HB gönderim hazırlığı
+- Araştırma (Kargonomi/EZV, 21.09.2026'dan geçerli): HB'de kargoyu **her siparişte satıcı öder**; 0–199,99 TL 43,99 + KDV, 200–399,99 TL 75,99 + KDV, 400 TL ve üstü desi tarifesi (hepsiJET 0–2 desi 81,99 + KDV), ayrıca teslimat başına hizmet bedeli 10,99 + KDV. Barem şartı: hepsiJET/Sürat, 0–1 gün kargolama, zamanında teslim ≥ %90. "300 altı müşteri 60 öder" bilgisi güncel değil.
+- `worker/pricing.ts`: `shippingBands` (basamaklı kargo): her basamakta hedef fiyat, sığmazsa sınırın altı (199,90 / 399,90) "299,90 kuralı" ile denenir; basamaksız yapılandırma eskisiyle aynı. Migration 031 `marketplace_settings.shipping_bands`; panel Ayarlar'da "Kargo basamakları" alanı; API doğrulaması; testler.
+- HB ayarı (UPDATE): shipping_bands 200=43,99 / 400=75,99 (KDV hariç), fixed_cost 13,19 (hizmet bedeli KDV dahil). HB hâlâ kapalı (enabled=false).
+- Veritabanı ürünlerinde desi kargosu (HB): ürün desisi yoksa varsayılan desi.
+- Öğrenilen bilgiler ürün kaydına: Trendyol gönderiminde başlık/açıklama/benzer ilandan bulunan özellikler `products.attributes`'a yazılır (yalnızca boş anahtarlar, elle girilen ezilmez) + "Trendyol kategori adı". Sonraki gönderimlerde ve HB'de tekrar aranmaz (ürün değeri olarak kullanılır).
+- HB gönderim: kategori ağacı (get-all-categories) ile başlıktan kategori, Trendyol kategori adı ipucu; özellikler: ürün kaydı > başlık/açıklama çıkarımı > nötr; marka tedarikçi ayarından.
+- Örnek HB fiyatları (komisyon %18 varsayılan): maliyet 30 → 169,90 (Trendyol 89,90), 100 → 339,90 (219,90), 300 → 669,90 (599,90). Ucuz ürünlerde HB pahalı kalır (kargo her siparişte satıcıda).
+- Açık: K canlıda `hb-tool categories` ve `listings` çalıştırıp katalog yetkisini doğrulasın; sonra 20 ürünle deneme (K onayı), sonra toplu.
+
 ## 2026-10-22 (22) — Toptancım: gönderilemeyenler (16.509) için akıllı özellik ve kategori
 - Durum (16:50 UTC): 8.320 Trendyol'da, 116 ret, 16.509 hiç gönderilmemiş (yerel hata): ~9.000 zorunlu özellik, ~5.000 kategori yok, ~1.200 kopya/aynı başlık.
 - K kararları: garanti zorunlu kategorilerde İthalatçı Garantili + 2 Yıl (ürünler garantili ve faturalı); kategori "Trendyol gibi ada bakarak, çoğu gitsin".
