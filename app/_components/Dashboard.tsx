@@ -14,6 +14,52 @@ const ago = (s?: string) => {
 const pill = (st?: string) => <span className={`pill ${st === "ok" ? "ok" : st === "error" ? "error" : st === "skipped" ? "" : "partial"}`}>{statusTr[st ?? ""] ?? st ?? "-"}</span>;
 const n = (v: unknown) => (v == null ? "-" : Number(v).toLocaleString("tr-TR"));
 
+// Fiyat değişikliği (net kâr 40-60 TL, K 22.10.2026): öncesi ve sonrası günlük ortalama karşılaştırılır
+const PRICE_CHANGE = "2026-10-22";
+const tl = (v: number) => v.toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " TL";
+const csvCell = (v: unknown) => { const t = String(v ?? ""); return /^[=+\-@\t\r]/.test(t) ? "'" + t : /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+
+function SalesCard({ rows, api, notify }: { rows: Row[]; api: Api; notify: Notify }) {
+  const ty = rows.filter((r) => r.marketplace === "trendyol");
+  const avg = (list: Row[]) => {
+    const days = Math.max(1, list.length);
+    const sum = (k: string) => list.reduce((t, r) => t + Number(r[k] ?? 0), 0);
+    const orders = sum("orders"), ret = sum("returns");
+    return { days: list.length, orders: orders / days, revenue: sum("revenue") / days, returnRate: orders ? ret / orders : 0 };
+  };
+  // Değişiklik günü ölçüme girmez (yarım gün)
+  const before = avg(ty.filter((r) => r.day < PRICE_CHANGE).slice(-14)), after = avg(ty.filter((r) => r.day > PRICE_CHANGE));
+  async function campaign() {
+    try {
+      const list: Row[] = await api("/api/dashboard?campaign=1");
+      if (!list.length) { notify("err","Uygun ürün yok (Trendyol'da satışta, alışı 150 TL altı, stoğu 20+)."); return; }
+      const rowsCsv = [["Barkod", "Ürün", "Satış fiyatı", "Alış", "Stok"], ...list.map((r) => [r.barcode, r.title, r.price, r.cost, r.stock])];
+      const blob = new Blob(["﻿" + rowsCsv.map((r) => r.map(csvCell).join(";")).join("\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "kampanya-adaylari.csv"; a.click(); URL.revokeObjectURL(a.href);
+      notify("good", `${list.length} ürün indirildi. Trendyol satıcı paneli → Promosyonlar'da barkodlarla kampanya açabilirsin.`);
+    } catch (e: any) { notify("err", e.message); }
+  }
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: "space-between" }}><h2 style={{ margin: 0 }}>Satışlar (Trendyol)</h2>
+        <button className="btn ghost" onClick={campaign} title="Trendyol'da satışta, alışı 150 TL altı, stoğu 20+ ürünler: 3 al 2 öde / 2. ürüne indirim için">Kampanya adayları (CSV)</button></div>
+      {!ty.length ? <p className="muted" style={{ fontSize: 13 }}>Henüz satış verisi yok: Trendyol senkronu saatte bir son 35 günü okur.</p> : <>
+        <div className="kpis" style={{ marginTop: 10 }}>
+          {[["Önce (günlük)", before], ["Sonra (günlük)", after]].map(([label, x]: any) => (
+            <div key={label} className="kpi"><div className="label">{label} · {x.days} gün</div>
+              <div className="value" style={{ fontSize: 20 }}>{x.orders.toFixed(1)} sipariş</div>
+              <div className="hint">{tl(x.revenue)} ciro · iade %{(x.returnRate * 100).toFixed(1)}</div></div>
+          ))}
+        </div>
+        <p className="muted" style={{ fontSize: 12 }}>Fiyat değişikliği {PRICE_CHANGE.split("-").reverse().join(".")} (net kâr 40-60 TL). "Önce" son 14 gün; değişiklik günü sayılmaz. İade %5'i geçerse en az net kârı yükselt.</p>
+        <table className="cards" style={{ marginTop: 6 }}><thead><tr><th>Gün</th><th>Sipariş</th><th>Adet</th><th>Ciro</th><th>İptal</th><th>İade</th></tr></thead>
+          <tbody>{ty.slice(-10).reverse().map((r) => <tr key={r.day} style={r.day === PRICE_CHANGE ? { fontWeight: 600 } : undefined}>
+            <td>{r.day.split("-").reverse().join(".")}</td><td>{r.orders}</td><td>{r.units}</td><td>{tl(Number(r.revenue))}</td><td>{r.cancelled}</td><td>{r.returns ?? "-"}</td></tr>)}</tbody></table>
+      </>}
+    </div>
+  );
+}
+
 export default function Dashboard({ api, notify, role, go }: { api: Api; notify: Notify; role: string; go: (p: string) => void }) {
   const [d, setD] = useState<Row | null>(null);
   const load = useCallback(() => api("/api/dashboard").then(setD).catch((e) => notify("err", e.message)), [api, notify]);
@@ -81,6 +127,8 @@ export default function Dashboard({ api, notify, role, go }: { api: Api; notify:
               ))}
             </div>
           </div>
+
+          {isAdmin && <SalesCard rows={d.sales ?? []} api={api} notify={notify} />}
 
           {isAdmin && d.timeline?.length > 0 && <div className="card">
             <div className="row" style={{ justifyContent: "space-between" }}><h2 style={{ margin: 0 }}>Son senkronlar</h2><button className="btn ghost" onClick={() => go("pazaryeri/trendyol/ozet")}>Tümü <Icon name="chevron" size={14} /></button></div>

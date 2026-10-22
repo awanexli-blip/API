@@ -18,6 +18,8 @@ export interface Listing {
   status?: "active" | "closed" | "pending";
 }
 
+export type SalesDay = { day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
+
 export interface BatchCheck {
   checked: number;      // sonucu alınan toplu istek
   pending: number;      // süre içinde bitmeyen
@@ -90,6 +92,8 @@ export interface Marketplace {
   findCatalogMatches?(q: { ean?: string | null; title?: string }): Promise<CatalogMatch[]>;
   /** İsteğe bağlı: reddedilen ürünleri düzeltip yeniden onaya gönder (Trendyol: unapproved-bulk-update) */
   updateRejected?(items: RejectedUpdate[]): Promise<BatchResult>;
+  /** İsteğe bağlı: günlük satış özeti (salt okunur; yalnızca toplamlar, müşteri verisi okunmaz/saklanmaz) */
+  salesDaily?(fromMs: number, toMs: number): Promise<SalesDay[]>;
   /** İsteğe bağlı: yaprak kategoriler (başlıktan kategori bulmak için, core/category-tree.ts) */
   categoryLeaves?(): Promise<{ id: string; name: string; path: string[] }[]>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */

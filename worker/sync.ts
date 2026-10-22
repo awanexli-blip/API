@@ -360,6 +360,15 @@ async function main() {
       summary.rejectFixes = { rejected: rejected.length, ...stat, resubmitted: sent, newBannedWords: [...newWords] };
     }
   }
+  // Günlük satış özeti (saatte bir, son 35 gün; salt okunur): fiyat değişikliğinin satışa etkisi panelde ölçülür
+  if (mp.salesDaily && (new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1")) {
+    try {
+      const rows = await mp.salesDaily(Date.now() - 35 * 86400000, Date.now());
+      const now = new Date().toISOString();
+      if (rows.length) await db.from("sales_daily").upsert(rows.map((r) => ({ marketplace: marketplaceId, ...r, updated_at: now })), { onConflict: "marketplace,day" });
+      summary.sales = { days: rows.length, orders: rows.reduce((t, r) => t + r.orders, 0) };
+    } catch (e: any) { summary.sales = { error: String(e?.message ?? e).slice(0, 300) }; }
+  }
   // Onaylı ilanlardan öğrenilen özellikler ürün kaydına (her modda; yalnızca veritabanına yazar)
   summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));

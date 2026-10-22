@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
-import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
+import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, SalesDay } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
   try { return JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8")); } catch { return {}; }
@@ -361,6 +361,53 @@ export function createTrendyol(): Marketplace {
         await sleep(500);
       }
       return res;
+    },
+
+    // Günlük satış özeti: sipariş paketleri ve iade talepleri (14 günlük pencereler, Trendyol sınırı). Yalnızca sayı ve tutar okunur;
+    // ad, adres, telefon hiçbir yere yazılmaz. Gün Türkiye saatine göre (UTC+3).
+    async salesDaily(fromMs: number, toMs: number): Promise<SalesDay[]> {
+      const dayOf = (ms: number) => new Date(Number(ms) + 3 * 3600 * 1000).toISOString().slice(0, 10);
+      const days = new Map<string, SalesDay>();
+      const get = (d: string) => days.get(d) ?? days.set(d, { day: d, orders: 0, units: 0, revenue: 0, cancelled: 0, returns: null }).get(d)!;
+      const seen = new Set<string>();
+      const windows: [number, number][] = [];
+      for (let s = fromMs; s < toMs; s += 14 * 86400000) windows.push([s, Math.min(toMs, s + 14 * 86400000 - 1)]);
+      for (const [s, e] of windows) {
+        for (let page = 0; page < 100; page++) {
+          const r = await tg(`/order/sellers/${SELLER_ID}/orders?startDate=${s}&endDate=${e}&page=${page}&size=200&orderByField=PackageLastModifiedDate&orderByDirection=DESC`);
+          for (const o of r.content ?? []) {
+            const id = String(o.id ?? o.shipmentPackageId ?? o.orderNumber);
+            if (seen.has(id) || !o.orderDate || o.orderDate < fromMs) continue;
+            seen.add(id);
+            const d = get(dayOf(o.orderDate));
+            const st = String(o.status ?? o.shipmentPackageStatus ?? "");
+            if (/cancel|unsupplied/i.test(st)) { d.cancelled++; continue; }
+            d.orders++;
+            const lines: any[] = o.lines ?? [];
+            d.units += lines.reduce((t, l) => t + Number(l.quantity ?? 0), 0);
+            d.revenue += Number(o.totalPrice ?? o.packageTotalPrice ?? lines.reduce((t, l) => t + Number(l.price ?? 0) * Number(l.quantity ?? 1), 0)) || 0;
+          }
+          await sleep(300);
+          if (page + 1 >= Number(r.totalPages ?? 0)) break;
+        }
+        // İade talepleri (talep tarihine göre); uç yanıt vermezse iade sayısı boş kalır
+        try {
+          for (let page = 0; page < 50; page++) {
+            const r = await tg(`/order/sellers/${SELLER_ID}/claims?startDate=${s}&endDate=${e}&page=${page}&size=200`);
+            for (const c of r.content ?? []) {
+              const at = c.claimDate ?? c.createdDate ?? c.orderDate;
+              if (!at || at < fromMs) continue;
+              const d = get(dayOf(at));
+              d.returns = (d.returns ?? 0) + Math.max(1, (c.items ?? []).reduce((t: number, it: any) => t + (it.claimItems?.length ?? 1), 0));
+            }
+            await sleep(300);
+            if (page + 1 >= Number(r.totalPages ?? 0)) break;
+          }
+          for (const d of days.values()) d.returns ??= 0;
+        } catch (e: any) { console.error("iade talepleri okunamadı:", String(e.message).slice(0, 200)); }
+      }
+      for (const d of days.values()) d.revenue = Math.round(d.revenue * 100) / 100;
+      return [...days.values()].sort((a, b) => a.day.localeCompare(b.day));
     },
 
     // Kategori ağacı (herkese açık uç; CATEGORY_TREE_URL ile değiştirilebilir)

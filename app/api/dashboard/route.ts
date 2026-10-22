@@ -31,6 +31,19 @@ export async function GET(req: NextRequest) {
 
   if (!isAdmin) return NextResponse.json(out);
 
+  // Kampanya adayları ("3 al 2 öde", "2. ürüne indirim"): Trendyol'da satışta, alışı 150 TL altı, stoğu 20+ (çoklu adet koruması kârı korur)
+  if (req.nextUrl.searchParams.get("campaign") === "1") {
+    const rows: any[] = [];
+    for (let from = 0; from < 20000; from += 1000) {
+      const { data, error } = await db.from("marketplace_listings").select("listing_key, title, price, products!inner(cost_price, status), product_variants!inner(stock)")
+        .eq("marketplace", "trendyol").eq("status", "live").lt("products.cost_price", 150).eq("products.status", "active").gte("product_variants.stock", 20).range(from, from + 999);
+      if (error) return NextResponse.json({ error: "Liste alınamadı" }, { status: 500 });
+      rows.push(...(data ?? []).map((r: any) => ({ barcode: r.listing_key, title: r.title, price: r.price, cost: r.products?.cost_price, stock: r.product_variants?.stock })));
+      if ((data ?? []).length < 1000) break;
+    }
+    return NextResponse.json(rows);
+  }
+
   const [settings, runs, suppliers, unmapped, rules, brands] = await Promise.all([
     db.from("settings").select("auto_sync, auto_create, existing_price_policy, zero_missing").eq("id", 1).maybeSingle(),
     db.from("sync_runs").select("id, marketplace, mode, status, started_at, finished_at, summary").order("id", { ascending: false }).limit(40),
@@ -61,6 +74,9 @@ export async function GET(req: NextRequest) {
   out.suppliers = suppliers.data ?? [];
   out.settings = s;
   out.pricingRules = rules;
+  // Günlük satış (sales_daily, son 35 gün; tablo yoksa boş)
+  const sales = await db.from("sales_daily").select("marketplace, day, orders, units, revenue, cancelled, returns").gte("day", new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10)).order("day");
+  out.sales = sales.error ? [] : sales.data ?? [];
 
   const ty = out.markets.find((m: any) => m.id === "trendyol");
   if (s && !s.auto_sync) alerts.push({ level: "warn", text: "Otomatik stok/fiyat senkronu duraklatılmış.", go: "pazaryeri/trendyol/ozet" });
