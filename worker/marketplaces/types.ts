@@ -18,7 +18,9 @@ export interface Listing {
   status?: "active" | "closed" | "pending";
 }
 
-export type SalesDay = { day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
+export type OrderLineIn = { lineNo: number; key: string; title: string; qty: number; unitPrice: number };
+export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; lines: OrderLineIn[] };
+export type SalesDay ={ day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
 
 export interface BatchCheck {
   checked: number;      // sonucu alınan toplu istek
@@ -99,6 +101,8 @@ export interface Marketplace {
   updateRejected?(items: RejectedUpdate[]): Promise<BatchResult>;
   /** İsteğe bağlı: günlük satış özeti (salt okunur; yalnızca toplamlar, müşteri verisi okunmaz/saklanmaz) */
   salesDaily?(fromMs: number, toMs: number): Promise<SalesDay[]>;
+  /** Siparişler (salt okunur, kişisel veri yok: yalnızca il). worker/core/orders.ts */
+  fetchOrders?(fromMs: number, toMs: number): Promise<OrderIn[]>;
   /** İsteğe bağlı: yaprak kategoriler (başlıktan kategori bulmak için, core/category-tree.ts) */
   categoryLeaves?(): Promise<{ id: string; name: string; path: string[] }[]>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */

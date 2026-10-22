@@ -22,6 +22,7 @@ import AmazonMatching from "./_components/AmazonMatching";
 import Rejections from "./_components/Rejections";
 import Unsent from "./_components/Unsent";
 import ListingStatus from "./_components/ListingStatus";
+import Orders from "./_components/Orders";
 import { applyTheme, currentTheme, type Theme } from "./_components/theme";
 
 type Role = "viewer" | "editor" | "admin";
@@ -122,6 +123,7 @@ function Panel({ token, email }: { token: string; email: string }) {
 
   const items: { path: string; label: string; icon: string; show: boolean; group?: string; tag?: string; active: boolean }[] = [
     { path: "panel", label: "Gösterge paneli", icon: "home", show: true, active: section === "panel" },
+    { path: "siparisler", label: "Siparişler", icon: "cart", show: canEdit, active: section === "siparisler" },
     { path: "urunler", label: "Ürünler", icon: "box", show: true, group: "Katalog", active: section === "urunler" },
     { path: "tedarikciler", label: "Tedarikçiler", icon: "truck", show: isAdmin, active: section === "tedarikciler" },
     { path: "ice-aktar", label: "İçe aktar", icon: "upload", show: canEdit, active: section === "ice-aktar" },
@@ -155,6 +157,7 @@ function Panel({ token, email }: { token: string; email: string }) {
   let page: React.ReactNode;
   if (!role) page = <div className="card"><div className="skeleton" style={{ width: "40%", marginBottom: 10 }} /><div className="skeleton" style={{ width: "70%" }} /></div>;
   else if (section === "panel") page = <Dashboard api={api} notify={notify} role={role} go={nav} />;
+  else if (section === "siparisler" && canEdit) page = <Orders api={api} notify={notify} />;
   else if (section === "urunler") page = <Products api={api} notify={notify} />;
   else if (section === "tedarikciler" && isAdmin) page = <Suppliers api={api} notify={notify} />;
   else if (section === "ice-aktar" && canEdit) page = <Import api={api} notify={notify} isAdmin={isAdmin} onDone={() => {}} />;

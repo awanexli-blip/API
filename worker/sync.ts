@@ -14,6 +14,7 @@ import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, learnFromListings, requeueFixable, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { recordBatches, applyStates, refreshBatches } from "./core/mp-status.ts";
+import { syncOrders } from "./core/orders.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
@@ -369,6 +370,11 @@ async function main() {
       if (rows.length) await db.from("sales_daily").upsert(rows.map((r) => ({ marketplace: marketplaceId, ...r, updated_at: now })), { onConflict: "marketplace,day" });
       summary.sales = { days: rows.length, orders: rows.reduce((t, r) => t + r.orders, 0) };
     } catch (e: any) { summary.sales = { error: String(e?.message ?? e).slice(0, 300) }; }
+  }
+  // Siparişler (Faz 6 F2, salt okunur): her çalışmada son 3 gün, saatte bir son 14 gün; kişisel veri yok
+  if (mp.fetchOrders && mode !== "preview") {
+    const full = new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1";
+    summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 14 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
   }
   // Onaylı ilanlardan öğrenilen özellikler ürün kaydına (her modda; yalnızca veritabanına yazar)
   summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));

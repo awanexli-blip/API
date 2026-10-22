@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
-import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, SalesDay } from "./types.ts";
+import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, SalesDay } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
   try { return JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8")); } catch { return {}; }
@@ -408,6 +408,32 @@ export function createTrendyol(): Marketplace {
       }
       for (const d of days.values()) d.revenue = Math.round(d.revenue * 100) / 100;
       return [...days.values()].sort((a, b) => a.day.localeCompare(b.day));
+    },
+
+    // Sipariş paketleri (getShipmentPackages; alan adları dokümandan, canlıda doğrulanmadı). Müşteri adı/telefon/adres OKUNMAZ, yalnızca il.
+    async fetchOrders(fromMs: number, toMs: number): Promise<OrderIn[]> {
+      const out = new Map<string, OrderIn>();
+      for (let s = fromMs; s < toMs; s += 14 * 86400000) {
+        const e = Math.min(toMs, s + 14 * 86400000 - 1);
+        for (let page = 0; page < 100; page++) {
+          const r = await tg(`/order/sellers/${SELLER_ID}/orders?startDate=${s}&endDate=${e}&page=${page}&size=200&orderByField=PackageLastModifiedDate&orderByDirection=DESC`);
+          for (const o of r.content ?? []) {
+            const id = String(o.id ?? o.shipmentPackageId ?? "");
+            if (!id) continue;
+            const lines: any[] = o.lines ?? [];
+            out.set(id, {
+              packageId: id, orderNo: String(o.orderNumber ?? ""), status: String(o.status ?? o.shipmentPackageStatus ?? ""),
+              orderedAt: Number(o.orderDate) || null, total: Number(o.totalPrice ?? o.packageTotalPrice ?? 0) || 0, currency: String(o.currencyCode ?? "TRY"),
+              deadline: Number(o.agreedDeliveryDate) || null, cargo: o.cargoProviderName ?? null, tracking: o.cargoTrackingNumber != null ? String(o.cargoTrackingNumber) : null,
+              city: o.shipmentAddress?.city ?? null,
+              lines: lines.map((l, i) => ({ lineNo: i + 1, key: String(l.barcode ?? l.merchantSku ?? ""), title: String(l.productName ?? "").slice(0, 200), qty: Number(l.quantity ?? 1), unitPrice: Number(l.price ?? l.amount ?? 0) })),
+            });
+          }
+          await sleep(300);
+          if (page + 1 >= Number(r.totalPages ?? 0)) break;
+        }
+      }
+      return [...out.values()];
     },
 
     // Kategori ağacı (herkese açık uç; CATEGORY_TREE_URL ile değiştirilebilir)
