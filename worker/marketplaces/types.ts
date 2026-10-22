@@ -44,6 +44,7 @@ export interface NewProduct {
   defaults?: Record<string, string>; // tedarikçi varsayılan özellikleri (özellik adı -> değer adı, ör. Menşei -> Çin)
   asin?: string;        // Amazon: var olan ürüne teklif (LISTING_OFFER_ONLY) için eşleşen ASIN
   pid?: string; known?: Record<string, unknown>; catName?: string | null; // ürün kaydı (öğrenilen özelliklerin yazılacağı yer)
+  xmlCategory?: string; // tedarikçi kategori yolu (garanti/kural tahminleri için)
   learned?: Record<string, string>; // adaptörün başlık/açıklama/benzer ilandan bulduğu özellikler (özellik adı -> değer); ürün kaydına yazılır, diğer pazaryerleri tekrar aramaz
   price: number;
   qty: number;

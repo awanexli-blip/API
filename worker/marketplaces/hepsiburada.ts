@@ -6,6 +6,11 @@ import { readFileSync } from "node:fs";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { hbCommissionMatcher } from "./hepsiburada-commission.ts";
+import { jpgUrl } from "../core/img-proxy.ts";
+
+// Garanti (K, 22.10): yalnızca elektrikli/elektronik ürünlerde 24 ay (ithalatçı garantili, faturalı); diğerlerinde 0
+const ELECTRONIC = /elektron|elektrik|şarj|pilli|usb|bluetooth|kulaklık|hoparlör|led|makine|makinası|cihaz|akıllı saat|powerbank|adaptör|lamba|vantilatör|fan|ısıtıcı|kamera|mikrofon|tıraş|epilatör|süpürge|terazi|tartı|baskül|radyo|drone|konsol|projeksiyon|kettle|blender|kompresör|watt|d+s?w|d+s?v|mah/i;
+export const hbWarrantyMonths = (title: string, category = "") => (ELECTRONIC.test(`${title} ${category}`) ? 24 : 0);
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
 // Trendyol ile aynı kural: yeni ürünler "OS13-" + XML productCode (ASCII). Eşleştirme ÖS13- de dener.
@@ -88,7 +93,7 @@ const NEUTRAL = ["çok renkli", "karışık", "renkli", "standart", "tek ebat", 
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
 // Sıra: panel/ürün değeri (given) > ürün kaydındaki özellik (defaults: tedarikçi varsayılanı + Trendyol gönderiminde öğrenilen, adıyla) >
 // başlık/açıklamadan çıkarım (attr-infer) > başlıkta geçen değer > nötr değer
-export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "", images: string[] = []) {
+export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "", images: string[] = [], warranty: number | null = null) {
   const out: Record<string, unknown> = { ...given };
   const missing: string[] = [];
   const learned: Record<string, string> = {};
@@ -101,6 +106,14 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
       continue;
     }
     if (!a.mandatory || BASE_KEYS.has(lo(a.id)) || out[a.id] != null) continue;
+    if (/garanti/i.test(a.name) && /süre|ay/i.test(a.name) && warranty != null) { out[a.id] = String(warranty); continue; }
+    // Garantisiz üründe garanti tipi: listede "garantisiz / yok" varsa o (tedarikçi varsayılanı "İthalatçı Garantili" yazılmasın)
+    if (/garanti/i.test(a.name) && warranty === 0) {
+      let gv: string[] = [];
+      try { gv = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin */ }
+      const none = gv.find((v) => /garantisiz|garanti yok|^yok$|^0/i.test(lo(v)));
+      if (none) { out[a.id] = none; continue; }
+    }
     let vals: string[] = [];
     try { vals = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin olabilir */ }
     // Ürün kaydındaki değer: "A|B|C" seçeneklerinden listede olan ilk değer, liste yoksa sonuncusu
@@ -231,11 +244,12 @@ export function createHepsiburada(): Marketplace {
         const no = (why: string) => { ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
         if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
         used.add(p.id);
+        const imgs = p.images.map((u) => jpgUrl(u)); // WebP -> JPG (HB WebP göstermiyor)
         let extra: Record<string, unknown> = {};
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
         try {
-          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "", p.images);
+          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "", imgs, hbWarrantyMonths(p.name));
           if (f.missing.length) { no(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
           extra = f.attributes;
           p.learned = f.learned;
@@ -246,9 +260,9 @@ export function createHepsiburada(): Marketplace {
           attributes: {
             merchantSku: p.id, VaryantGroupID: p.id, Barcode: p.id,
             UrunAdi: p.name.slice(0, 200), UrunAciklamasi: p.detail.slice(0, 30000) || p.name,
-            Marka: ctx.brandName || BRAND_NAME, GarantiSuresi: 24, kg: String(p.desi), tax_vat_rate: String(Number(p.cat.vat_rate ?? ctx.vatRate)),
+            Marka: ctx.brandName || BRAND_NAME, GarantiSuresi: hbWarrantyMonths(p.name), kg: String(p.desi), tax_vat_rate: String(Number(p.cat.vat_rate ?? ctx.vatRate)),
             price: String(p.price).replace(".", ","), stock: String(Math.min(Math.floor(p.qty), 20000)),
-            ...Object.fromEntries(p.images.slice(0, 5).map((u, i) => [`Image${i + 1}`, u])),
+            ...Object.fromEntries(imgs.slice(0, 5).map((u, i) => [`Image${i + 1}`, u])),
             ...extra,
           },
         });

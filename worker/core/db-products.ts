@@ -192,7 +192,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
-            pid: p.id, known: p.attributes ?? {}, catName,
+            pid: p.id, known: p.attributes ?? {}, catName, xmlCategory: p.category ?? "",
             refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes) }, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
           // Tedarikçi ürünü: tedarikçi ayarındaki pazaryeri markası; elle girilen ürün: kendi markası (pazaryerinde kayıtlıysa) yoksa mağaza markası
