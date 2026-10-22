@@ -20,7 +20,8 @@ export interface Listing {
 
 export type OrderLineIn = { lineNo: number; key: string; title: string; qty: number; unitPrice: number };
 export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; lines: OrderLineIn[] };
-export type SalesDay ={ day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
+export type QuestionIn = { id: string; text: string; productTitle: string; productKey: string | null; imageUrl: string | null; askedAt: number | null };
+export type SalesDay = { day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
 
 export interface BatchCheck {
   checked: number;      // sonucu alınan toplu istek
@@ -103,6 +104,9 @@ export interface Marketplace {
   salesDaily?(fromMs: number, toMs: number): Promise<SalesDay[]>;
   /** Siparişler (salt okunur, kişisel veri yok: yalnızca il). worker/core/orders.ts */
   fetchOrders?(fromMs: number, toMs: number): Promise<OrderIn[]>;
+  /** Cevap bekleyen müşteri soruları (müşteri adı döndürülmez) ve cevap gönderme (yalnızca onaylı cevap, worker/core/inbox.ts) */
+  fetchQuestions?(): Promise<QuestionIn[]>;
+  answerQuestion?(id: string, text: string): Promise<void>;
   /** İsteğe bağlı: yaprak kategoriler (başlıktan kategori bulmak için, core/category-tree.ts) */
   categoryLeaves?(): Promise<{ id: string; name: string; path: string[] }[]>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */

@@ -15,6 +15,7 @@ import { dbInventory, learnFromListings, requeueFixable, processMatchJobs, proce
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { recordBatches, applyStates, refreshBatches } from "./core/mp-status.ts";
 import { syncOrders } from "./core/orders.ts";
+import { syncInbox, notifyOrders } from "./core/inbox.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
@@ -374,8 +375,12 @@ async function main() {
   // Siparişler (Faz 6 F2, salt okunur): her çalışmada son 3 gün, saatte bir son 14 gün; kişisel veri yok
   if (mp.fetchOrders && mode !== "preview") {
     const full = new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1";
+    const since = new Date().toISOString();
     summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 14 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    if (summary.orders?.inserted) summary.orders.notified = await notifyOrders(db, mp, since).catch(() => 0);
   }
+  // Müşteri soruları (F7): çek, taslak, Telegram; yalnızca onaylı cevaplar gönderilir
+  if (mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
   // Onaylı ilanlardan öğrenilen özellikler ürün kaydına (her modda; yalnızca veritabanına yazar)
   summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));

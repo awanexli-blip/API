@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
-import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, SalesDay } from "./types.ts";
+import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
   try { return JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8")); } catch { return {}; }
@@ -434,6 +434,29 @@ export function createTrendyol(): Marketplace {
         }
       }
       return [...out.values()];
+    },
+
+    // Müşteri soruları (QnA; uç ve alanlar dokümandan, canlıda doğrulanmadı). Müşteri adı alınmaz.
+    async fetchQuestions(): Promise<QuestionIn[]> {
+      const out: QuestionIn[] = [];
+      const now = Date.now();
+      for (let page = 0; page < 20; page++) {
+        const r = await tg(`/qna/sellers/${SELLER_ID}/questions/filter?status=WAITING_FOR_ANSWER&startDate=${now - 14 * 86400000}&endDate=${now}&page=${page}&size=50&orderByField=CreatedDate&orderByDirection=DESC`);
+        for (const q of r.content ?? []) {
+          if (q.id == null || !q.text) continue;
+          out.push({ id: String(q.id), text: String(q.text).slice(0, 2000), productTitle: String(q.productName ?? "").slice(0, 200), productKey: q.barcode ? String(q.barcode) : q.productMainId ? String(q.productMainId) : null, imageUrl: q.imageUrl ?? null, askedAt: Number(q.creationDate) || null });
+        }
+        await sleep(300);
+        if (page + 1 >= Number(r.totalPages ?? 0)) break;
+      }
+      return out;
+    },
+
+    // Yalnızca insan onaylı cevap (inbox_items.status = approved). Trendyol: 10-2000 karakter.
+    async answerQuestion(id: string, text: string) {
+      const t = text.trim();
+      if (t.length < 10 || t.length > 2000) throw new Error("Cevap 10-2000 karakter olmalı");
+      await tg(`/qna/sellers/${SELLER_ID}/questions/${encodeURIComponent(id)}/answers`, { method: "POST", body: JSON.stringify({ text: t }) });
     },
 
     // Kategori ağacı (herkese açık uç; CATEGORY_TREE_URL ile değiştirilebilir)
