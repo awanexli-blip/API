@@ -2,6 +2,18 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-23 (28) — Satış raporu, iadeler, gerçek komisyon, HB siparişleri, panel hızı
+- **Satış raporu** (yeni menü, migration 042 `sales_report`/`sales_kpi`): dönem (bugün, dün, 7/30 gün, bu ay, geçen ay, 3 ay, 1 yıl, özel), önceki eşit dönemle karşılaştırma, KPI (ciro, net kâr + marj, ortalama sepet, iade/iptal oranı, stopaj), kâr dökümü (satış geliri − komisyon − kargo − sabit gider − maliyet − ödenecek KDV = satış kârı − iade masrafı = net kâr), ciro/net grafiği + tablo görünümü, pazaryeri dağılımı, en çok satanlar (brüt marj), iade nedenleri, en çok iade edilenler, zarar eden siparişler, CSV (müşteri bilgisi yok). İstanbul saati.
+- Sipariş başına kâr kalemleri `orders.fin` (worker): komisyon önceliği pazaryerinin siparişte bildirdiği oran > ilan oranı; beklenen iade payı düşülmez (gerçek iade ayrı); iade = −(iade maliyeti/1,2); stopaj %1 KDV hariç satıştan, kârdan düşülmez (gelir vergisinden mahsup). Maliyet sipariş anında sabit (önceki çalışmada güncel maliyet kullanılıyordu, düzeltildi). Kargo süresi geçen açık sipariş "dikkat".
+- **Gerçek komisyon:** Trendyol hakediş (settlements, saatte bir 30 gün) `act_commission`; raporda tahminin yerine geçer, fark gösterilir. Not: dokümandaki örnekte commissionAmount = oran × fiyat × 1,2 — Trendyol oranı "+KDV" çıkarsa fiyat formülündeki komisyon %20 düşük kalıyor demektir; ilk hakedişlerle doğrulanacak.
+- **Trendyol v2 sipariş ucu** (`/v2/orders`, 15.10'dan zorunlu; v2 hata verirse eskisi). Canlı: satır tutarları birim başına, yeni durum `ReadyToShip` (eklendi).
+- **İadeler (F8):** Trendyol claims -> `claims` tablosu, siparişe bağlanır, iade nedeni siparişte. Canlı: 2 talep geldi (Beğenmedim, Vazgeçtim).
+- **Hepsiburada siparişleri (F11):** OMS uçları (resmi doküman bot korumalı; açık kaynak istemcilerden) her biri ayrı denenir, sonuç `summary.orders.diag`'a (HTTP durumu, alan adları; kişisel veri yok). Sipariş kimliği = sipariş no. HB claims ucu da denenir.
+- **Takip kodu (F5):** tedarikçinin takip no'su ayrı kolonda (`supplier_tracking`; pazaryeri kargo kodu her senkronda eziyordu), pazaryeri kargo kodu tedarikçi metnine eklendi, "Trendyol'a bildir" (onaylı kuyruk pending->sending->done/failed, providerCode seçimi).
+- **Stok rezervasyonu (F6):** tedarikçiye verilmemiş açık siparişlerin adedi (48 saat) tüm pazaryerlerinde stoktan düşülür.
+- **Panel hızı:** gösterge paneli 10 tam sayım (807 bin satırlık marka tablosu 2,5-8 sn) -> tek `dashboard_counts` (0,4 sn, migration 043); ürün listesi `updated_at desc nulls last` indeksi (4,9 sn -> 2 ms) + başlık/SKU/kategori trigram (044); marka aramasında tahmini sayı; ürün filtre özeti 10 dk önbellek. Worker ilan sayfalaması OFFSET -> anahtar sıralı (sırasız OFFSET ilan atlayabiliyordu; sayfa 0,8-5,8 sn -> 70 ms).
+- Açık: HB sipariş uçlarının canlı teşhisi; ilk hakedişlerle komisyon doğrulaması; Trendyol hizmet bedeli (8,49 + KDV = 10,19 TL/sipariş, ikincil kaynak) sabit gidere eklenmeli mi (K).
+
 ## 2026-10-23 (27) — Vercel kotası, takılı kuyruk, Özellik tamamla, Telegram canlı
 - Vercel Hobby işlemci kotası 3s50dk/4s: görsel dönüştürme wsrv.nl'e taşındı (denendi: percdn WebP -> 1200x1800/1200x1200 JPEG; IMAGE_CDN=self ile geri alınır). Görsel onarımı çalışma başına 300 ürün.
 - Takılı kuyruk hatası: yeniden deneme iş anahtarı saate göreydi; aynı saatte ikinci çağrıda iş oluşmuyor, ilanlar işsiz "sırada" kalıyordu (HB 8.278, Trendyol 1.360). Artık önce iş, sonra ilan; Trendyol'da da açık.
