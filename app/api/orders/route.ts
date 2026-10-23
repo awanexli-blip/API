@@ -3,8 +3,8 @@ import { admin, requireRole, forbidden, bad, MARKETPLACES } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
-// Siparişler (Faz 6 F3, salt okunur): liste + özet, ?id= ile detay (satırlar, zaman çizelgesi).
-// Müşteri kişisel verisi tabloda tutulmuyor (yalnızca il); F4'te açılınca bu uç rol kontrolünü korur (editor+).
+// Siparişler (Faz 6 F3-F4): liste + özet, ?id= ile detay (satırlar, zaman çizelgesi, alıcı ad/adres yalnızca detayda).
+// PUT: tedarikçiye elle verildi / takip no / not (pazaryerine bir şey yazılmaz). Alıcı bilgisi yalnızca editor+ görür, loglanmaz.
 const STATUSES = ["", "new", "ready", "sent_to_supplier", "shipped", "delivered", "cancelled", "returned", "problem"];
 const COLS = "id, marketplace, order_no, status, marketplace_status, total, currency, ordered_at, ship_deadline, cargo_provider, tracking_no, city, est_cost, est_net, needs_attention, attention_reason, updated_at";
 
@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
   if (id) {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return bad("Geçersiz sipariş");
     const [o, l, e] = await Promise.all([
-      db.from("orders").select(COLS).eq("id", id).maybeSingle(),
-      db.from("order_lines").select("line_no, listing_key, product_id, title, qty, unit_price, commission_rate, cost_snapshot").eq("order_id", id).order("line_no"),
+      db.from("orders").select(COLS + ", customer_name, address, supplier_note, sent_to_supplier_at, pii_purged_at").eq("id", id).maybeSingle(),
+      db.from("order_lines").select("line_no, listing_key, product_id, title, qty, unit_price, commission_rate, cost_snapshot, list_price, discount, ty_discount, supplier_sku").eq("order_id", id).order("line_no"),
       db.from("order_events").select("at, kind, actor, detail").eq("order_id", id).order("at"),
     ]);
     if (o.error || !o.data) return bad(o.error?.message ?? "Sipariş yok");
@@ -47,4 +47,37 @@ export async function GET(req: NextRequest) {
     if (r.est_net != null) { s.net += Number(r.est_net); s.netKnown++; }
   }
   return NextResponse.json({ items: ls.data ?? [], total: ls.count ?? 0, page, summary: s });
+}
+
+// { id, action: "supplier_sent", note? } | { id, action: "tracking", tracking_no, cargo? } | { id, action: "note", note }
+export async function PUT(req: NextRequest) {
+  const a = await requireRole(req, "editor");
+  if (!a) return forbidden("editor");
+  const b = await req.json().catch(() => ({}));
+  const id = String(b.id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return bad("Geçersiz sipariş");
+  const db = admin();
+  const now = new Date().toISOString();
+  const note = b.note != null ? String(b.note).trim().slice(0, 500) || null : undefined;
+  let patch: Record<string, unknown>, event: Record<string, unknown>;
+  if (b.action === "supplier_sent") {
+    const { data: o } = await db.from("orders").select("status").eq("id", id).maybeSingle();
+    if (!o) return bad("Sipariş yok");
+    if (["cancelled", "returned", "delivered", "shipped"].includes(o.status)) return bad("Bu sipariş iptal/iade edilmiş ya da zaten kargoda");
+    patch = { status: "sent_to_supplier", sent_to_supplier_at: now, ...(note !== undefined ? { supplier_note: note } : {}) };
+    event = { kind: "supplier", detail: { action: "tedarikçiye verildi" } };
+  } else if (b.action === "tracking") {
+    const t = String(b.tracking_no ?? "").trim();
+    if (!/^[A-Za-z0-9-]{6,40}$/.test(t)) return bad("Takip numarası 6-40 harf/rakam olmalı");
+    patch = { tracking_no: t, cargo_provider: String(b.cargo ?? "").trim().slice(0, 60) || null };
+    event = { kind: "tracking", detail: { cargo: patch.cargo_provider, by: "elle" } };
+  } else if (b.action === "note") {
+    patch = { supplier_note: note ?? null };
+    event = { kind: "note", detail: {} };
+  } else return bad("Geçersiz işlem");
+  const { data, error } = await db.from("orders").update({ ...patch, updated_at: now }).eq("id", id).select("id");
+  if (error) return bad(error.message);
+  if (!data?.length) return bad("Sipariş yok");
+  await db.from("order_events").insert({ order_id: id, actor: a.email, ...event });
+  return NextResponse.json({ ok: true });
 }

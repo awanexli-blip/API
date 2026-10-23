@@ -35,7 +35,7 @@ export default function ListingStatus({ api, notify, marketplace }: Props) {
 
   if (!d) return <p className="muted">Yükleniyor...</p>;
   const s = d.summary ?? {}, st: Row = s.status ?? {}, groups: Row = s.groups ?? {}, mps: Row = s.mp_status ?? {};
-  const canRetry = f.status === "error" || f.status === "rejected";
+  const canRetry = f.status === "error" || f.status === "rejected" || f.status === "gone";
   const pages = Math.ceil(d.total / 50);
 
   return (

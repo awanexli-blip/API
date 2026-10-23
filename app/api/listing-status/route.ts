@@ -4,8 +4,10 @@ import { admin, guard, unauthorized, bad, mpOf, requireRole, forbidden } from "@
 export const dynamic = "force-dynamic";
 
 // Gönderim durumu: ilan sayıları, pazaryeri inceleme durumu (HB: Satışa Hazır / İncelenecek), hata grupları ve sayfalı liste
-// (migration 035-036). Toplu "yeniden sıraya al" yalnızca hatalı / reddedilen ilanlarda.
+// (migration 035-036). Toplu "yeniden sıraya al" yalnızca hatalı / reddedilen / mağazadan kalkan ilanlarda.
 const STATUSES = ["", "queued", "sent", "live", "error", "rejected", "closed", "gone", "pending_approval"];
+// Yeniden gönderilebilen: hatalı, reddedilen, mağazadan kalkan (ör. görselsiz açılıp HB panelinden silinen)
+const RETRY = ["error", "rejected", "gone"];
 const GROUPS = ["", "kategori", "ozellik", "gorsel", "marka", "kopya", "pazaryeri", "diger"];
 
 export async function GET(req: NextRequest) {
@@ -40,12 +42,12 @@ export async function POST(req: NextRequest) {
   if (Array.isArray(b.keys)) {
     const keys = b.keys.map(String).filter(Boolean).slice(0, 500);
     if (!keys.length) return bad("İlan seç");
-    const r = await db.from("marketplace_listings").select("listing_key, product_id").eq("marketplace", mp).in("listing_key", keys).in("status", ["error", "rejected"]);
+    const r = await db.from("marketplace_listings").select("listing_key, product_id").eq("marketplace", mp).in("listing_key", keys).in("status", RETRY);
     if (r.error) return bad(r.error.message);
     rows = r.data ?? [];
   } else {
     const status = String(b.status ?? ""), group = String(b.group ?? "");
-    if (!["error", "rejected"].includes(status) || !GROUPS.includes(group)) return bad("Yalnızca hatalı veya reddedilen ilanlar yeniden gönderilir");
+    if (!RETRY.includes(status) || !GROUPS.includes(group)) return bad("Yalnızca hatalı, reddedilen veya mağazadan kalkan ilanlar yeniden gönderilir");
     for (let off = 0; off < 5000; off += 200) {
       const r = await db.rpc("listing_status_list", { p_mp: mp, p_status: status, p_group: group, p_q: "", p_mp_status: "", p_limit: 200, p_offset: off });
       if (r.error) return bad(r.error.message);
@@ -54,11 +56,11 @@ export async function POST(req: NextRequest) {
     }
   }
   rows = rows.filter((r) => r.product_id);
-  if (!rows.length) return bad("Yeniden gönderilecek ilan yok (yalnızca ürün veritabanına bağlı hatalı/reddedilen ilanlar)");
+  if (!rows.length) return bad("Yeniden gönderilecek ilan yok (yalnızca ürün veritabanına bağlı hatalı/reddedilen/kalkan ilanlar)");
   const now = new Date().toISOString();
   const keys = rows.map((r) => r.listing_key);
   for (let i = 0; i < keys.length; i += 500) {
-    const u = await db.from("marketplace_listings").update({ status: "queued", last_error: null, updated_at: now }).eq("marketplace", mp).in("listing_key", keys.slice(i, i + 500)).in("status", ["error", "rejected"]);
+    const u = await db.from("marketplace_listings").update({ status: "queued", last_error: null, updated_at: now }).eq("marketplace", mp).in("listing_key", keys.slice(i, i + 500)).in("status", RETRY);
     if (u.error) return bad(u.error.message);
   }
   const ids = [...new Set(rows.map((r) => r.product_id as string))];

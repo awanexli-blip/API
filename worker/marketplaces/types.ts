@@ -18,8 +18,10 @@ export interface Listing {
   status?: "active" | "closed" | "pending";
 }
 
-export type OrderLineIn = { lineNo: number; key: string; title: string; qty: number; unitPrice: number };
-export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; lines: OrderLineIn[] };
+export type OrderLineIn = { lineNo: number; key: string; title: string; qty: number; unitPrice: number; listPrice?: number | null; discount?: number | null; tyDiscount?: number | null };
+// Alıcı ad-soyad ve teslimat adresi: yalnızca tedarikçiye sipariş vermek için (K kararı 23.10), loglanmaz, 30 gün sonra silinir
+export type OrderCustomer = { name: string | null; address: { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string } | null };
+export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; customer?: OrderCustomer; lines: OrderLineIn[] };
 export type QuestionIn = { id: string; text: string; productTitle: string; productKey: string | null; imageUrl: string | null; askedAt: number | null };
 export type SalesDay = { day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
 

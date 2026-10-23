@@ -426,7 +426,12 @@ export function createTrendyol(): Marketplace {
               orderedAt: Number(o.orderDate) || null, total: Number(o.totalPrice ?? o.packageTotalPrice ?? 0) || 0, currency: String(o.currencyCode ?? "TRY"),
               deadline: Number(o.agreedDeliveryDate) || null, cargo: o.cargoProviderName ?? null, tracking: o.cargoTrackingNumber != null ? String(o.cargoTrackingNumber) : null,
               city: o.shipmentAddress?.city ?? null,
-              lines: lines.map((l, i) => ({ lineNo: i + 1, key: String(l.barcode ?? l.merchantSku ?? ""), title: String(l.productName ?? "").slice(0, 200), qty: Number(l.quantity ?? 1), unitPrice: Number(l.price ?? l.amount ?? 0) })),
+              // Tedarikçiye sipariş için (K kararı 23.10): ad-soyad + adres; telefon/e-posta alınmaz. Loglanmaz.
+              customer: { name: String(o.shipmentAddress?.fullName ?? [o.shipmentAddress?.firstName, o.shipmentAddress?.lastName].filter(Boolean).join(" ")).trim() || null,
+                address: o.shipmentAddress ? { fullAddress: o.shipmentAddress.fullAddress ?? [o.shipmentAddress.address1, o.shipmentAddress.address2].filter(Boolean).join(" "), neighborhood: o.shipmentAddress.neighborhood ?? undefined, district: o.shipmentAddress.district ?? undefined, city: o.shipmentAddress.city ?? undefined, postalCode: o.shipmentAddress.postalCode ?? undefined } : null },
+              // İndirim: price = müşterinin ödediği birim fiyat, tyDiscount = Trendyol'un karşıladığı kısım (satıcıya ödenir). Alanlar doğrulanmadı.
+              lines: lines.map((l, i) => ({ lineNo: i + 1, key: String(l.barcode ?? l.merchantSku ?? ""), title: String(l.productName ?? "").slice(0, 200), qty: Number(l.quantity ?? 1), unitPrice: Number(l.price ?? l.amount ?? 0),
+                listPrice: l.amount != null ? Number(l.amount) : null, discount: l.discount != null ? Number(l.discount) : null, tyDiscount: l.tyDiscount != null ? Number(l.tyDiscount) : null })),
             });
           }
           await sleep(300);

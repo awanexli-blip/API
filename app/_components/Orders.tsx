@@ -9,7 +9,51 @@ const ST: Record<string, [string, string]> = {
   delivered: ["Teslim edildi", "ok"], cancelled: ["İptal", ""], returned: ["İade", "partial"], problem: ["Sorunlu", "error"],
 };
 const MP: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada", amazon: "Amazon" };
-const EV: Record<string, string> = { created: "Sipariş geldi", status: "Durum değişti", tracking: "Takip numarası geldi", note: "Not" };
+const EV: Record<string, string> = { created: "Sipariş geldi", status: "Durum değişti", tracking: "Takip numarası geldi", note: "Not", supplier: "Tedarikçiye verildi" };
+
+// Tedarikçiye elle sipariş (Toptancım paneli): alıcı + adres + ürün kodları kopyalanır, "Verdim" ile işaretlenir, takip no girilir.
+// Pazaryerine hiçbir şey yazılmaz. Alıcı bilgisi biten siparişte 30 gün sonra silinir.
+function SupplierBox({ api, notify, det, reload }: { api: Api; notify: Notify; det: Row; reload: () => Promise<void> }) {
+  const o = det.order;
+  const [track, setTrack] = useState(o.tracking_no ?? "");
+  const [cargo, setCargo] = useState(o.cargo_provider ?? "");
+  const [note, setNote] = useState(o.supplier_note ?? "");
+  const [busy, setBusy] = useState(false);
+  const a = o.address ?? {};
+  const text = [
+    `Alıcı: ${o.customer_name ?? "-"}`,
+    `Adres: ${[a.fullAddress, a.neighborhood, a.district, a.city, a.postalCode].filter(Boolean).join(", ") || "-"}`,
+    ...det.lines.map((l: Row) => `Ürün: ${l.qty} adet · ${l.title}${l.supplier_sku ? ` · Tedarikçi kodu: ${l.supplier_sku}` : ""}`),
+    `Sipariş no: ${o.order_no ?? ""}`,
+  ].join("\n");
+  async function put(body: Row, ok: string) {
+    setBusy(true);
+    try { await api("/api/orders", { method: "PUT", body: JSON.stringify({ id: o.id, ...body }) }); notify("good", ok); await reload(); } catch (e: any) { notify("err", e.message); } finally { setBusy(false); }
+  }
+  const closed = ["cancelled", "returned", "delivered"].includes(o.status);
+  return (
+    <div style={{ borderTop: "1px solid var(--line)", marginTop: 12, paddingTop: 10 }}>
+      <h4 style={{ margin: "0 0 6px" }}>Tedarikçiye ilet</h4>
+      {o.pii_purged_at ? <p className="muted" style={{ fontSize: 13 }}>Alıcı bilgisi saklama süresi dolduğu için silindi.</p> : (
+        <>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, background: "var(--panel)", padding: 8, borderRadius: 8, margin: 0, overflowWrap: "anywhere" }}>{text}</pre>
+          <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <button className="btn ghost" onClick={() => navigator.clipboard.writeText(text).then(() => notify("good", "Kopyalandı"), () => notify("err", "Kopyalanamadı: metni elle seç"))}>Kopyala</button>
+            {o.status !== "sent_to_supplier" && !closed && o.status !== "shipped" && <button className="btn primary" disabled={busy} onClick={() => put({ action: "supplier_sent", note }, "Tedarikçiye verildi olarak işaretlendi")}>Tedarikçiye sipariş verdim</button>}
+            {o.sent_to_supplier_at && <span className="muted" style={{ fontSize: 13 }}>Verildi: {when(o.sent_to_supplier_at)}</span>}
+          </div>
+        </>
+      )}
+      <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label className="f" style={{ flex: "1 1 160px" }}>Takip no<input value={track} onChange={(e) => setTrack(e.target.value)} placeholder="tedarikçinin verdiği" /></label>
+        <label className="f" style={{ flex: "1 1 120px" }}>Kargo<input value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="ör. Yurtiçi" /></label>
+        <button className="btn" disabled={busy || !track.trim()} onClick={() => put({ action: "tracking", tracking_no: track, cargo }, "Takip numarası kaydedildi (pazaryerine bildirme sonraki adım)")}>Kaydet</button>
+      </div>
+      <label className="f" style={{ marginTop: 8 }}>Not (tedarikçi sipariş no vb.)<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} /></label>
+      <button className="btn ghost" style={{ marginTop: 6 }} disabled={busy} onClick={() => put({ action: "note", note }, "Not kaydedildi")}>Notu kaydet</button>
+    </div>
+  );
+}
 
 // Siparişler (Faz 6 F3, salt okunur): pazaryerlerinden 15 dakikada bir çekilir. Müşteri adı/adresi şimdilik saklanmıyor.
 export default function Orders({ api, notify }: { api: Api; notify: Notify }) {
@@ -89,7 +133,7 @@ export default function Orders({ api, notify }: { api: Api; notify: Notify }) {
                       {det.lines.map((l: Row) => (
                         <div key={l.line_no} className="row" style={{ justifyContent: "space-between", fontSize: 13, padding: "4px 0", flexWrap: "wrap", gap: 6 }}>
                           <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{l.qty} × {l.title} <span className="muted">({l.listing_key})</span></span>
-                          <span className="muted">{tl(Number(l.unit_price ?? 0))}{l.cost_snapshot != null ? ` · maliyet ${tl(Number(l.cost_snapshot))}` : " · maliyet yok"}{l.commission_rate != null ? ` · komisyon %${(Number(l.commission_rate) * 100).toFixed(1)}` : ""}</span>
+                          <span className="muted">{tl(Number(l.unit_price ?? 0))}{l.cost_snapshot != null ? ` · maliyet ${tl(Number(l.cost_snapshot))}` : " · maliyet yok"}{l.commission_rate != null ? ` · komisyon %${(Number(l.commission_rate) * 100).toFixed(1)}` : ""}{Number(l.discount) > 0 ? ` · indirim ${tl(Number(l.discount))}${Number(l.ty_discount) > 0 ? ` (pazaryeri karşılıyor ${tl(Number(l.ty_discount))})` : " (senden)"}` : ""}</span>
                         </div>
                       ))}
                       {o.ship_deadline && <p style={{ fontSize: 13, margin: "8px 0 0" }}>Kargoya son teslim: <b>{when(o.ship_deadline)}</b></p>}
@@ -97,7 +141,7 @@ export default function Orders({ api, notify }: { api: Api; notify: Notify }) {
                       {det.events.map((e: Row, i: number) => (
                         <div key={i} style={{ fontSize: 13 }} className="muted">{when(e.at)} · {EV[e.kind] ?? e.kind}{e.detail?.to ? `: ${e.detail.from ?? "—"} → ${e.detail.to}` : ""}{e.detail?.cargo ? ` (${e.detail.cargo})` : ""}</div>
                       ))}
-                      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Tedarikçiye iletme ve takip numarası girme sonraki adımda eklenecek (Faz 6 F4-F5).</p>
+                      <SupplierBox api={api} notify={notify} det={det} reload={async () => { setDet(await api(`/api/orders?id=${o.id}`)); load(); }} />
                     </>
                   )}
                 </div>

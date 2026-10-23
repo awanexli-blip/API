@@ -22,7 +22,13 @@ const refs = new Map([["OS13-A", { product_id: null, variant_id: null, commissio
 const r = orderRow("trendyol", o, refs, cfg);
 check("satır: maliyet sipariş anından", r.lines[0].cost_snapshot === 118.33 && r.est_cost === 118.33, r);
 check("satır: tahmini net = fiyat motoru", r.est_net === breakdown(459, 118.33, cfg, 0.1).net, { net: r.est_net, exp: breakdown(459, 118.33, cfg, 0.1).net });
-check("satır: kişisel veri alanı yok", !("customer_name" in r) && !("address" in r) && r.city === "İstanbul");
+check("satır: alıcı bilgisi yoksa boş, telefon alanı hiç yok", r.customer_name === null && r.address === null && !("customer_phone" in r) && r.city === "İstanbul", r);
+const withCust = orderRow("trendyol", { ...o, customer: { name: "Ad Soyad", address: { fullAddress: "Sokak 1", city: "İstanbul" } } }, refs, cfg);
+check("satır: alıcı ad + adres (tedarikçi siparişi için)", withCust.customer_name === "Ad Soyad" && withCust.address?.fullAddress === "Sokak 1");
+const tyd = orderRow("trendyol", { ...o, total: 446.4, lines: [{ ...o.lines[0], unitPrice: 446.4, listPrice: 469.9, discount: 23.5, tyDiscount: 23.5 }] }, refs, cfg);
+check("satır: Trendyol'un karşıladığı indirim gelire eklenir", tyd.est_net === breakdown(469.9, 118.33, cfg, 0.1).net, tyd);
+const own = orderRow("trendyol", { ...o, total: 446.4, lines: [{ ...o.lines[0], unitPrice: 446.4, listPrice: 469.9, discount: 23.5, tyDiscount: 0 }] }, refs, cfg);
+check("satır: satıcının kendi indirimi kârdan düşer", own.est_net === breakdown(446.4, 118.33, cfg, 0.1).net, own);
 const noCost = orderRow("trendyol", { ...o, lines: [{ ...o.lines[0], key: "BILINMEYEN" }] }, refs, cfg);
 check("satır: maliyet yoksa kâr boş + dikkat", noCost.est_net === null && noCost.needs_attention && /maliyeti bilinmiyor/.test(noCost.attention_reason ?? ""), noCost);
 const cancelled = orderRow("trendyol", { ...o, status: "Cancelled" }, refs, cfg);
