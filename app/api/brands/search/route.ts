@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const [starts, contains, counts] = await Promise.all([
     db.from("marketplace_brands").select("marketplace, brand_id, name, name_norm").like("name_norm", `${q}%`).order("name_norm").limit(15),
     db.from("marketplace_brands").select("marketplace, brand_id, name, name_norm").like("name_norm", `%${q}%`).limit(15),
-    db.from("marketplace_brands").select("marketplace", { count: "exact", head: true }),
+    db.from("marketplace_brands").select("marketplace", { count: "planned", head: true }), // yalnızca "liste çekildi mi" için: tahmini sayı yeter (tam sayım 800 bin satır)
   ]);
   if (starts.error) return dbError(starts.error);
   const rows = [...(starts.data ?? []), ...(contains.data ?? [])];

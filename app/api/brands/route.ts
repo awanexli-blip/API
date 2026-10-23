@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const [ms, runs, cnt] = await Promise.all([
     db.from("marketplace_settings").select("brand_name, brand_history").eq("marketplace", mp).maybeSingle(),
     db.from("sync_runs").select("id, mode, started_at, summary").eq("marketplace", mp).eq("status", "ok").order("id", { ascending: false }).limit(30),
-    db.from("marketplace_brands").select("brand_id", { count: "exact", head: true }).eq("marketplace", mp),
+    db.from("marketplace_brands").select("brand_id", { count: "planned", head: true }).eq("marketplace", mp),
   ]);
   if (ms.error) return bad(ms.error.message);
   const list = runs.data ?? [];

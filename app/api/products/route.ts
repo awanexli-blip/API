@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   let query = admin()
     .from("products")
-    .select(`id, sku, title, brand, category, status, cost_price, currency, vat_rate, updated_at, source, product_variants${stock ? "!inner" : ""}(stock, reserved), product_images(url, position), marketplace_listings(marketplace, status, price, calc_price, calc_net, commission)`, { count: "exact" })
+    .select(`id, sku, title, brand, category, status, cost_price, currency, vat_rate, updated_at, source, product_variants${stock ? "!inner" : ""}(stock, reserved), product_images(url, position), marketplace_listings(marketplace, status, price, calc_price, calc_net, commission)`, { count: q || category || stock || source || status ? "exact" : "estimated" }) // filtresiz tam sayım 43 bin ürün: tahmini yeter
     .order(SORTS[sort]?.[0] ?? "updated_at", { ascending: SORTS[sort]?.[1] ?? false, nullsFirst: false })
     .range(page * size, page * size + size - 1);
   if (status && (STATUSES as readonly string[]).includes(status)) query = query.eq("status", status);

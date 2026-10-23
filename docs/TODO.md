@@ -2,13 +2,13 @@
 
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Kural: her oturumda önce `docs/PROGRESS.md`, sonra bu dosya okunur; iş bittikçe burada işaretlenir, ayrıntı PROGRESS'e yazılır.
-Son güncelleme: 22.10.2026.
+Son güncelleme: 23.10.2026.
 
 ## Şu an
 
 > **Önce: güvenlik ve hata düzeltmeleri** (`docs/DENETIM_GOREVLERI.md`). 22.10: S0 (S0.4/S0.5 K hariç) ve S1 tamam, S2 büyük ölçüde tamam. **Sıradaki:** K kararları (S0.4 Auth ayarları, S0.5 depo özel mi); Claude: S3.1 ikinci tur, sonra Faz 6 F0.
 > **Sonra aktif aşama: F (Faz 6 — operasyon merkezi).** Plan: `docs/FAZ6_PLAN.md`. Çalışma kuralları: `docs/CALISMA_KURALLARI.md`.
-> **F (23.10):** F1-F3 siparişler canlı (salt okunur, kişisel veri yok), F7 soru gelen kutusu + F10 Telegram kodu hazır (K: anahtarlar). Sıradaki: F0 K bilgileri (Toptancım sipariş yöntemi, KVKK) -> F4 tedarikçiye iletme.
+> **F (23.10):** siparişler + elle tedarikçi siparişi + Telegram canlı. Yeni: **Satış raporu** (F9), iadeler (F8), gerçek komisyon, HB siparişleri (F11, doğrulanıyor), takip kodu bildirme (F5), stok rezervasyonu (F6). Sıradaki: HB sipariş uçlarının canlı teşhisi, Trendyol v2 sipariş alanları doğrulama, 2 hafta veriyle kâr kalibrasyonu.
 > HB (22.10): kargo baremi ve gönderim hazırlığı tamam (PROGRESS 23). Sıradaki: K `hb-tool categories`/`listings` (canlı katalog yetkisi), sonra 20 ürünle deneme (K onayı).
 > Not: Trendyol satışı açık. Siparişler panelde görünür (Siparişler); tedarikçiye iletme henüz elle.
 > Bu kutuyu her dilim bitince güncelle (aşama + sıradaki madde).
@@ -82,13 +82,13 @@ Son güncelleme: 22.10.2026.
 - [~] F2 Trendyol sipariş çekme: fetchOrders + order-status + test tamam, canlıda 33 sipariş (23.10); webhook ucu kaldı
 - [~] F3 Siparişler ekranı: liste, filtre, detay, zaman çizelgesi, kâr özeti, dikkat tamam; tarayıcı tıklama denemesi kaldı
 - [ ] F4 Tedarikçi sipariş motoru: manual (tek tık) → email → semi (hazırla + onay) → api; ön kontroller; idempotent; tam otomatik en son ve varsayılan kapalı
-- [ ] F5 Takip kodu ve kargo: elle giriş, pazaryerine bildirme, gecikme uyarıları
-- [ ] F6 Stok rezervasyonu (`reserved`) ve çok pazaryeri stok düşümü
+- [~] F5 Takip kodu ve kargo: tedarikçi takip no ayrı kolonda, pazaryeri kargo kodu tedarikçi metninde, Trendyol'a bildirme kuyruğu (onaylı, pending->sending->done/failed), kargo süresi geçince dikkat (23.10); canlı bildirim denemesi (K) kaldı
+- [~] F6 Stok rezervasyonu: tedarikçiye verilmemiş açık siparişlerin adedi (48 saat) tüm pazaryerlerinde stoktan düşülür (order_reservations, 23.10); canlıda gözlem kaldı
 - [~] F7 Müşteri soruları: gelen kutusu + Claude taslağı + insan onayı (panel/Telegram) kodu tamam; K: ANTHROPIC_API_KEY; QnA uçları canlıda doğrulanmadı; yorum servisi (D)
-- [ ] F8 İadeler: claims çekme, neden sınıfı, tedarikçi alacağı, `return_rate/return_cost` kalibrasyonu
-- [ ] F9 Analitik ve gerçek net kâr: gösterge kartları, en çok satan/iade, ilk 2 hafta yalnızca veri topla sonra araştırma raporu
+- [~] F8 İadeler: Trendyol claims çekme + neden + siparişe bağlama, iade kaybı (gidiş-dönüş kargo) kâra yansır (migration 042, 23.10); HB claims ucu doğrulanmadı; tedarikçi alacağı ve return_rate kalibrasyonu kaldı
+- [~] F9 Satış raporu (23.10): dönem seçimi (bugün/dün/7/30/bu ay/geçen ay/3 ay/1 yıl/özel), önceki dönemle karşılaştırma, kâr dökümü (gelir, komisyon, kargo, sabit gider, maliyet, KDV, iade, stopaj), grafik + tablo, pazaryeri/ürün/iade nedeni/zarar eden sipariş, CSV; gerçek komisyon (Trendyol hakediş) tahminin yerine geçer. Kalan: 2 hafta veriyle doğrulama
 - [~] F10 Bildirimler: Telegram (yeni sipariş, soru + onay düğmesi) kodu tamam, K: bot + TELEGRAM_* secret'ları; hata merkezi kaldı
-- [ ] F11 Diğer pazaryerlerinin siparişleri: Hepsiburada, Amazon TR, N11, ÇiçekSepeti
+- [~] F11 Diğer pazaryerlerinin siparişleri: Hepsiburada OMS kodu (uçlar açık kaynaktan, her biri ayrı denenir ve teşhis yazılır, 23.10) — canlı doğrulama kaldı; Amazon TR, N11, ÇiçekSepeti bekliyor
 - [ ] F12 Sertleştirme: uçtan uca test, mobil denetim, güvenlik, runbook, güncel sürüm denetimi
 
 ## Öneriler (henüz plana alınmadı, karar (K))

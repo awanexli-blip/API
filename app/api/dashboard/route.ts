@@ -15,14 +15,14 @@ export async function GET(req: NextRequest) {
   const isAdmin = a.role === "admin";
   const count = async (q: any) => (await q).count ?? 0;
 
-  const [total, active, inStockVariants, variants, jobs] = await Promise.all([
-    count(db.from("products").select("id", { count: "exact", head: true })),
-    count(db.from("products").select("id", { count: "exact", head: true }).eq("status", "active")),
-    count(db.from("product_variants").select("id", { count: "exact", head: true }).gt("stock", 0)),
-    count(db.from("product_variants").select("id", { count: "exact", head: true })),
+  // Sayımlar tek sorguda (migration 043; önceden 10 ayrı tam sayım, marka tablosu 800 bin satır)
+  const [cnt, jobs] = await Promise.all([
+    db.rpc("dashboard_counts"),
     db.from("import_jobs").select("id, kind, source, supplier, status, total, created, updated, stock_only, failed, message, started_at, finished_at").order("id", { ascending: false }).limit(6),
   ]);
-  const out: any = { products: { total, active, variants, inStockVariants }, imports: jobs.data ?? [], alerts: [] as Alert[] };
+  const c: any = cnt.data ?? {};
+  const total = Number(c.products ?? 0);
+  const out: any = { products: { total, active: Number(c.active ?? 0), variants: Number(c.variants ?? 0), inStockVariants: Number(c.in_stock_variants ?? 0) }, imports: jobs.data ?? [], alerts: [] as Alert[] };
   const alerts: Alert[] = out.alerts;
   if (!total) alerts.push({ level: "info", text: "Ürün veritabanı boş. Tedarikçiler bölümünden XML içe aktar veya ürün ekle.", go: isAdmin ? "tedarikciler" : "urunler" });
   const lastJob = out.imports[0];
@@ -44,13 +44,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(rows);
   }
 
-  const [settings, runs, suppliers, unmapped, rules, brands] = await Promise.all([
+  const brands = Number(c.brands ?? 0);
+  const [settings, runs, suppliers, unmapped, rules] = await Promise.all([
     db.from("settings").select("auto_sync, auto_create, existing_price_policy, zero_missing").eq("id", 1).maybeSingle(),
     db.from("sync_runs").select("id, marketplace, mode, status, started_at, finished_at, summary").order("id", { ascending: false }).limit(40),
     db.from("suppliers").select("code, name, active, nightly, last_run_at, last_status").order("created_at"),
     db.from("unmapped_categories").select("product_count").eq("marketplace", "trendyol"),
     count(db.from("pricing_rules").select("id", { count: "exact", head: true }).eq("enabled", true)),
-    count(db.from("marketplace_brands").select("brand_id", { count: "exact", head: true })),
   ]);
   const s = settings.data;
   const allRuns = (runs.data ?? []) as any[];
@@ -67,9 +67,8 @@ export async function GET(req: NextRequest) {
     };
   });
   // Faz 3 ilan tablosu: Trendyol'daki ilanların durumu ve ürün veritabanına bağlı olanlar
-  const lc = (st?: string) => count(st ? db.from("marketplace_listings").select("listing_key", { count: "exact", head: true }).eq("marketplace", "trendyol").eq("status", st) : db.from("marketplace_listings").select("listing_key", { count: "exact", head: true }).eq("marketplace", "trendyol").not("variant_id", "is", null));
-  const [live, pend, closed, linkedN] = await Promise.all([lc("live"), lc("pending_approval"), lc("closed"), lc()]);
-  out.listings = { live, pending: pend, closed, linked: linkedN };
+  const l = c.listings ?? {};
+  out.listings = { live: Number(l.live ?? 0), pending: Number(l.pending ?? 0), closed: Number(l.closed ?? 0), linked: Number(l.linked ?? 0) };
   out.timeline = allRuns.slice(0, 10).map((r) => ({ id: r.id, marketplace: r.marketplace ?? r.summary?.marketplace ?? "trendyol", mode: r.mode, status: r.status, started_at: r.started_at, updated: r.summary?.updated, created: r.summary?.created, skippedRun: r.summary?.skippedRun }));
   out.suppliers = suppliers.data ?? [];
   out.settings = s;

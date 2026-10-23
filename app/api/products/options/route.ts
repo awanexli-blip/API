@@ -4,6 +4,8 @@ import { authorize, dbError } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
 
+let facetCache: { at: number; data: unknown } | null = null;
+
 const DEFAULT_BRAND = "Eco Lounge"; // mağazadaki ürünlerin çoğu bu markayla açık
 
 // Ürün formu seçenekleri: markalar ve kategoriler (Kategoriler sekmesindeki eşleşmeler + ürünlerde kullanılanlar)
@@ -11,9 +13,11 @@ export async function GET(req: NextRequest) {
   const a = await authorize(req, "viewer");
   if (a instanceof NextResponse) return a;
   const db = admin();
+  // Marka/kategori özeti 43 bin ürünü tarar (~1,5 sn): sunucu örneğinde 10 dk önbellek
+  const fresh = facetCache && Date.now() - facetCache.at < 600000;
   const [cm, pr, sup] = await Promise.all([
     db.from("category_map").select("xml_category, marketplace, category_name").limit(5000),
-    db.rpc("product_facets"),
+    fresh ? Promise.resolve({ data: facetCache!.data, error: null }) : db.rpc("product_facets").then((r) => { if (!r.error) facetCache = { at: Date.now(), data: r.data }; return r; }),
     db.from("suppliers").select("code, name").order("created_at"),
   ]);
   if (cm.error) return dbError(cm.error);
