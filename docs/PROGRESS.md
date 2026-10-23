@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-23 (26) — Tedarikçiye elle sipariş (F4), Trendyol görsel onarımı, kargo/sabit gider
+- K kararları: alıcı ad-soyad + adres tedarikçi siparişi için saklanır (telefon yok, biten siparişte 30 gün sonra silinir, migration 039, DB testi); Toptancım sipariş yöntemi = kendi sitesinden elle; fiyatlar KDV hariç + KDV + sipariş başı 4 TL kargo.
+- Siparişler > detay: "Tedarikçiye ilet" (alıcı/adres/ürün + tedarikçi kodu, Kopyala, "Tedarikçiye sipariş verdim", takip no, not). İndirim alanları (list/discount/tyDiscount; alanlar doğrulanmadı): pazaryerinin karşıladığı indirim gelire eklenir.
+- K sorusu: 446 TL'lik satışta 23 TL net neden? Hesapta komisyon ve kargonun KDV'si düşülmemişti (gerçek ~53 TL); ayrıca 23,50 TL indirim ve kargo 100 TL (sistem 90 varsayıyordu).
+- Ayar (K onayı): Trendyol kargo 90 -> 100 TL, sabit gider 0 -> 4 TL (tedarikçi kargosu), HB 13,19 -> 17,19. Örnek: maliyet 238,80 -> 469,90 yerine 489,90; net kâr 40+ korunur.
+- ~800 görselsiz ürün Trendyol'daymış (HB değil): Toptancım görselleri WebP, Trendyol'a doğrudan gidiyordu. Yeni ürün ve ret düzeltmesinde görseller 1200x1800 JPG dönüştürücüden (`.p.jpg`); görseli olmayan/WebP kalan onaylı ilanlara JPG görseller content-bulk-update ile gönderilir (uç dokümanla doğrulandı; 3 günde bir, migration 040). HB'den kalkan ilanlar Gönderim durumu ekranından yeniden gönderilebilir.
+- QnA uçları çalışıyor (4 soru geldi, Trendyol'dan cevaplanmış). Açık (K): Telegram jetonu (sohbete yazıldı, yenilenmeli) + chat id, ANTHROPIC_API_KEY isteğe bağlı.
+
 ## 2026-10-23 (25) — Gönderim durumu ekranı, siparişler (F1-F3), müşteri soruları + Telegram (F7/F10)
 - Görsel: dönüştürücü 1200x1200 kare beyaz zemin, kaynak 3 deneme, HB gönderiminde ilk görsel önceden hazırlanır (a758010). HB'de görselsiz açılmış ~800 ürün için API ile görsel güncelleme yolu bulunamadı (K: sil + yeniden gönder ya da elle).
 - **Gönderim durumu** (Pazaryeri > Gönderim durumu, migration 035-036): ilan durum sayıları, HB inceleme durumu (mp_status), neden grupları (kategori/özellik/görsel/marka/kopya/pazaryeri reddi), en çok eksik özellikler, arama, sayfalama, seçilen ya da listenin tamamını yeniden gönder. HB toplu sonuçları `mp_batches`'e yazılır, her senkronda beklemeden yeniden sorulur. **Canlı (21:30 UTC):** 25 grup, 1.440 ürün: 1.430 Satışa Hazır, 4 Ürün Bilgileri Eksik, 5 FAILED. PROCESSING ürünler artık hata sayılmıyor.
