@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-23 (27) — Vercel kotası, takılı kuyruk, Özellik tamamla, Telegram canlı
+- Vercel Hobby işlemci kotası 3s50dk/4s: görsel dönüştürme wsrv.nl'e taşındı (denendi: percdn WebP -> 1200x1800/1200x1200 JPEG; IMAGE_CDN=self ile geri alınır). Görsel onarımı çalışma başına 300 ürün.
+- Takılı kuyruk hatası: yeniden deneme iş anahtarı saate göreydi; aynı saatte ikinci çağrıda iş oluşmuyor, ilanlar işsiz "sırada" kalıyordu (HB 8.278, Trendyol 1.360). Artık önce iş, sonra ilan; Trendyol'da da açık.
+- **Özellik tamamla** (Pazaryeri > Özellik tamamla, migration 041): eksik zorunlu özellik + kategori grupları (ör. Akıllı Saat > Kasa Çapı 586), pazaryerinin değer listesi (Trendyol herkese açık uçtan, HB attr_options), başlıktan öneri, seçili ürünlere tek tıkla uygula -> eksiği kalmayan hemen sıraya. Not: kategori 474'te tıraş makinesi ve oyuncak araba birlikte (yanlış kategori tahmini) — seçimle ayrılır.
+- Telegram bağlandı (K). Panelde "Deneme sorusu gönder" (TEST- kimlikli, pazaryerine gitmez).
+
 ## 2026-10-23 (26) — Tedarikçiye elle sipariş (F4), Trendyol görsel onarımı, kargo/sabit gider
 - K kararları: alıcı ad-soyad + adres tedarikçi siparişi için saklanır (telefon yok, biten siparişte 30 gün sonra silinir, migration 039, DB testi); Toptancım sipariş yöntemi = kendi sitesinden elle; fiyatlar KDV hariç + KDV + sipariş başı 4 TL kargo.
 - Siparişler > detay: "Tedarikçiye ilet" (alıcı/adres/ürün + tedarikçi kodu, Kopyala, "Tedarikçiye sipariş verdim", takip no, not). İndirim alanları (list/discount/tyDiscount; alanlar doğrulanmadı): pazaryerinin karşıladığı indirim gelire eklenir.
