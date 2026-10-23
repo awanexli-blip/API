@@ -6,7 +6,7 @@ import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
-import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay } from "./types.ts";
+import type { BatchCheck, BatchResult, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
   try { return JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8")); } catch { return {}; }
@@ -380,9 +380,10 @@ export function createTrendyol(): Marketplace {
       for (let s = fromMs; s < toMs; s += 14 * 86400000) windows.push([s, Math.min(toMs, s + 14 * 86400000 - 1)]);
       for (const [s, e] of windows) {
         for (let page = 0; page < 100; page++) {
-          const r = await tg(`/order/sellers/${SELLER_ID}/orders?startDate=${s}&endDate=${e}&page=${page}&size=200&orderByField=PackageLastModifiedDate&orderByDirection=DESC`);
+          const q = `?startDate=${s}&endDate=${e}&page=${page}&size=200&orderByField=PackageLastModifiedDate&orderByDirection=DESC`;
+          const r = await tg(`/order/sellers/${SELLER_ID}/v2/orders${q}`).catch(() => tg(`/order/sellers/${SELLER_ID}/orders${q}`));
           for (const o of r.content ?? []) {
-            const id = String(o.id ?? o.shipmentPackageId ?? o.orderNumber);
+            const id = String(o.shipmentPackageId ?? o.id ?? o.orderNumber);
             if (seen.has(id) || !o.orderDate || o.orderDate < fromMs) continue;
             seen.add(id);
             const d = get(dayOf(o.orderDate));
@@ -417,27 +418,81 @@ export function createTrendyol(): Marketplace {
     },
 
     // Sipariş paketleri (getShipmentPackages; alan adları dokümandan, canlıda doğrulanmadı). Müşteri adı/telefon/adres OKUNMAZ, yalnızca il.
+    // 15.10.2026'dan itibaren v2 uç zorunlu (eski /orders kaldırılıyor); v2 yanıt vermezse eskisi denenir. Alan adları iki sürümü de karşılar:
+    // v2 satır: lineUnitPrice, lineGrossAmount, lineTotalDiscount, lineTyDiscount, commission (oran %); paket: packageTotalPrice.
     async fetchOrders(fromMs: number, toMs: number): Promise<OrderIn[]> {
       const out = new Map<string, OrderIn>();
+      const num = (...v: any[]) => { for (const x of v) if (x != null && x !== "" && Number.isFinite(Number(x))) return Number(x); return null; };
+      let path = `/order/sellers/${SELLER_ID}/v2/orders`;
+      const diag: Record<string, unknown> = {};
       for (let s = fromMs; s < toMs; s += 14 * 86400000) {
         const e = Math.min(toMs, s + 14 * 86400000 - 1);
-        for (let page = 0; page < 100; page++) {
-          const r = await tg(`/order/sellers/${SELLER_ID}/orders?startDate=${s}&endDate=${e}&page=${page}&size=200&orderByField=PackageLastModifiedDate&orderByDirection=DESC`);
+        for (let page = 0; page < 50; page++) {
+          const q = `?startDate=${s}&endDate=${e}&page=${page}&size=200&orderByField=PackageLastModifiedDate&orderByDirection=DESC`;
+          let r: any;
+          try { r = await tg(path + q); }
+          catch (err: any) {
+            if (!path.includes("/v2/")) throw err;
+            diag.v2Error = String(err?.message ?? err).slice(0, 200);
+            path = `/order/sellers/${SELLER_ID}/orders`;
+            r = await tg(path + q);
+          }
+          diag.path = path.includes("/v2/") ? "v2" : "eski";
+          if (!diag.lineKeys && r.content?.[0]?.lines?.[0]) { diag.packageKeys = Object.keys(r.content[0]).sort().join(","); diag.lineKeys = Object.keys(r.content[0].lines[0]).sort().join(","); }
           for (const o of r.content ?? []) {
-            const id = String(o.id ?? o.shipmentPackageId ?? "");
+            const id = String(o.shipmentPackageId ?? o.id ?? "");
             if (!id) continue;
             const lines: any[] = o.lines ?? [];
             out.set(id, {
-              packageId: id, orderNo: String(o.orderNumber ?? ""), status: String(o.status ?? o.shipmentPackageStatus ?? ""),
-              orderedAt: Number(o.orderDate) || null, total: Number(o.totalPrice ?? o.packageTotalPrice ?? 0) || 0, currency: String(o.currencyCode ?? "TRY"),
+              packageId: id, orderNo: String(o.orderNumber ?? ""), status: String(o.shipmentPackageStatus ?? o.status ?? ""),
+              orderedAt: Number(o.orderDate) || null, total: num(o.packageTotalPrice, o.totalPrice) ?? 0, currency: String(o.currencyCode ?? "TRY"),
               deadline: Number(o.agreedDeliveryDate) || null, cargo: o.cargoProviderName ?? null, tracking: o.cargoTrackingNumber != null ? String(o.cargoTrackingNumber) : null,
               city: o.shipmentAddress?.city ?? null,
               // Tedarikçiye sipariş için (K kararı 23.10): ad-soyad + adres; telefon/e-posta alınmaz. Loglanmaz.
               customer: { name: String(o.shipmentAddress?.fullName ?? [o.shipmentAddress?.firstName, o.shipmentAddress?.lastName].filter(Boolean).join(" ")).trim() || null,
                 address: o.shipmentAddress ? { fullAddress: o.shipmentAddress.fullAddress ?? [o.shipmentAddress.address1, o.shipmentAddress.address2].filter(Boolean).join(" "), neighborhood: o.shipmentAddress.neighborhood ?? undefined, district: o.shipmentAddress.district ?? undefined, city: o.shipmentAddress.city ?? undefined, postalCode: o.shipmentAddress.postalCode ?? undefined } : null },
               // İndirim: price = müşterinin ödediği birim fiyat, tyDiscount = Trendyol'un karşıladığı kısım (satıcıya ödenir). Alanlar doğrulanmadı.
-              lines: lines.map((l, i) => ({ lineNo: i + 1, key: String(l.barcode ?? l.merchantSku ?? ""), title: String(l.productName ?? "").slice(0, 200), qty: Number(l.quantity ?? 1), unitPrice: Number(l.price ?? l.amount ?? 0),
-                listPrice: l.amount != null ? Number(l.amount) : null, discount: l.discount != null ? Number(l.discount) : null, tyDiscount: l.tyDiscount != null ? Number(l.tyDiscount) : null })),
+              lines: lines.map((l, i) => {
+                const qty = Number(l.quantity ?? 1) || 1;
+                const gross = num(l.lineGrossAmount);
+                const rate = num(l.commission);
+                return { lineNo: i + 1, key: String(l.barcode ?? l.merchantSku ?? l.stockCode ?? ""), title: String(l.productName ?? "").slice(0, 200), qty,
+                  unitPrice: num(l.lineUnitPrice, l.price, l.amount) ?? 0,
+                  listPrice: gross != null ? gross / qty : num(l.amount), discount: num(l.lineTotalDiscount, l.discount), tyDiscount: num(l.lineTyDiscount, l.tyDiscount),
+                  commissionRate: rate != null && rate > 0 && rate < 100 ? rate / 100 : null };
+              }),
+            });
+          }
+          await sleep(300);
+          if (page + 1 >= Number(r.totalPages ?? 0)) break;
+        }
+      }
+      this.orderDiag = diag;
+      return [...out.values()];
+    },
+
+    // İade talepleri (getClaims; tarih = talebin son değişikliği, 14 günlük pencere). Müşteri adı alınmaz.
+    async fetchClaims(fromMs: number, toMs: number): Promise<ClaimIn[]> {
+      const out = new Map<string, ClaimIn>();
+      for (let s = fromMs; s < toMs; s += 14 * 86400000) {
+        const e = Math.min(toMs, s + 14 * 86400000 - 1);
+        for (let page = 0; page < 50; page++) {
+          const r = await tg(`/order/sellers/${SELLER_ID}/claims?startDate=${s}&endDate=${e}&page=${page}&size=200`);
+          for (const c of r.content ?? []) {
+            const id = String(c.id ?? c.claimId ?? "");
+            if (!id) continue;
+            const lines = (c.items ?? []).flatMap((it: any) => (it.claimItems?.length ? it.claimItems : [{}]).map((ci: any) => ({
+              key: String(it.orderLine?.barcode ?? it.orderLine?.merchantSku ?? ""), title: String(it.orderLine?.productName ?? "").slice(0, 200), qty: 1,
+              price: Number(it.orderLine?.price ?? 0) || 0, status: String(ci.claimItemStatus?.name ?? ""), reason: ci.customerClaimItemReason?.name ?? ci.trendyolClaimItemReason?.name ?? null,
+              code: ci.customerClaimItemReason?.code ?? null,
+            })));
+            const live = lines.filter((l: any) => !/^(Cancelled|Rejected)$/i.test(l.status));
+            out.set(id, {
+              id, orderNo: c.orderNumber ? String(c.orderNumber) : null, packageId: c.orderOutboundPackageId != null ? String(c.orderOutboundPackageId) : null,
+              status: (live[0] ?? lines[0])?.status || "", reason: (live[0] ?? lines[0])?.reason ?? null, reasonCode: (live[0] ?? lines[0])?.code ?? null,
+              claimedAt: Number(c.claimDate) || null, amount: Math.round(live.reduce((t: number, l: any) => t + l.price * l.qty, 0) * 100) / 100,
+              cargo: c.cargoProviderName ?? null, tracking: c.cargoTrackingNumber != null ? String(c.cargoTrackingNumber) : null,
+              lines: lines.map(({ code, ...l }: any) => l),
             });
           }
           await sleep(300);
@@ -445,6 +500,34 @@ export function createTrendyol(): Marketplace {
         }
       }
       return [...out.values()];
+    },
+
+    // Hakediş (Cari hesap ekstresi, settlements): satış kayıtlarındaki GERÇEK komisyon (KDV dahil) ve satıcı hakedişi. 15 gün sınırı.
+    async fetchSettlements(fromMs: number, toMs: number): Promise<SettlementIn[]> {
+      const by = new Map<string, SettlementIn>();
+      for (let s = fromMs; s < toMs; s += 14 * 86400000) {
+        const e = Math.min(toMs, s + 14 * 86400000 - 1);
+        for (let page = 0; page < 50; page++) {
+          const r = await tg(`/finance/che/sellers/${SELLER_ID}/settlements?transactionType=Sale&startDate=${s}&endDate=${e}&page=${page}&size=1000`);
+          for (const x of r.content ?? []) {
+            const k = String(x.shipmentPackageId ?? x.orderNumber ?? "");
+            if (!k) continue;
+            const cur = by.get(k) ?? { packageId: x.shipmentPackageId != null ? String(x.shipmentPackageId) : null, orderNo: x.orderNumber ? String(x.orderNumber) : null, commission: 0, revenue: 0 };
+            cur.commission += Number(x.commissionAmount ?? 0) || 0;
+            cur.revenue += Number(x.sellerRevenue ?? 0) || 0;
+            by.set(k, cur);
+          }
+          await sleep(300);
+          if (page + 1 >= Number(r.totalPages ?? 0)) break;
+        }
+      }
+      return [...by.values()].map((x) => ({ ...x, commission: Math.round(x.commission * 100) / 100, revenue: Math.round(x.revenue * 100) / 100 }));
+    },
+
+    // Takip kodunu bildir (yalnızca paneldeki "Pazaryerine bildir" kuyruğundan). Paket "Picking" durumunda olmalı; Shipped sonrası değişmez.
+    async updateTracking(packageId: string, providerCode: string, trackingNo: string) {
+      if (!/^\d{1,20}$/.test(packageId)) throw new Error("Geçersiz paket numarası");
+      await tg(`/order/sellers/${SELLER_ID}/shipment-packages/${packageId}/tracking-details`, { method: "PUT", body: JSON.stringify({ cargoSenderNumber: trackingNo, providerCode }) });
     },
 
     // Müşteri soruları (QnA; uç ve alanlar dokümandan, canlıda doğrulanmadı). Müşteri adı alınmaz.

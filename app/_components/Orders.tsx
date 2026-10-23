@@ -9,14 +9,36 @@ const ST: Record<string, [string, string]> = {
   delivered: ["Teslim edildi", "ok"], cancelled: ["İptal", ""], returned: ["İade", "partial"], problem: ["Sorunlu", "error"],
 };
 const MP: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada", amazon: "Amazon" };
+const PUSH: Record<string, string> = { pending: "Sırada", sending: "Gönderiliyor", done: "Bildirildi", failed: "Gönderilemedi" };
+const PROVIDERS: [string, string][] = [["YKMP", "Yurtiçi"], ["ARASMP", "Aras"], ["MNGMP", "MNG / DHL eCommerce"], ["SURATMP", "Sürat"], ["PTTMP", "PTT"], ["HOROZMP", "Horoz"], ["TEXMP", "Trendyol Express"], ["KOLAYGELSINMP", "Kolay Gelsin"], ["CEVAMP", "Ceva"], ["SENDEOMP", "Sendeo"], ["UPSMP", "UPS"]];
+// Sipariş kâr dökümü (orders.fin, KDV dahil TL)
+function FinBox({ o }: { o: Row }) {
+  const f = o.fin;
+  if (!f) return <p className="muted" style={{ fontSize: 13 }}>{o.status === "cancelled" ? "İptal: kâr hesabına girmez." : "Kâr kalemleri bir sonraki senkronda hesaplanır."}</p>;
+  const act = o.act_commission != null && o.status !== "returned";
+  const comm = act ? Number(o.act_commission) : Number(f.commission ?? 0);
+  const net = f.net == null ? null : Number(f.net) + (act ? (Number(f.commission) - Number(o.act_commission)) / 1.2 : 0);
+  const vat = f.vat_due == null ? null : Number(f.vat_due) - (act ? (Number(o.act_commission) - Number(f.commission)) * 0.2 / 1.2 : 0);
+  const rows: [string, number | null][] = o.status === "returned"
+    ? [["İade masrafı (gidiş-dönüş kargo, paketleme)", -Number(f.return_loss ?? 0)]]
+    : [["Satış geliri", Number(f.revenue ?? 0)], [`− Komisyon${act ? " (gerçek)" : f.commission_rate != null ? ` (%${(Number(f.commission_rate) * 100).toFixed(1)}, tahmini)` : ""}`, -comm], ["− Kargo", -Number(f.shipping ?? 0)], ["− Sabit gider", -Number(f.service ?? 0)], ["− Ürün maliyeti", f.cost == null ? null : -Number(f.cost)], ["− Ödenecek KDV", vat == null ? null : -vat]];
+  return (
+    <div style={{ fontSize: 13, marginTop: 8 }}>
+      {rows.map(([l, v]) => <div key={l} className="row" style={{ justifyContent: "space-between" }}><span>{l}</span><span>{v == null ? "bilinmiyor" : tl(v)}</span></div>)}
+      <div className="row" style={{ justifyContent: "space-between", fontWeight: 700, borderTop: "1px solid var(--line)", marginTop: 4, paddingTop: 4 }}><span>Net kâr</span><span style={{ color: net != null && net < 0 ? "var(--bad)" : "var(--ok)" }}>{net == null ? "hesaplanamadı" : tl(net)}</span></div>
+      {f.stopaj ? <div className="muted">Stopaj %1: {tl(Number(f.stopaj))} (pazaryeri keser, gelir vergisinden düşülür)</div> : null}
+    </div>
+  );
+}
 const EV: Record<string, string> = { created: "Sipariş geldi", status: "Durum değişti", tracking: "Takip numarası geldi", note: "Not", supplier: "Tedarikçiye verildi" };
 
 // Tedarikçiye elle sipariş (Toptancım paneli): alıcı + adres + ürün kodları kopyalanır, "Verdim" ile işaretlenir, takip no girilir.
 // Pazaryerine hiçbir şey yazılmaz. Alıcı bilgisi biten siparişte 30 gün sonra silinir.
 function SupplierBox({ api, notify, det, reload }: { api: Api; notify: Notify; det: Row; reload: () => Promise<void> }) {
   const o = det.order;
-  const [track, setTrack] = useState(o.tracking_no ?? "");
-  const [cargo, setCargo] = useState(o.cargo_provider ?? "");
+  const [track, setTrack] = useState(o.supplier_tracking ?? "");
+  const [cargo, setCargo] = useState(o.supplier_cargo ?? "");
+  const [provider, setProvider] = useState(o.tracking_push_provider ?? "");
   const [note, setNote] = useState(o.supplier_note ?? "");
   const [busy, setBusy] = useState(false);
   const a = o.address ?? {};
@@ -25,6 +47,7 @@ function SupplierBox({ api, notify, det, reload }: { api: Api; notify: Notify; d
     `Adres: ${[a.fullAddress, a.neighborhood, a.district, a.city, a.postalCode].filter(Boolean).join(", ") || "-"}`,
     ...det.lines.map((l: Row) => `Ürün: ${l.qty} adet · ${l.title}${l.supplier_sku ? ` · Tedarikçi kodu: ${l.supplier_sku}` : ""}`),
     `Sipariş no: ${o.order_no ?? ""}`,
+    ...(o.tracking_no ? [`Kargo kodu (${MP[o.marketplace] ?? o.marketplace}): ${o.cargo_provider ? o.cargo_provider + " " : ""}${o.tracking_no}`] : []),
   ].join("\n");
   async function put(body: Row, ok: string) {
     setBusy(true);
@@ -45,10 +68,24 @@ function SupplierBox({ api, notify, det, reload }: { api: Api; notify: Notify; d
         </>
       )}
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <label className="f" style={{ flex: "1 1 160px" }}>Takip no<input value={track} onChange={(e) => setTrack(e.target.value)} placeholder="tedarikçinin verdiği" /></label>
+        <label className="f" style={{ flex: "1 1 160px" }}>Tedarikçinin takip no'su<input value={track} onChange={(e) => setTrack(e.target.value)} placeholder="tedarikçinin verdiği" /></label>
         <label className="f" style={{ flex: "1 1 120px" }}>Kargo<input value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="ör. Yurtiçi" /></label>
-        <button className="btn" disabled={busy || !track.trim()} onClick={() => put({ action: "tracking", tracking_no: track, cargo }, "Takip numarası kaydedildi (pazaryerine bildirme sonraki adım)")}>Kaydet</button>
+        <button className="btn" disabled={busy || !track.trim()} onClick={() => put({ action: "tracking", tracking_no: track, cargo }, "Tedarikçinin takip numarası kaydedildi")}>Kaydet</button>
       </div>
+      {o.marketplace === "trendyol" && o.supplier_tracking && !closed && (
+        <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: "var(--panel)" }}>
+          <div style={{ fontSize: 13 }}>
+            Tedarikçi <b>kendi kargo anlaşmasıyla</b> gönderdiyse takip kodunu Trendyol'a bildir (Trendyol'un verdiği kargo koduyla gönderdiyse gerekmez).
+            Paket "Hazırlanıyor" durumunda olmalı; kargoya verildikten sonra değiştirilemez.
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Kargo firması"><option value="">Kargo firması</option>{PROVIDERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <button className="btn" disabled={busy || !provider || o.tracking_push === "pending" || o.tracking_push === "sending"} onClick={() => { if (confirm(`Takip no ${o.supplier_tracking} Trendyol'a bildirilecek. Onaylıyor musun?`)) put({ action: "push_tracking", provider }, "Bildirim sıraya alındı; bir sonraki senkronda gönderilir"); }}>Trendyol'a bildir</button>
+            {o.tracking_push && <span className={`pill ${o.tracking_push === "done" ? "ok" : o.tracking_push === "failed" ? "error" : "info"}`}>{PUSH[o.tracking_push] ?? o.tracking_push}</span>}
+          </div>
+          {o.tracking_push === "failed" && o.tracking_push_error && <div style={{ fontSize: 12, color: "var(--bad)", marginTop: 4 }}>{o.tracking_push_error}</div>}
+        </div>
+      )}
       <label className="f" style={{ marginTop: 8 }}>Not (tedarikçi sipariş no vb.)<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} /></label>
       <button className="btn ghost" style={{ marginTop: 6 }} disabled={busy} onClick={() => put({ action: "note", note }, "Not kaydedildi")}>Notu kaydet</button>
     </div>
@@ -81,8 +118,8 @@ export default function Orders({ api, notify }: { api: Api; notify: Notify }) {
     <>
       <div className="card">
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Pazaryerlerinden 15 dakikada bir çekilir (salt okunur, pazaryerine bir şey yazılmaz). <b>Tahmini net kâr</b> sipariş anındaki maliyet, komisyon (+KDV), kargo ve KDV farkıyla fiyat motorunun formülüyle hesaplanır; iade payı dahil değildir.
-          Müşteri adı ve adresi şimdilik saklanmıyor (tedarikçiye iletme adımında açılacak).
+          Trendyol ve Hepsiburada siparişleri 15 dakikada bir çekilir. <b>Net kâr</b> sipariş anındaki maliyet, komisyon, kargo, sabit gider ve KDV farkıyla hesaplanır;
+          pazaryeri hakedişi gelince gerçek komisyonla düzeltilir, iadede gidiş-dönüş kargo zarar olarak yazılır. Alıcı adı ve adresi yalnızca tedarikçiye sipariş vermek için tutulur, biten siparişte 30 gün sonra silinir. Dönem raporu: <b>Satış raporu</b>.
         </p>
         <div className="kpis" style={{ marginBottom: 0 }}>
           <div className="kpi"><div className="label">Sipariş ({f.days} gün)</div><div className="value">{s.orders}</div><div className="hint">iptal/iade hariç</div></div>
@@ -118,7 +155,7 @@ export default function Orders({ api, notify }: { api: Api; notify: Notify }) {
                   <b>{MP[o.marketplace] ?? o.marketplace} · {o.order_no || "—"}</b> <span className={`pill ${tone}`}>{label}</span>
                   {o.needs_attention && <span className="pill partial" style={{ marginLeft: 4 }}>dikkat</span>}
                   {late && <span className="pill error" style={{ marginLeft: 4 }}>kargo süresi yaklaşıyor</span>}
-                  <div className="muted" style={{ fontSize: 12 }}>{when(o.ordered_at)}{o.city ? ` · ${o.city}` : ""}{o.marketplace_status ? ` · ${o.marketplace_status}` : ""}{o.tracking_no ? ` · ${o.cargo_provider ?? "kargo"} ${o.tracking_no}` : ""}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{when(o.ordered_at)}{o.city ? ` · ${o.city}` : ""}{o.marketplace_status ? ` · ${o.marketplace_status}` : ""}{o.tracking_no ? ` · ${o.cargo_provider ?? "kargo"} ${o.tracking_no}` : ""}{o.return_reason ? ` · iade: ${o.return_reason}` : ""}</div>
                   {o.needs_attention && o.attention_reason && <div style={{ fontSize: 12, color: "var(--warn)" }}>{o.attention_reason}</div>}
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -136,6 +173,8 @@ export default function Orders({ api, notify }: { api: Api; notify: Notify }) {
                           <span className="muted">{tl(Number(l.unit_price ?? 0))}{l.cost_snapshot != null ? ` · maliyet ${tl(Number(l.cost_snapshot))}` : " · maliyet yok"}{l.commission_rate != null ? ` · komisyon %${(Number(l.commission_rate) * 100).toFixed(1)}` : ""}{Number(l.discount) > 0 ? ` · indirim ${tl(Number(l.discount))}${Number(l.ty_discount) > 0 ? ` (pazaryeri karşılıyor ${tl(Number(l.ty_discount))})` : " (senden)"}` : ""}</span>
                         </div>
                       ))}
+                      <FinBox o={det.order} />
+                      {o.return_reason && <p style={{ fontSize: 13, margin: "8px 0 0", color: "var(--warn)" }}>İade nedeni: {o.return_reason}</p>}
                       {o.ship_deadline && <p style={{ fontSize: 13, margin: "8px 0 0" }}>Kargoya son teslim: <b>{when(o.ship_deadline)}</b></p>}
                       <h4 style={{ margin: "12px 0 4px" }}>Zaman çizelgesi</h4>
                       {det.events.map((e: Row, i: number) => (

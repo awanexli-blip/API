@@ -12,7 +12,7 @@ import { noteMissing } from "../core/attr-options.ts";
 // Garanti (K, 22.10): yalnızca elektrikli/elektronik ürünlerde 24 ay (ithalatçı garantili, faturalı); diğerlerinde 0
 const ELECTRONIC = /elektron|elektrik|şarj|pilli|usb|bluetooth|kulaklık|hoparlör|\bled\b|makine|makinası|cihaz|akıllı saat|powerbank|adaptör|lamba|vantilatör|\bfan\b|ısıtıcı|kamera|mikrofon|tıraş|epilatör|süpürge|terazi|tartı|baskül|radyo|drone|konsol|projeksiyon|kettle|blender|kompresör|watt|\d+\s?w\b|\d+\s?v\b|\d+\s?mah\b/i;
 export const hbWarrantyMonths = (title: string, category = "") => (ELECTRONIC.test(`${title} ${category}`) ? 24 : 0);
-import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
+import type { BatchCheck, BatchResult, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn } from "./types.ts";
 
 // Trendyol ile aynı kural: yeni ürünler "OS13-" + XML productCode (ASCII). Eşleştirme ÖS13- de dener.
 const SKU_PREFIXES = ["OS13-", "ÖS13-"];
@@ -385,8 +385,115 @@ export function createHepsiburada(): Marketplace {
       return out;
     },
 
+    // Siparişler (OMS, salt okunur). Resmi doküman bot korumalı: uçlar açık kaynak istemcilerden, her biri ayrı denenir ve
+    // sonuç (HTTP durumu, kayıt sayısı, alan adları; kişisel veri yok) orderDiag'a yazılır. Sipariş kimliği = sipariş no
+    // (paketlenince paket no değişse de kopya olmaz). Alıcı ad + adres yalnızca tedarikçiye sipariş için (K kararı 23.10).
+    async fetchOrders(fromMs: number, toMs: number): Promise<OrderIn[]> {
+      const sources: [string, string, boolean][] = [
+        [`/orders/merchantid/${MERCHANT}`, "Open", false],              // ödemesi tamamlanmış, paketlenmemiş
+        [`/packages/merchantid/${MERCHANT}`, "Packaged", false],        // paketlenmiş, kargoya verilmemiş
+        [`/packages/merchantid/${MERCHANT}/shipped`, "Shipped", true],
+        [`/packages/merchantid/${MERCHANT}/delivered`, "Delivered", true],
+        [`/packages/merchantid/${MERCHANT}/undelivered`, "Undelivered", true],
+        [`/orders/merchantid/${MERCHANT}/cancelled`, "Cancelled", true],
+      ];
+      const fmt = (ms: number) => new Date(ms + 3 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
+      const diag: Record<string, unknown> = {};
+      const byOrder = new Map<string, OrderIn>();
+      for (const [path, tag, dated] of sources) {
+        const d: Record<string, unknown> = {};
+        diag[tag] = d;
+        let n = 0;
+        try {
+          let useDates = dated;
+          for (let offset = 0, page = 0; page < 30; page++, offset += 100) {
+            const q = `?offset=${offset}&limit=100${useDates ? `&begindate=${encodeURIComponent(fmt(fromMs))}&enddate=${encodeURIComponent(fmt(toMs))}` : ""}`;
+            let r: any;
+            try { r = await hb(`${client.OMS}${path}${q}`); }
+            catch (e: any) {
+              if (!useDates || !/ 400 /.test(String(e?.message))) throw e;
+              useDates = false; d.noDates = true;
+              r = await hb(`${client.OMS}${path}?offset=${offset}&limit=100`);
+            }
+            const list = Array.isArray(r) ? r : firstArray(r);
+            if (page === 0) { d.keys = Object.keys(r ?? {}).slice(0, 12).join(","); if (list[0]) d.itemKeys = Object.keys(list[0]).sort().join(",").slice(0, 600); }
+            for (const x of list) { const o = hbOrder(x, tag); if (!o) continue; n++; mergeOrder(byOrder, o); }
+            await sleep(300);
+            const total = Number(r?.totalCount ?? r?.total ?? NaN);
+            if (list.length < 100 || (Number.isFinite(total) && offset + 100 >= total)) break;
+          }
+          d.ok = n;
+        } catch (e: any) { d.error = String(e?.message ?? e).slice(0, 160); }
+      }
+      this.orderDiag = diag;
+      return [...byOrder.values()].filter((o) => !o.orderedAt || (o.orderedAt >= fromMs - 86400000));
+    },
+
+    // İade talepleri (claims; uç doğrulanmadı, hata olursa boş döner ve teşhise yazılır)
+    async fetchClaims(fromMs: number): Promise<ClaimIn[]> {
+      const out: ClaimIn[] = [];
+      for (let offset = 0, page = 0; page < 20; page++, offset += 100) {
+        const r = await hb(`${client.OMS}/claims/merchantid/${MERCHANT}?offset=${offset}&limit=100`);
+        const list = Array.isArray(r) ? r : firstArray(r);
+        for (const c of list) {
+          const id = String(c.claimNumber ?? c.claimId ?? c.id ?? "");
+          if (!id) continue;
+          const at = Date.parse(c.createdDate ?? c.claimDate ?? c.requestDate ?? "") || null;
+          if (at && at < fromMs) continue;
+          const its: any[] = c.items ?? c.claimItems ?? c.lineItems ?? [c];
+          const lines = its.map((it) => ({ key: String(it.merchantSku ?? it.sku ?? ""), title: String(it.productName ?? it.name ?? "").slice(0, 200), qty: Number(it.quantity ?? 1) || 1,
+            price: money(it.price ?? it.unitPrice ?? it.totalPrice) ?? 0, status: String(it.status ?? c.status ?? ""), reason: it.reason ?? it.claimReason ?? c.reason ?? c.claimReason ?? null }));
+          out.push({ id, orderNo: c.orderNumber ? String(c.orderNumber) : null, packageId: null, status: String(c.status ?? ""), reason: lines[0]?.reason ?? null, reasonCode: c.reasonCode ?? null,
+            claimedAt: at, amount: Math.round(lines.reduce((t, l) => t + l.price * l.qty, 0) * 100) / 100, cargo: c.cargoCompany ?? null, tracking: c.trackingNumber ?? null, lines });
+        }
+        await sleep(300);
+        if (list.length < 100) break;
+      }
+      return out;
+    },
+
     diagnostics() {
       return { hbEnv: prod ? "prod" : "sit", listingTotals: { loaded: items.length, closed: items.filter((i) => i.closed).length }, sampleHepsiburada: items.slice(0, 3) };
     },
   };
+}
+
+// Tutar alanı sayı ya da { amount, currency } olabilir
+const money = (x: any): number | null => { const v = x != null && typeof x === "object" ? x.amount ?? x.value : x; return v != null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null; };
+const msOf = (x: any): number | null => (x == null ? null : typeof x === "number" ? x : Date.parse(String(x)) || null);
+
+// OMS kaydı (satır ya da paket) -> sipariş. Ad/adres yalnızca tedarikçiye iletmek için; loglanmaz.
+export function hbOrder(x: any, tag: string): OrderIn | null {
+  const its: any[] = x.items ?? x.lineItems ?? x.orderLines ?? x.lines ?? [x];
+  const first = its[0] ?? {};
+  const orderNo = String(x.orderNumber ?? first.orderNumber ?? x.packageNumber ?? "");
+  if (!orderNo) return null;
+  const lines = its.map((it, i) => {
+    const qty = Number(it.quantity ?? 1) || 1;
+    const unit = money(it.unitPrice) ?? money(it.price) ?? ((money(it.totalPrice) ?? 0) / qty);
+    return { lineNo: i + 1, lineId: String(it.id ?? it.lineItemId ?? it.orderLineId ?? i), key: String(it.merchantSku ?? it.sku ?? ""), title: String(it.productName ?? it.name ?? "").slice(0, 200), qty, unitPrice: unit,
+      tyDiscount: money(it.hbDiscount?.totalPrice ?? it.hbDiscount), discount: money(it.totalDiscount ?? it.merchantDiscount?.totalPrice), commissionAmt: money(it.commission),
+      commissionRate: Number(it.commissionRate) > 0 && Number(it.commissionRate) < 100 ? Number(it.commissionRate) / 100 : null } as any;
+  });
+  const a = x.shippingAddress ?? first.shippingAddress ?? x.deliveryAddress ?? null;
+  const total = lines.reduce((t, l) => t + l.unitPrice * l.qty, 0);
+  return {
+    packageId: orderNo, orderNo, status: String(x.status ?? first.status ?? tag), orderedAt: msOf(x.orderDate ?? first.orderDate), total: Math.round(total * 100) / 100, currency: "TRY",
+    deadline: msOf(x.dueDate ?? first.dueDate ?? x.deliveryDueDate), cargo: x.cargoCompany ?? first.cargoCompany ?? x.cargoCompanyModel?.name ?? null,
+    tracking: x.trackingNumber ?? x.barcode ?? first.trackingNumber ?? null, city: a?.city ?? null,
+    customer: { name: String(x.customerName ?? first.customerName ?? a?.name ?? x.recipientName ?? "").trim() || null,
+      address: a ? { fullAddress: a.address ?? a.fullAddress ?? undefined, district: a.district ?? a.town ?? undefined, city: a.city ?? undefined, postalCode: a.postalCode ?? undefined } : null },
+    lines,
+  };
+}
+
+// Aynı sipariş birden çok listede (açık, paketli, kargoda) görünebilir: sonraki listenin durumu geçerli, satırlar satır kimliğiyle birleşir
+export function mergeOrder(map: Map<string, OrderIn>, o: OrderIn) {
+  const cur = map.get(o.packageId);
+  if (!cur) { map.set(o.packageId, o); return; }
+  const seen = new Set(cur.lines.map((l: any) => l.lineId));
+  const extra = o.lines.filter((l: any) => !seen.has(l.lineId));
+  const lines = [...cur.lines, ...extra].map((l, i) => ({ ...l, lineNo: i + 1 }));
+  map.set(o.packageId, { ...cur, ...o, customer: o.customer?.name ? o.customer : cur.customer, tracking: o.tracking ?? cur.tracking, cargo: o.cargo ?? cur.cargo,
+    orderedAt: o.orderedAt ?? cur.orderedAt, deadline: o.deadline ?? cur.deadline, lines, total: Math.round(lines.reduce((t, l) => t + l.unitPrice * l.qty, 0) * 100) / 100 });
 }

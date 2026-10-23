@@ -6,7 +6,9 @@ export const dynamic = "force-dynamic";
 // Siparişler (Faz 6 F3-F4): liste + özet, ?id= ile detay (satırlar, zaman çizelgesi, alıcı ad/adres yalnızca detayda).
 // PUT: tedarikçiye elle verildi / takip no / not (pazaryerine bir şey yazılmaz). Alıcı bilgisi yalnızca editor+ görür, loglanmaz.
 const STATUSES = ["", "new", "ready", "sent_to_supplier", "shipped", "delivered", "cancelled", "returned", "problem"];
-const COLS = "id, marketplace, order_no, status, marketplace_status, total, currency, ordered_at, ship_deadline, cargo_provider, tracking_no, city, est_cost, est_net, needs_attention, attention_reason, updated_at";
+// Trendyol kargo firması kodları (providerCode, "MP" = pazaryeri anlaşması)
+const PROVIDERS = ["YKMP", "ARASMP", "MNGMP", "SURATMP", "PTTMP", "HOROZMP", "TEXMP", "KOLAYGELSINMP", "CEVAMP", "SENDEOMP", "DHLECOMMP", "UPSMP"];
+const COLS = "id, marketplace, order_no, status, marketplace_status, total, currency, ordered_at, ship_deadline, cargo_provider, tracking_no, city, est_cost, est_net, needs_attention, attention_reason, updated_at, return_reason, tracking_push";
 
 export async function GET(req: NextRequest) {
   if (!(await requireRole(req, "editor"))) return forbidden("editor");
@@ -16,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (id) {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return bad("Geçersiz sipariş");
     const [o, l, e] = await Promise.all([
-      db.from("orders").select(COLS + ", customer_name, address, supplier_note, sent_to_supplier_at, pii_purged_at").eq("id", id).maybeSingle(),
+      db.from("orders").select(COLS + ", customer_name, address, supplier_note, sent_to_supplier_at, pii_purged_at, supplier_tracking, supplier_cargo, fin, units, act_commission, act_revenue, tracking_push_provider, tracking_push_error, tracking_pushed_at").eq("id", id).maybeSingle(),
       db.from("order_lines").select("line_no, listing_key, product_id, title, qty, unit_price, commission_rate, cost_snapshot, list_price, discount, ty_discount, supplier_sku").eq("order_id", id).order("line_no"),
       db.from("order_events").select("at, kind, actor, detail").eq("order_id", id).order("at"),
     ]);
@@ -33,7 +35,7 @@ export async function GET(req: NextRequest) {
   if (mp) list = list.eq("marketplace", mp);
   if (status) list = list.eq("status", status);
   if (sp.get("attention") === "1") list = list.eq("needs_attention", true);
-  if (q) list = list.or(`order_no.ilike.%${q}%,tracking_no.ilike.%${q}%`);
+  if (q) list = list.or(`order_no.ilike.%${q}%,tracking_no.ilike.%${q}%,supplier_tracking.ilike.%${q}%`);
   let all: any = db.from("orders").select("status, total, est_net, needs_attention").gte("ordered_at", since).limit(20000);
   if (mp) all = all.eq("marketplace", mp);
   const [ls, sm] = await Promise.all([list, all]);
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ items: ls.data ?? [], total: ls.count ?? 0, page, summary: s });
 }
 
-// { id, action: "supplier_sent", note? } | { id, action: "tracking", tracking_no, cargo? } | { id, action: "note", note }
+// { id, action: "supplier_sent", note? } | { id, action: "tracking", tracking_no, cargo? } | { id, action: "push_tracking", provider } | { id, action: "note", note }
 export async function PUT(req: NextRequest) {
   const a = await requireRole(req, "editor");
   if (!a) return forbidden("editor");
@@ -69,8 +71,21 @@ export async function PUT(req: NextRequest) {
   } else if (b.action === "tracking") {
     const t = String(b.tracking_no ?? "").trim();
     if (!/^[A-Za-z0-9-]{6,40}$/.test(t)) return bad("Takip numarası 6-40 harf/rakam olmalı");
-    patch = { tracking_no: t, cargo_provider: String(b.cargo ?? "").trim().slice(0, 60) || null };
-    event = { kind: "tracking", detail: { cargo: patch.cargo_provider, by: "elle" } };
+    // Tedarikçinin takip no'su ayrı tutulur: pazaryerinin kargo kodu (tracking_no) her senkronda pazaryerinden gelir
+    patch = { supplier_tracking: t, supplier_cargo: String(b.cargo ?? "").trim().slice(0, 60) || null };
+    event = { kind: "tracking", detail: { cargo: patch.supplier_cargo, by: "elle" } };
+  } else if (b.action === "push_tracking") {
+    // Takip kodunu pazaryerine bildir (F5, yalnızca Trendyol): kullanıcı onayıyla kuyruğa girer, worker gönderir (pending -> sending -> done/failed)
+    const provider = String(b.provider ?? "").trim().toUpperCase();
+    if (!PROVIDERS.includes(provider)) return bad("Kargo firmasını seç");
+    const { data: o } = await db.from("orders").select("marketplace, status, supplier_tracking, tracking_push").eq("id", id).maybeSingle();
+    if (!o) return bad("Sipariş yok");
+    if (o.marketplace !== "trendyol") return bad("Takip kodu bildirme şimdilik yalnızca Trendyol'da");
+    if (!o.supplier_tracking) return bad("Önce tedarikçinin takip numarasını kaydet");
+    if (["delivered", "cancelled", "returned"].includes(o.status)) return bad("Teslim edilmiş / iptal / iade siparişte takip kodu değiştirilemez");
+    if (o.tracking_push === "pending" || o.tracking_push === "sending") return bad("Zaten gönderim sırasında");
+    patch = { tracking_push: "pending", tracking_push_provider: provider, tracking_push_error: null };
+    event = { kind: "tracking", detail: { action: "pazaryerine bildirilecek", provider } };
   } else if (b.action === "note") {
     patch = { supplier_note: note ?? null };
     event = { kind: "note", detail: {} };

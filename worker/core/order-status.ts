@@ -9,6 +9,14 @@ const MAP: Record<string, Record<string, OrderStatus>> = {
     shipped: "shipped", atcollectionpoint: "shipped", delivered: "delivered",
     cancelled: "cancelled", unsupplied: "cancelled", returned: "returned", undelivered: "problem",
   },
+  // Hepsiburada OMS (durum alanı yoksa geldiği liste: Open, Packaged, Shipped, Delivered, Undelivered, Cancelled)
+  hepsiburada: {
+    open: "new", new: "new", paymentcompleted: "new", unpacked: "new", readytopack: "new",
+    packaged: "ready", readytoship: "ready", invoiced: "ready",
+    shipped: "shipped", intransit: "shipped", atcollectionpoint: "shipped", delivered: "delivered",
+    cancelled: "cancelled", cancelledbymerchant: "cancelled", cancelledbycustomer: "cancelled", cancelledbysap: "cancelled",
+    returned: "returned", claimcreated: "returned", undelivered: "problem",
+  },
 };
 
 export function mapOrderStatus(marketplace: string, raw: string): { status: OrderStatus; attention?: string } {

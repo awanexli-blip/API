@@ -14,7 +14,7 @@ import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, learnFromListings, requeueFixable, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
 import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts";
 import { recordBatches, applyStates, refreshBatches } from "./core/mp-status.ts";
-import { syncOrders } from "./core/orders.ts";
+import { syncOrders, syncClaims, syncSettlements, pushTracking, loadReservations } from "./core/orders.ts";
 import { syncInbox, notifyOrders } from "./core/inbox.ts";
 import { fixImages } from "./core/image-fix.ts";
 import { flushAttrOptions } from "./core/attr-options.ts";
@@ -378,8 +378,13 @@ async function main() {
   if (mp.fetchOrders && mode !== "preview") {
     const full = new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1";
     const since = new Date().toISOString();
-    summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 14 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 30 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
     if (summary.orders?.inserted) summary.orders.notified = await notifyOrders(db, mp, since).catch(() => 0);
+    // İadeler (her çalışmada son 7 gün, saatte bir 30 gün) ve hakediş (saatte bir): salt okunur
+    if (mp.fetchClaims) summary.claims = await syncClaims(db, mp, full ? 30 : 7).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    if (mp.fetchSettlements && full) summary.settlements = await syncSettlements(db, mp, 30).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    // Panelden onaylanan takip kodu bildirimleri (yalnızca yazma modlarında)
+    if (mp.updateTracking && mode !== "preview") summary.trackingPush = await pushTracking(db, mp).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
   }
   // Görseli görünmeyen onaylı ilanlar (tedarikçi WebP): JPG görseller yeniden gönderilir, sonuç toplu kontrolde okunur
   if (doUpdate && mp.updateImages) {
@@ -407,6 +412,19 @@ async function main() {
   }
 
   if (doUpdate) {
+    // Stok rezervasyonu (F6): tedarikçiye verilmemiş açık siparişlerin adedi, XML stoğu düşene kadar stoktan düşülür
+    const res = await loadReservations(db).catch(() => null);
+    if (res && (res.byProduct.size || res.byKey.size)) {
+      const resv = new Map(res.byKey);
+      const pids = [...res.byProduct.keys()];
+      for (let i = 0; i < pids.length; i += 200) {
+        const { data } = await db.from("marketplace_listings").select("listing_key, product_id").eq("marketplace", marketplaceId).in("product_id", pids.slice(i, i + 200));
+        for (const l of data ?? []) resv.set(l.listing_key, Math.max(resv.get(l.listing_key) ?? 0, res.byProduct.get(l.product_id) ?? 0));
+      }
+      let n = 0;
+      for (const it of toUpdate) { const q = resv.get(it.id); if (q && it.quantity > 0) { it.quantity = Math.max(0, it.quantity - q); n++; } }
+      summary.reserved = { listings: n, products: res.byProduct.size + res.byKey.size };
+    }
     const r = await mp.pushInventory(toUpdate);
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
 

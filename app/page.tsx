@@ -25,6 +25,7 @@ import ListingStatus from "./_components/ListingStatus";
 import AttrFix from "./_components/AttrFix";
 import Orders from "./_components/Orders";
 import Inbox from "./_components/Inbox";
+import SalesReport from "./_components/SalesReport";
 import { applyTheme, currentTheme, type Theme } from "./_components/theme";
 
 type Role = "viewer" | "editor" | "admin";
@@ -125,6 +126,7 @@ function Panel({ token, email }: { token: string; email: string }) {
 
   const items: { path: string; label: string; icon: string; show: boolean; group?: string; tag?: string; active: boolean }[] = [
     { path: "panel", label: "Gösterge paneli", icon: "home", show: true, active: section === "panel" },
+    { path: "satis", label: "Satış raporu", icon: "activity", show: canEdit, active: section === "satis" },
     { path: "siparisler", label: "Siparişler", icon: "cart", show: canEdit, active: section === "siparisler" },
     { path: "sorular", label: "Müşteri soruları", icon: "info", show: canEdit, active: section === "sorular" },
     { path: "urunler", label: "Ürünler", icon: "box", show: true, group: "Katalog", active: section === "urunler" },
@@ -160,6 +162,7 @@ function Panel({ token, email }: { token: string; email: string }) {
   let page: React.ReactNode;
   if (!role) page = <div className="card"><div className="skeleton" style={{ width: "40%", marginBottom: 10 }} /><div className="skeleton" style={{ width: "70%" }} /></div>;
   else if (section === "panel") page = <Dashboard api={api} notify={notify} role={role} go={nav} />;
+  else if (section === "satis" && canEdit) page = <SalesReport api={api} notify={notify} go={nav} />;
   else if (section === "siparisler" && canEdit) page = <Orders api={api} notify={notify} />;
   else if (section === "sorular" && canEdit) page = <Inbox api={api} notify={notify} />;
   else if (section === "urunler") page = <Products api={api} notify={notify} />;
@@ -193,8 +196,9 @@ function Panel({ token, email }: { token: string; email: string }) {
 
   const bottom: [string, string, string, boolean][] = [
     ["panel", "Panel", "home", section === "panel"],
-    ["urunler", "Ürünler", "box", section === "urunler"],
-    [isAdmin ? "tedarikciler" : "ice-aktar", isAdmin ? "Tedarikçi" : "İçe aktar", isAdmin ? "truck" : "upload", section === "tedarikciler" || (!isAdmin && section === "ice-aktar")],
+    ...(canEdit
+      ? ([["satis", "Satış", "activity", section === "satis"], ["siparisler", "Sipariş", "cart", section === "siparisler"]] as [string, string, string, boolean][])
+      : ([["urunler", "Ürünler", "box", section === "urunler"], ["ice-aktar", "İçe aktar", "upload", section === "ice-aktar"]] as [string, string, string, boolean][])),
     [isAdmin ? "pazaryeri/trendyol/ozet" : "ayarlar", isAdmin ? "Pazaryeri" : "Ayarlar", isAdmin ? "store" : "settings", isAdmin ? section === "pazaryeri" : section === "ayarlar"],
   ];
 

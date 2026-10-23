@@ -20,11 +20,17 @@ export interface Listing {
   status?: "active" | "closed" | "pending";
 }
 
-export type OrderLineIn = { lineNo: number; key: string; title: string; qty: number; unitPrice: number; listPrice?: number | null; discount?: number | null; tyDiscount?: number | null };
+export type OrderLineIn = { lineNo: number; key: string; title: string; qty: number; unitPrice: number; listPrice?: number | null; discount?: number | null; tyDiscount?: number | null;
+  commissionRate?: number | null; commissionAmt?: number | null }; // pazaryerinin siparişte bildirdiği komisyon (oran 0-1 / tutar KDV dahil)
 // Alıcı ad-soyad ve teslimat adresi: yalnızca tedarikçiye sipariş vermek için (K kararı 23.10), loglanmaz, 30 gün sonra silinir
 export type OrderCustomer = { name: string | null; address: { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string } | null };
 export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; customer?: OrderCustomer; lines: OrderLineIn[] };
 export type QuestionIn = { id: string; text: string; productTitle: string; productKey: string | null; imageUrl: string | null; askedAt: number | null };
+// İade talebi (müşteri adı alınmaz)
+export type ClaimLineIn = { key: string; title: string; qty: number; price: number; status: string; reason: string | null };
+export type ClaimIn = { id: string; orderNo: string | null; packageId: string | null; status: string; reason: string | null; reasonCode: string | null; claimedAt: number | null; amount: number; cargo: string | null; tracking: string | null; lines: ClaimLineIn[] };
+// Hakediş kaydı (gerçek komisyon ve satıcıya ödenecek tutar), paket bazında toplanır
+export type SettlementIn = { packageId: string | null; orderNo: string | null; commission: number; revenue: number };
 export type SalesDay = { day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
 
 export interface BatchCheck {
@@ -112,6 +118,13 @@ export interface Marketplace {
   updateImages?(items: { contentId: string; images: string[] }[]): Promise<BatchResult>;
   /** Cevap bekleyen müşteri soruları (müşteri adı döndürülmez) ve cevap gönderme (yalnızca onaylı cevap, worker/core/inbox.ts) */
   fetchQuestions?(): Promise<QuestionIn[]>;
+  /** İade talepleri (salt okunur) ve hakediş kayıtları (gerçek komisyon) */
+  fetchClaims?(fromMs: number, toMs: number): Promise<ClaimIn[]>;
+  fetchSettlements?(fromMs: number, toMs: number): Promise<SettlementIn[]>;
+  /** Takip kodunu pazaryerine bildir (yalnızca paneldeki onaylı kuyruktan, worker/core/orders.ts pushTracking) */
+  updateTracking?(packageId: string, providerCode: string, trackingNo: string): Promise<void>;
+  /** Sipariş uçlarının teşhisi (hangi uç çalıştı, alan adları; kişisel veri yok) */
+  orderDiag?: Record<string, unknown>;
   answerQuestion?(id: string, text: string): Promise<void>;
   /** İsteğe bağlı: yaprak kategoriler (başlıktan kategori bulmak için, core/category-tree.ts) */
   categoryLeaves?(): Promise<{ id: string; name: string; path: string[] }[]>;
