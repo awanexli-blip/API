@@ -249,26 +249,44 @@ async function rememberLearned(ctx: DbCtx, items: any[], failed: Set<string>) {
 
 // Gönderim kuyruğu boşalınca, düzeltilebilir yerel hatalar (kategori yok, zorunlu özellik, marka riski) 2 saatte bir yeniden sıraya alınır:
 // bu arada öğrenilen özellikler (Trendyol), kategori örnekleri ve kod düzeltmeleri devreye girer. Pazaryerine yazmaz; yalnızca kuyruk.
-export async function requeueFixable(ctx: DbCtx, max = 3000): Promise<{ requeued: number; jobs: number } | { skipped: string }> {
+// Önce "sırada" görünüp işi olmayan ilanlar (kuyruk boşken 1 saatten eski "queued" = takılı), sonra düzeltilebilir hatalar (en eskiden).
+// 23.10 hatası: anahtar saate göreydi; aynı saatte ikinci çağrıda iş çakışıp oluşmuyor, ilanlar işsiz "sırada" kalıyordu (HB 8.278, Trendyol 1.360).
+// Artık önce iş yazılır, yalnızca yazılan işin ilanları "sırada" yapılır.
+export async function requeueFixable(ctx: DbCtx, max = 3000): Promise<{ requeued: number; stale: number; jobs: number } | { skipped: string }> {
   const type = `send_products:${ctx.marketplaceId}`;
   const { count } = await ctx.db.from("jobs").select("id", { count: "exact", head: true }).eq("type", type).in("status", ["queued", "running"]);
   if (count) return { skipped: `kuyrukta ${count} iş var` };
-  const since = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
-  const { data, error } = await ctx.db.from("marketplace_listings").select("listing_key, product_id, last_error")
-    .eq("marketplace", ctx.marketplaceId).eq("status", "error").lt("updated_at", since).not("product_id", "is", null).limit(max);
-  if (error) return { skipped: error.message };
-  const fixable = (data ?? []).filter((r: any) => /kategorisi yok|zorunlu özellik|Marka riski|özellik listesi|görsel hazırlanamadı/i.test(String(r.last_error ?? "")));
-  if (!fixable.length) return { requeued: 0, jobs: 0 };
-  const now = new Date().toISOString();
-  const keys = fixable.map((r: any) => r.listing_key);
-  for (let i = 0; i < keys.length; i += 500) await ctx.db.from("marketplace_listings").update({ status: "queued", updated_at: now }).eq("marketplace", ctx.marketplaceId).in("listing_key", keys.slice(i, i + 500));
-  const ids = [...new Set(fixable.map((r: any) => r.product_id as string))];
-  let jobs = 0;
-  for (let i = 0; i < ids.length; i += 100) {
-    const { error: je } = await ctx.db.from("jobs").insert({ type, marketplace: ctx.marketplaceId, payload: { product_ids: ids.slice(i, i + 100) }, idempotency_key: `retry:${ctx.marketplaceId}:${now.slice(0, 13)}:${i / 100}`, created_by: "otomatik yeniden deneme" });
-    if (!je) jobs++;
+  const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
+  const stale = await ctx.db.from("marketplace_listings").select("listing_key, product_id")
+    .eq("marketplace", ctx.marketplaceId).eq("status", "queued").lt("updated_at", hourAgo).not("product_id", "is", null).order("updated_at").limit(max);
+  if (stale.error) return { skipped: stale.error.message };
+  const picked: { listing_key: string; product_id: string }[] = [...(stale.data ?? [])];
+  if (picked.length < max) {
+    const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+    const { data, error } = await ctx.db.from("marketplace_listings").select("listing_key, product_id, last_error")
+      .eq("marketplace", ctx.marketplaceId).eq("status", "error").lt("updated_at", since).not("product_id", "is", null).order("updated_at").limit(max * 2);
+    if (error) return { skipped: error.message };
+    for (const r of data ?? []) {
+      if (picked.length >= max) break;
+      if (/kategorisi yok|zorunlu özellik|Marka riski|özellik listesi|görsel hazırlanamadı|görsel yok/i.test(String(r.last_error ?? ""))) picked.push(r);
+    }
   }
-  return { requeued: fixable.length, jobs };
+  if (!picked.length) return { requeued: 0, stale: 0, jobs: 0 };
+  const now = new Date().toISOString();
+  const byProduct = new Map<string, string[]>();
+  for (const r of picked) byProduct.set(r.product_id, [...(byProduct.get(r.product_id) ?? []), r.listing_key]);
+  const ids = [...byProduct.keys()];
+  let jobs = 0, requeued = 0;
+  for (let i = 0; i < ids.length; i += 100) {
+    const part = ids.slice(i, i + 100);
+    const { error: je } = await ctx.db.from("jobs").insert({ type, marketplace: ctx.marketplaceId, payload: { product_ids: part }, idempotency_key: `retry:${ctx.marketplaceId}:${now}:${i / 100}`, created_by: "otomatik yeniden deneme" });
+    if (je) continue;
+    jobs++;
+    const keys = part.flatMap((p) => byProduct.get(p) ?? []);
+    requeued += keys.length;
+    for (let k = 0; k < keys.length; k += 500) await ctx.db.from("marketplace_listings").update({ status: "queued", updated_at: now }).eq("marketplace", ctx.marketplaceId).in("listing_key", keys.slice(k, k + 500));
+  }
+  return { requeued, stale: stale.data?.length ?? 0, jobs };
 }
 
 // Onaylı Trendyol ilanlarının özellikleri ve kategori adı ürün kaydına (yalnızca boş anahtarlar; elle girilen ezilmez).
