@@ -19,7 +19,7 @@ export async function syncInbox(db: any, mp: Marketplace, tone?: string | null) 
       const { data: lock } = await db.from("inbox_items").update({ status: "sending", updated_at: new Date().toISOString() }).eq("id", it.id).eq("status", "approved").select("id");
       if (!lock?.length) continue;
       try {
-        await mp.answerQuestion(it.external_id, String(it.final_answer ?? ""));
+        if (!String(it.external_id).startsWith("TEST-")) await mp.answerQuestion(it.external_id, String(it.final_answer ?? "")); // deneme sorusu pazaryerine gitmez
         await db.from("inbox_items").update({ status: "answered", answered_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() }).eq("id", it.id);
         out.sent = (out.sent as number) + 1;
       } catch (e: any) {
@@ -48,7 +48,7 @@ export async function syncInbox(db: any, mp: Marketplace, tone?: string | null) 
   // Pazaryerinde artık beklemeyen (başka yerden cevaplanmış) sorular kapanır
   const waiting = new Set(ids);
   const { data: open } = await db.from("inbox_items").select("id, external_id").eq("marketplace", mp.id).eq("kind", "question").in("status", ["new", "drafted"]).limit(1000);
-  const gone = (open ?? []).filter((r: any) => !waiting.has(r.external_id)).map((r: any) => r.id);
+  const gone = (open ?? []).filter((r: any) => !waiting.has(r.external_id) && !String(r.external_id).startsWith("TEST-")).map((r: any) => r.id);
   if (gone.length) {
     await db.from("inbox_items").update({ status: "answered_elsewhere", updated_at: new Date().toISOString() }).in("id", gone);
     out.closedElsewhere = gone.length;

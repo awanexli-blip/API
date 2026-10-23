@@ -5,6 +5,7 @@ import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
+import { noteMissing } from "../core/attr-options.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
@@ -188,7 +189,8 @@ export function createTrendyol(): Marketplace {
         const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
         if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
       }
-      if (val) out.set(id, val); else missing.push(name);
+      if (val) out.set(id, val);
+      else { missing.push(name); noteMissing("trendyol", cid, name, (await attributeValues(cid, id)).map((v) => v.name), !!ca.allowCustom, p.catName); }
     }
     const attributes = [...out.values()].map(({ attributeId, attributeValueId, customAttributeValue }) => (attributeValueId ? { attributeId, attributeValueId } : { attributeId, customAttributeValue }));
     return { attributes, missing, learned };

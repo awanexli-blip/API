@@ -103,7 +103,10 @@ export default function Inbox({ api, notify }: { api: Api; notify: Notify }) {
           Yeni sipariş ve sorular telefonuna gelir; soruyu oradan <b>Onayla</b> ile gönderebilir ya da mesajı yanıtlayıp kendi cevabını yazabilirsin.
           Kurulum: @BotFather'dan bot aç, jetonu ve sohbet numaranı GitHub Secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) ve Vercel'e (aynı ikisi + TELEGRAM_WEBHOOK_SECRET) gir, sonra aşağıdaki düğmeye bas.
         </p>
-        <button className="btn" onClick={connectTelegram}>Telegram'ı bağla</button>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <button className="btn" onClick={connectTelegram}>Telegram'ı bağla</button>
+          <button className="btn ghost" onClick={async () => { try { await api("/api/telegram", { method: "PUT", body: JSON.stringify({ test: true }) }); notify("good", "Deneme sorusu Telegram'a gönderildi: onayla ya da yanıtla (pazaryerine gitmez)."); load(); } catch (e: any) { notify("err", e.message); } }}>Deneme sorusu gönder</button>
+        </div>
       </div>
     </>
   );

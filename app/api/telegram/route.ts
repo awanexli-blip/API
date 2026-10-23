@@ -19,6 +19,21 @@ export async function PUT(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
   const missing = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_WEBHOOK_SECRET"].filter((k) => !process.env[k]);
   if (missing.length) return bad(`Vercel ortam değişkenleri eksik: ${missing.join(", ")}`);
+  // Deneme: örnek soru (TEST- kimlikli; onaylansa da pazaryerine gitmez, worker "cevaplandı (deneme)" yapar)
+  if ((await req.json().catch(() => ({}))).test) {
+    const draft = "Merhaba, ürünümüz şarjlıdır ve kutusunda USB şarj kablosu bulunmaktadır. İyi alışverişler dileriz.";
+    const { data: it, error } = await admin().from("inbox_items").insert({ marketplace: "trendyol", kind: "question", external_id: `TEST-${Date.now()}`, product_title: "Deneme ürünü: Şarjlı Masa Lambası", text: "Merhaba, bu lamba şarjlı mı, kablosu kutudan çıkıyor mu?", asked_at: new Date().toISOString(), status: "drafted", ai_draft: draft, ai_unsure: false }).select("id").single();
+    if (error) return bad(error.message);
+    const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(10000), body: JSON.stringify({
+      chat_id: process.env.TELEGRAM_CHAT_ID, parse_mode: "HTML",
+      text: `🧪 <b>DENEME sorusu</b> (Trendyol'a gitmez)\n<b>Ürün:</b> Deneme ürünü: Şarjlı Masa Lambası\n<b>Soru:</b> Merhaba, bu lamba şarjlı mı, kablosu kutudan çıkıyor mu?\n\n💬 <b>Taslak:</b>\n${draft}\n\nGöndermek için <b>Onayla</b>; değiştirmek için bu mesajı <b>yanıtla</b> ve cevabı yaz.`,
+      reply_markup: { inline_keyboard: [[{ text: "✅ Onayla ve gönder", callback_data: `qa:ok:${it.id}` }, { text: "🚫 Yoksay", callback_data: `qa:no:${it.id}` }]] },
+    }) }).catch(() => null);
+    const j: any = await r?.json().catch(() => ({}));
+    if (!j?.ok) return bad(`Telegram mesajı gitmedi: ${String(j?.description ?? r?.status ?? "bağlantı yok").slice(0, 200)}`);
+    await admin().from("inbox_items").update({ tg_message_id: j.result?.message_id }).eq("id", it.id);
+    return NextResponse.json({ ok: true, test: true });
+  }
   const url = `${req.nextUrl.origin}/api/telegram`;
   const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, secret_token: process.env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "callback_query"] }), signal: AbortSignal.timeout(10000) }).catch(() => null);
   const j: any = await r?.json().catch(() => ({}));

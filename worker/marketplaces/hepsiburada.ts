@@ -7,6 +7,7 @@ import { env, sleep, chunk, san } from "../core/util.ts";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { hbCommissionMatcher } from "./hepsiburada-commission.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
+import { noteMissing } from "../core/attr-options.ts";
 
 // Garanti (K, 22.10): yalnızca elektrikli/elektronik ürünlerde 24 ay (ithalatçı garantili, faturalı); diğerlerinde 0
 const ELECTRONIC = /elektron|elektrik|şarj|pilli|usb|bluetooth|kulaklık|hoparlör|\bled\b|makine|makinası|cihaz|akıllı saat|powerbank|adaptör|lamba|vantilatör|\bfan\b|ısıtıcı|kamera|mikrofon|tıraş|epilatör|süpürge|terazi|tartı|baskül|radyo|drone|konsol|projeksiyon|kettle|blender|kompresör|watt|\d+\s?w\b|\d+\s?v\b|\d+\s?mah\b/i;
@@ -97,7 +98,7 @@ const FREE_TEXT: [RegExp, string][] = [[/cinsiyet/i, "Unisex"], [/araç (marka|m
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
 // Sıra: panel/ürün değeri (given) > ürün kaydındaki özellik (defaults: tedarikçi varsayılanı + Trendyol gönderiminde öğrenilen, adıyla) >
 // başlık/açıklamadan çıkarım (attr-infer) > başlıkta geçen değer > nötr değer
-export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "", images: string[] = [], warranty: number | null = null) {
+export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "", images: string[] = [], warranty: number | null = null, catName: string | null = null) {
   const out: Record<string, unknown> = { ...given };
   const missing: string[] = [];
   const learned: Record<string, string> = {};
@@ -131,7 +132,8 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
     const generic = neutral ? undefined : GENERIC.map((re) => vals.find((v) => re.test(lo(v)))).find(Boolean);
     const free = vals.length ? undefined : FREE_TEXT.find(([re]) => re.test(a.name))?.[1];
     const val = fromDef ?? inferred ?? hit ?? neutral ?? generic ?? free;
-    if (val) out[a.id] = val; else missing.push(a.name);
+    if (val) out[a.id] = val;
+    else { missing.push(a.name); noteMissing("hepsiburada", categoryId, a.name, vals, vals.length === 0, catName); }
     if (!fromDef && (inferred || hit)) learned[a.name] = String(inferred ?? hit);
     await sleep(200);
   }
@@ -282,7 +284,7 @@ export function createHepsiburada(): Marketplace {
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
         try {
-          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "", imgs, hbWarrantyMonths(p.name));
+          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "", imgs, hbWarrantyMonths(p.name), p.catName ?? null);
           if (f.missing.length) { no(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
           extra = f.attributes;
           p.learned = f.learned;
