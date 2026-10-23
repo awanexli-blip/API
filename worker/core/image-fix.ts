@@ -4,9 +4,10 @@
 import type { Listing, Marketplace } from "../marketplaces/types.ts";
 
 const BROKEN = /\.webp(\?|$)|percdn\.com/i;
-export const imagesBroken = (imgs: string[] | undefined) => Array.isArray(imgs) && (imgs.length === 0 || imgs.every((u) => BROKEN.test(u)));
+// Dönüştürücü adresleri (wsrv.nl / /api/img) bozuk sayılmaz: içlerinde kaynak WebP adresi geçer
+export const imagesBroken = (imgs: string[] | undefined) => Array.isArray(imgs) && (imgs.length === 0 || imgs.every((u) => BROKEN.test(u) && !/^https:\/\/wsrv\.nl\/|\/api\/img\//.test(u)));
 
-export async function fixImages(db: any, mp: Marketplace, listings: Listing[], max = 1000) {
+export async function fixImages(db: any, mp: Marketplace, listings: Listing[], max = 300) {
   if (!mp.updateImages) return { skipped: "pazaryerinde görsel güncelleme yok" };
   const live = listings.filter((l) => l.status === "active" && l.contentId);
   const withField = live.filter((l) => Array.isArray(l.images));
