@@ -5,7 +5,7 @@ export type OrderStatus = "new" | "ready" | "sent_to_supplier" | "shipped" | "de
 
 const MAP: Record<string, Record<string, OrderStatus>> = {
   trendyol: {
-    awaiting: "new", created: "new", picking: "ready", invoiced: "ready", repack: "ready", unpacked: "ready",
+    awaiting: "new", created: "new", verified: "new", picking: "ready", invoiced: "ready", repack: "ready", unpacked: "ready", readytoship: "ready",
     shipped: "shipped", atcollectionpoint: "shipped", delivered: "delivered",
     cancelled: "cancelled", unsupplied: "cancelled", returned: "returned", undelivered: "problem",
   },

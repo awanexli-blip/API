@@ -454,11 +454,14 @@ export function createTrendyol(): Marketplace {
               // İndirim: price = müşterinin ödediği birim fiyat, tyDiscount = Trendyol'un karşıladığı kısım (satıcıya ödenir). Alanlar doğrulanmadı.
               lines: lines.map((l, i) => {
                 const qty = Number(l.quantity ?? 1) || 1;
-                const gross = num(l.lineGrossAmount);
+                // v2 satır tutarları BİRİM başına (canlı 23.10: 2 adet, lineGrossAmount 129,9, lineUnitPrice 123,4, lineTotalDiscount 6,5);
+                // indirimler satır toplamına çevrilir (gelir = paket tutarı + Trendyol'un karşıladığı indirim toplamı)
+                const v2 = l.lineUnitPrice != null;
                 const rate = num(l.commission);
+                const perLine = (x: number | null) => (x == null ? null : v2 ? Math.round(x * qty * 100) / 100 : x);
                 return { lineNo: i + 1, key: String(l.barcode ?? l.merchantSku ?? l.stockCode ?? ""), title: String(l.productName ?? "").slice(0, 200), qty,
                   unitPrice: num(l.lineUnitPrice, l.price, l.amount) ?? 0,
-                  listPrice: gross != null ? gross / qty : num(l.amount), discount: num(l.lineTotalDiscount, l.discount), tyDiscount: num(l.lineTyDiscount, l.tyDiscount),
+                  listPrice: num(l.lineGrossAmount, l.amount), discount: perLine(num(l.lineTotalDiscount, l.discount)), tyDiscount: perLine(num(l.lineTyDiscount, l.tyDiscount)),
                   commissionRate: rate != null && rate > 0 && rate < 100 ? rate / 100 : null };
               }),
             });
