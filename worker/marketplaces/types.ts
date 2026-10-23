@@ -12,6 +12,8 @@ export interface Listing {
   commission?: number;   // ilanın komisyon oranı (0-1)
   asin?: string;         // Amazon: ilanın bağlı olduğu ASIN
   attributes?: Record<string, string>; // onaylı ilanın özellikleri (özellik adı -> değer), ürün kaydına öğrenilir
+  contentId?: string;    // Trendyol içerik kimliği (onaylı ürün içerik güncellemesi)
+  images?: string[];     // ilandaki görseller (yoksa / WebP ise görsel onarımı, worker/core/image-fix.ts)
   // Reddedilen ilan (Trendyol): ret türleri ve açıklamaları + düzeltme için mevcut içerik
   reject?: { types: string[]; details: string[]; title?: string; description?: string; images?: string[]; categoryId?: string; categoryName?: string };
   // active: güncellenir · closed: pazaryeri kapatmış (kilitli/arşiv), dokunulmaz · pending: onay bekliyor/reddedildi, dokunulmaz ama yeniden açılmaz
@@ -106,6 +108,8 @@ export interface Marketplace {
   salesDaily?(fromMs: number, toMs: number): Promise<SalesDay[]>;
   /** Siparişler (salt okunur, kişisel veri yok: yalnızca il). worker/core/orders.ts */
   fetchOrders?(fromMs: number, toMs: number): Promise<OrderIn[]>;
+  /** Onaylı ürünün görsellerini değiştir (Trendyol content-bulk-update) */
+  updateImages?(items: { contentId: string; images: string[] }[]): Promise<BatchResult>;
   /** Cevap bekleyen müşteri soruları (müşteri adı döndürülmez) ve cevap gönderme (yalnızca onaylı cevap, worker/core/inbox.ts) */
   fetchQuestions?(): Promise<QuestionIn[]>;
   answerQuestion?(id: string, text: string): Promise<void>;

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
+import { jpgUrl } from "../core/img-proxy.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
@@ -214,6 +215,8 @@ export function createTrendyol(): Marketplace {
           const attrs = [...toAttrs(c.attributes), ...toAttrs(v.attributes)];
           out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), vatRate: Number(v.vatRate), status: closed ? "closed" : "active",
             categoryId: c.category?.id != null ? String(c.category.id) : undefined, categoryName: c.category?.name ?? "", commission: liveComm.get(barcode),
+            contentId: c.contentId != null ? String(c.contentId) : c.id != null ? String(c.id) : undefined,
+            images: Array.isArray(c.images) ? c.images.map((i: any) => String(i?.url ?? i)).filter(Boolean) : undefined,
             attributes: Object.fromEntries(attrs.filter((a) => a.name && a.value != null && String(a.value).trim()).map((a) => [String(a.name), String(a.value)])) });
           if (!closed && c.category?.id != null) {
             const cid = String(c.category.id);
@@ -350,7 +353,8 @@ export function createTrendyol(): Marketplace {
           dimensionalWeight: p.desi, description: p.detail.slice(0, 30000),
           listPrice: p.price, salePrice: p.price, vatRate: Number(p.cat.vat_rate ?? ctx.vatRate),
           ...(shipmentAddressId ? { shipmentAddressId } : {}), ...(returningAddressId ? { returningAddressId } : {}),
-          images: p.images.slice(0, 8).map((url: string) => ({ url })), attributes,
+          // Tedarikçi görselleri WebP: Trendyol göstermiyor (23.10, ~800 görselsiz ürün) -> 1200x1800 JPG dönüştürücü
+          images: p.images.slice(0, 8).map((url: string) => ({ url: jpgUrl(url, undefined, "p") })), attributes,
         });
       }
       for (const batch of chunk(payloads, 100)) {
@@ -479,13 +483,28 @@ export function createTrendyol(): Marketplace {
         ...(p.title ? { title: p.title.slice(0, 100) } : {}),
         ...(p.description ? { description: p.description.slice(0, 30000) } : {}),
         ...(p.categoryId ? { categoryId: p.categoryId } : {}),
-        ...(p.images?.length ? { images: p.images.slice(0, 8).map((url) => ({ url })) } : {}),
+        ...(p.images?.length ? { images: p.images.slice(0, 8).map((url) => ({ url: jpgUrl(url, undefined, "p") })) } : {}),
       }));
       for (const batch of chunk(body, 500)) {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products/unapproved-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
         } catch (e: any) { res.failed++; console.error(e.message); }
+        await sleep(500);
+      }
+      return res;
+    },
+
+    // Onaylı ürünün görsellerini değiştir (content-bulk-update, dokümanla doğrulandı 23.10: contentId + images, en fazla 1.000 ürün/istek,
+    // yalnızca gönderilen alan değişir). Sonuç batch-requests ile okunur.
+    async updateImages(items: { contentId: string; images: string[] }[]): Promise<BatchResult> {
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      const body = items.filter((i) => i.images.length).map((i) => ({ contentId: Number(i.contentId), images: i.images.slice(0, 8).map((url) => ({ url: jpgUrl(url, undefined, "p") })) }));
+      for (const batch of chunk(body, 500)) {
+        try {
+          const r = await tg(`/product/sellers/${SELLER_ID}/products/content-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
+          res.ok += batch.length; res.batchIds.push(r.batchRequestId);
+        } catch (e: any) { res.failed++; console.error(String(e.message).slice(0, 300)); }
         await sleep(500);
       }
       return res;

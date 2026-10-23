@@ -16,6 +16,7 @@ import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts"
 import { recordBatches, applyStates, refreshBatches } from "./core/mp-status.ts";
 import { syncOrders } from "./core/orders.ts";
 import { syncInbox, notifyOrders } from "./core/inbox.ts";
+import { fixImages } from "./core/image-fix.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
@@ -378,6 +379,11 @@ async function main() {
     const since = new Date().toISOString();
     summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 14 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
     if (summary.orders?.inserted) summary.orders.notified = await notifyOrders(db, mp, since).catch(() => 0);
+  }
+  // Görseli görünmeyen onaylı ilanlar (tedarikçi WebP): JPG görseller yeniden gönderilir, sonuç toplu kontrolde okunur
+  if (doUpdate && mp.updateImages) {
+    summary.imageFix = await fixImages(db, mp, listings).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    if (Array.isArray(summary.imageFix?.batchIds)) summary.batchIds.push(...summary.imageFix.batchIds);
   }
   // Müşteri soruları (F7): çek, taslak, Telegram; yalnızca onaylı cevaplar gönderilir
   if (mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
