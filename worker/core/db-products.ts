@@ -55,11 +55,13 @@ function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number,
 export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[]; stats: Record<string, number> }> {
   const items: InventoryItem[] = [];
   const stats: Record<string, number> = { listings: 0, updated: 0, zeroed: 0, notLive: 0 };
-  for (let from = 0; ; from += 1000) {
+  // Anahtar sıralı sayfalama (OFFSET sırasız ve derin sayfada yavaştı: ilan atlanabilir/çift gelebilirdi)
+  for (let last = ""; ; ) {
     const { data, error } = await ctx.db.from("marketplace_listings")
       .select("listing_key, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
-      .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).range(from, from + 999);
-    if (error || !data) break; // tablo yoksa (migration 013 öncesi) sessizce geç
+      .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
+    if (error || !data?.length) break; // tablo yoksa (migration 013 öncesi) sessizce geç
+    last = (data as any[])[data.length - 1].listing_key;
     for (const r of data as any[]) {
       const p = r.products, v = r.product_variants, key = r.listing_key as string;
       if (!p || !v || p.source === "xml:bayilik") continue; // BayilikXML ilanları XML akışında
@@ -297,10 +299,11 @@ export async function learnFromListings(db: any, marketplace: string, listings: 
   const byKey = new Map(listings.filter((l) => l.status !== "closed" && (l.attributes || l.categoryName)).map((l) => [l.id, l]));
   if (!byKey.size) return out;
   const todo: { id: string; attributes: Record<string, unknown> }[] = [];
-  for (let from = 0; todo.length < max; from += 1000) {
+  for (let last = ""; todo.length < max; ) {
     const { data, error } = await db.from("marketplace_listings").select("listing_key, product_id, products(attributes)")
-      .eq("marketplace", marketplace).not("product_id", "is", null).range(from, from + 999);
+      .eq("marketplace", marketplace).not("product_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
     if (error || !data?.length) break;
+    last = (data as any[])[data.length - 1].listing_key;
     for (const r of data as any[]) {
       const l = byKey.get(r.listing_key);
       if (!l || !r.product_id) continue;
