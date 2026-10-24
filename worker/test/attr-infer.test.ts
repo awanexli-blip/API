@@ -7,6 +7,11 @@ const V = (...names: string[]) => names.map((name, id) => ({ id, name }));
 
 const varYok = V("Yok", "Var"), evetHayir = V("Hayır", "Evet");
 check("mikrofon var", inferAttribute("Mikrofon", varYok, "Kablosuz Kulaklık Mikrofonlu Bluetooth 5.3"), "Var");
+// Hepsiburada cinsiyet listesi (Unisex yok): açıkça geçmiyorsa boş kalır
+const cins = ["Erkek", "Erkek Çocuk", "Kadın", "Kız Çocuk"].map((name, id) => ({ id, name }));
+check("cinsiyet: kızlar -> Kız Çocuk", inferAttribute("Cinsiyet", cins, "Pembe Kızlar İçin Çanta"), "Kız Çocuk");
+check("cinsiyet: kızartma kız değil", inferAttribute("Cinsiyet", cins, "Kızartma Tavası 28 Cm"), null);
+check("cinsiyet: cinsiyetsiz ürün keyfi seçilmez", inferAttribute("Cinsiyet", cins, "Çocuk Bisikleti 16 Jant"), null);
 check("mikrofon yok", inferAttribute("Mikrofon", varYok, "Kablosuz Kulaklık Bluetooth 5.3"), "Yok");
 check("ANC açıklamada", inferAttribute("Aktif Gürültü Önleme (ANC)", varYok, "TWS Kulaklık", "Aktif gürültü önleme özelliği"), "Var");
 check("suya dayanıklı ipx7", inferAttribute("Suya/Tere Dayanıklılık", varYok, "Hoparlör IPX7 Su Geçirmez"), "Var");

@@ -58,7 +58,15 @@ function preferred(name: string, text: string): string[] {
     return [];
   }
   if (/mevsim/.test(n)) return ["4 Mevsim", "Yaz", "3 Mevsim"];
-  if (/cinsiyet/.test(n)) return /kadın|bayan/.test(text) ? ["Kadın"] : /erkek/.test(text) ? ["Erkek"] : ["Unisex"];
+  // Hepsiburada listesi çoğu kategoride yalnızca Erkek / Kadın / Erkek Çocuk / Kız Çocuk (Unisex yok): cinsiyet metinde açıkça geçmiyorsa
+  // keyfi seçilmez (Unisex yoksa boş kalır, panel → Özellik tamamla)
+  if (/cinsiyet/.test(n)) {
+    if (/ kız(lar|ım|ınız)? | kız çocu| girl/.test(text)) return ["Kız Çocuk", "Kız Bebek", "Kadın", "Unisex"];
+    if (/ erkek çocu| oğlan| boy /.test(text)) return ["Erkek Çocuk", "Erkek Bebek", "Erkek", "Unisex"];
+    if (/ kadın| bayan| women/.test(text)) return ["Kadın", "Unisex"];
+    if (/ erkek| men /.test(text)) return ["Erkek", "Unisex"];
+    return ["Unisex"];
+  }
   return [];
 }
 

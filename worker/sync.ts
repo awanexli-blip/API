@@ -143,7 +143,9 @@ async function main() {
   // Kategori adı örneğin "XML kategorisi" yerine geçer: tedarikçi alt kategorisi ("Eğitici Oyuncak") Trendyol kategori adıyla eşleşsin
   if (!raw.length) {
     for (let last = ""; ; ) {
-      const { data, error } = await db.from("marketplace_listings").select("listing_key, title, category_id, category_name, commission").eq("marketplace", marketplaceId).not("category_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
+      // Yalnızca pazaryerinin kabul ettiği ilanlar (canlı/kapalı/onayda): hatalı ilanın tahmini kategorisi örnek olursa yanlış kategori
+      // kendini çoğaltıyordu (HB 23.10: futbol topu, kostüm "Yazar/Basım Dili" isteyen kategoriye, 1.175 ürün, hiçbiri onaylı değil)
+      const { data, error } = await db.from("marketplace_listings").select("listing_key, title, category_id, category_name, commission").eq("marketplace", marketplaceId).not("category_id", "is", null).in("status", ["live", "closed", "pending_approval"]).gt("listing_key", last).order("listing_key").limit(1000);
       if (error || !data?.length) break;
       last = (data as any[])[data.length - 1].listing_key;
       for (const l of data as any[]) if (l.title) examples.push({ title: l.title, xmlCategory: l.category_name ?? "", categoryId: String(l.category_id), categoryName: l.category_name ?? "", commission: l.commission ?? undefined, ref: l.listing_key });
