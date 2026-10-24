@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-24 (29) — Hizmet bedeli, eksik ürün analizi, HB yanlış kategori döngüsü
+- K onayı: Trendyol sabit gideri 4 -> **14,19 TL** (4 tedarikçi kargosu + 10,19 hizmet bedeli). Simülasyon (22.330 canlı ürün): ortalama +13,1 TL; 17.169 ürün +1-15, 4.954 ürün +16-30, 207 ürün +90-100 (299,90'da net 40 TL altına düştüğü için eşik üstüne çıkıyor, K kuralı net ≥ 40).
+- **Gerçek komisyon doğrulandı** (24 hakediş): komisyon = oran × fiyat (KDV eklenmez, formül doğru). Fark yalnız indirimli satışta (komisyon indirim öncesi fiyattan): toplam 2.379 tahmin / 2.424 gerçek (%1,9).
+- Eksik ürünler (26.409 aktif): Trendyol 22.330 canlı; kalan özellik 1.121, kopya 676 (bilerek), marka riski 461 (bilerek), Trendyol marka uyuşmazlığı reddi 437 (görsel/başlıkta başka marka, gönderilemez), kategori 416, sırada 305. HB 10.772 canlı + 1.878 HB onayında; hata 12.761 (özellik 11.144, kategori 947, kopya 645).
+- **HB yanlış kategori döngüsü:** HB'deki onaylı ilanlarda kategori kaydı yok; sınıflandırıcı yalnızca hatalı ilanların tahmini kategorisinden öğreniyordu -> futbol topu/kostüm "Yazar, Basım Dili" isteyen kategoriye (60003466: 1.175 ürün, hiçbiri onaylı değil; toplam ~2.050). Örnekler artık yalnızca canlı/kapalı/onaydaki ilanlardan; HB kitapları dışlayan ağaç eşleşmesi + Trendyol kategori adı ile seçer. Hatalı ilanlar yeniden deneme ile (3.000/çalışma) yeniden kategorilenir.
+- Cinsiyet çıkarımı: HB listesinde Unisex yok (Erkek/Kadın/Erkek Çocuk/Kız Çocuk); başlıkta açıkça geçene göre, cinsiyetsiz üründe keyfi seçim yok (Özellik tamamla).
+- HB sipariş uçları canlıda yanıt veriyor (hepsi 200, items boş): henüz HB siparişi yok. HB claims ucu da hatasız.
+
 ## 2026-10-23 (28) — Satış raporu, iadeler, gerçek komisyon, HB siparişleri, panel hızı
 - **Satış raporu** (yeni menü, migration 042 `sales_report`/`sales_kpi`): dönem (bugün, dün, 7/30 gün, bu ay, geçen ay, 3 ay, 1 yıl, özel), önceki eşit dönemle karşılaştırma, KPI (ciro, net kâr + marj, ortalama sepet, iade/iptal oranı, stopaj), kâr dökümü (satış geliri − komisyon − kargo − sabit gider − maliyet − ödenecek KDV = satış kârı − iade masrafı = net kâr), ciro/net grafiği + tablo görünümü, pazaryeri dağılımı, en çok satanlar (brüt marj), iade nedenleri, en çok iade edilenler, zarar eden siparişler, CSV (müşteri bilgisi yok). İstanbul saati.
 - Sipariş başına kâr kalemleri `orders.fin` (worker): komisyon önceliği pazaryerinin siparişte bildirdiği oran > ilan oranı; beklenen iade payı düşülmez (gerçek iade ayrı); iade = −(iade maliyeti/1,2); stopaj %1 KDV hariç satıştan, kârdan düşülmez (gelir vergisinden mahsup). Maliyet sipariş anında sabit (önceki çalışmada güncel maliyet kullanılıyordu, düzeltildi). Kargo süresi geçen açık sipariş "dikkat".
