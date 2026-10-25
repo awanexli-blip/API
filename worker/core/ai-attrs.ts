@@ -1,10 +1,11 @@
 // Eksik zorunlu özellikleri yapay zekâ ile doldurma: ürün başlığı + açıklamasından, pazaryerinin kabul ettiği değer listesinden seçer
 // (attr_options; serbest metin yalnızca pazaryeri izin veriyorsa). Emin olmadığı özelliği boş bırakır (uydurma yok); boş kalan özellik
 // panelde Özellik tamamla'ya düşer. Yazılan değer ürün kaydına gider (diğer pazaryerleri de kullanır); eksiği kalmayan ilan yeniden gönderilir.
-// ANTHROPIC_API_KEY yoksa çalışmaz. Ürün başına 7 günde bir deneme (ai_attr_runs, migration 045). Müşteri verisi prompt'a girmez.
+// Sağlayıcı: ANTHROPIC_API_KEY varsa Claude, yoksa GEMINI_API_KEY ile Gemini (ücretsiz kota: çalışma başına az ürün, sırayla); ikisi de yoksa çalışmaz. Ürün başına 7 günde bir deneme (ai_attr_runs, migration 045). Müşteri verisi prompt'a girmez.
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { geminiEnabled, geminiJson, GeminiQuotaError } from "./gemini.ts";
 
 const Out = z.object({
   values: z.array(z.object({
@@ -24,7 +25,11 @@ Kurallar:
 - Ürün listedeki hiçbir değere uymuyorsa (yanlış kategori) null.`;
 
 let client: Anthropic | null = null;
-export const aiAttrsEnabled = () => !!process.env.ANTHROPIC_API_KEY;
+const claudeOn = () => !!process.env.ANTHROPIC_API_KEY;
+export const aiAttrsEnabled = () => claudeOn() || geminiEnabled();
+// Gemini yanıt şeması (Claude'daki zod şemasının aynısı)
+const GEMINI_SCHEMA = { type: "object", properties: { values: { type: "array", items: { type: "object", properties: {
+  name: { type: "string" }, value: { type: "string", nullable: true }, basis: { type: "string", enum: ["baslik", "aciklama", "cikarim"] } }, required: ["name", "value", "basis"] } } }, required: ["values"] };
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr").trim();
 const clean = (s: string) => String(s ?? "").replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/g, " ").replace(/\s+/g, " ").trim();
 
@@ -46,9 +51,15 @@ export function acceptValues(ask: AiAttrInput["ask"], out: z.infer<typeof Out>):
 
 export async function suggestAttributes(inp: AiAttrInput): Promise<Record<string, string>> {
   if (!aiAttrsEnabled() || !inp.ask.length) return {};
-  client ??= new Anthropic();
   const known = Object.entries(inp.known).filter(([k, v]) => v != null && v !== "" && !/kategori|^_/i.test(k)).slice(0, 25).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join("\n");
   const asks = inp.ask.map((a) => `- ${a.name}: ${a.opt.values.length ? a.opt.values.slice(0, 300).join(" | ") : "serbest"}`).join("\n");
+  const prompt = `Ürün başlığı: ${clean(inp.title).slice(0, 300)}\n${known ? `Bilinen özellikler:\n${known}\n` : ""}Açıklama: ${clean(inp.description).slice(0, 3000) || "(yok)"}\n\nDoldurulacak özellikler ve değer listeleri:\n${asks}`;
+  if (!claudeOn()) {
+    const g = await geminiJson<z.infer<typeof Out>>(SYSTEM, prompt, GEMINI_SCHEMA);
+    const ok = g ? Out.safeParse(g) : null;
+    return ok?.success ? acceptValues(inp.ask, ok.data) : {};
+  }
+  client ??= new Anthropic();
   const r = await client.beta.messages.parse({
     model: "claude-opus-5-5",
     max_tokens: 4000,
@@ -56,15 +67,15 @@ export async function suggestAttributes(inp: AiAttrInput): Promise<Record<string
     fallbacks: "default",
     output_config: { effort: "low", format: betaZodOutputFormat(Out) },
     system: SYSTEM,
-    messages: [{ role: "user", content: `Ürün başlığı: ${clean(inp.title).slice(0, 300)}\n${known ? `Bilinen özellikler:\n${known}\n` : ""}Açıklama: ${clean(inp.description).slice(0, 3000) || "(yok)"}\n\nDoldurulacak özellikler ve değer listeleri:\n${asks}` }],
+    messages: [{ role: "user", content: prompt }],
   });
   if (r.stop_reason === "refusal" || !r.parsed_output) return {};
   return acceptValues(inp.ask, r.parsed_output);
 }
 
 // Senkron adımı: aday ilanlar (ai_attr_candidates) -> öneri -> ürün kaydına yaz -> eksiği kalmayanı yeniden gönderim kuyruğuna al
-export async function aiFillAttributes(db: any, marketplace: string, max = 120) {
-  if (!aiAttrsEnabled()) return { skipped: "ANTHROPIC_API_KEY yok" };
+export async function aiFillAttributes(db: any, marketplace: string, max = claudeOn() ? 120 : 20) {
+  if (!aiAttrsEnabled()) return { skipped: "ANTHROPIC_API_KEY / GEMINI_API_KEY yok" };
   const { data: cands, error } = await db.rpc("ai_attr_candidates", { p_mp: marketplace, p_limit: max });
   if (error) return { error: error.message.slice(0, 200) };
   const list = (cands ?? []) as any[];
@@ -76,19 +87,23 @@ export async function aiFillAttributes(db: any, marketplace: string, max = 120) 
     const { data } = await db.from("attr_options").select("category_id, name, values, allow_custom").eq("marketplace", marketplace).in("category_id", cats.slice(i, i + 200));
     for (const o of data ?? []) opts.set(`${o.category_id}|${lo(o.name)}`, { values: Array.isArray(o.values) ? o.values.map(String) : [], custom: !!o.allow_custom });
   }
-  const out = { candidates: list.length, asked: 0, filled: 0, products: 0, requeued: 0, errors: 0 };
+  const out = { provider: claudeOn() ? "claude" : "gemini", candidates: list.length, asked: 0, filled: 0, products: 0, requeued: 0, errors: 0, quota: false };
   const ready: string[] = [];
   const now = new Date().toISOString();
   const seen = new Set<string>();
   const work = list.filter((c) => !seen.has(c.product_id) && seen.add(c.product_id));
-  for (let i = 0; i < work.length; i += 4) {
-    await Promise.all(work.slice(i, i + 4).map(async (c) => {
+  const par = claudeOn() ? 4 : 1; // Gemini ücretsiz kota: sırayla
+  for (let i = 0; i < work.length && !out.quota; i += par) {
+    await Promise.all(work.slice(i, i + par).map(async (c) => {
       const known = (c.attributes ?? {}) as Record<string, unknown>;
       const missing = (c.missing as string[]).filter((n) => known[n] == null || known[n] === "");
       const ask = missing.map((name) => ({ name, opt: opts.get(`${c.category_id}|${lo(name)}`) })).filter((a): a is { name: string; opt: Opt } => !!a.opt && (a.opt.values.length > 0 || a.opt.custom));
       let filled: Record<string, string> = {};
       try { filled = await suggestAttributes({ title: c.title, description: c.description ?? "", known, ask }); }
-      catch (e: any) { out.errors++; if (out.errors <= 2) console.error("yapay zekâ özellik:", String(e?.message ?? e).slice(0, 200)); return; }
+      catch (e: any) {
+        if (e instanceof GeminiQuotaError) { out.quota = true; return; } // kota: bu çalışmada dur, ürün sonra yeniden denenir
+        out.errors++; if (out.errors <= 2) console.error("yapay zekâ özellik:", String(e?.message ?? e).slice(0, 200)); return;
+      }
       out.asked += ask.length;
       await db.from("ai_attr_runs").upsert({ product_id: c.product_id, marketplace, at: now, asked: ask.map((a) => a.name), filled }, { onConflict: "product_id,marketplace" });
       if (!Object.keys(filled).length) return;

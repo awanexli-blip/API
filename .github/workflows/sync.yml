@@ -78,7 +78,9 @@ jobs:
           AMAZON_LWA_CLIENT_SECRET: ${{ secrets.AMAZON_LWA_CLIENT_SECRET }}
           AMAZON_REFRESH_TOKEN: ${{ secrets.AMAZON_REFRESH_TOKEN }}
           AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}     # müşteri sorusu cevap taslağı (yoksa taslak yok)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}     # yapay zekâ: soru taslağı + eksik özellik (varsa Claude)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}           # yoksa Gemini (AI Studio ücretsiz kota)
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}   # bildirim (yoksa gönderilmez)
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node --experimental-strip-types worker/sync.ts "$MODE" "$MP"   # girdiler ortam değişkeniyle: kabuk komutu olarak yorumlanmaz

@@ -1,8 +1,9 @@
 // Müşteri sorusuna cevap TASLAĞI (Faz 6 F7). Hiçbir zaman kendiliğinden gönderilmez: panelden ya da Telegram'dan insan onaylar.
-// ANTHROPIC_API_KEY yoksa taslak üretilmez (soru yine gelen kutusuna düşer). Prompt'a müşteri kişisel verisi girmez.
+// ANTHROPIC_API_KEY varsa Claude, yoksa GEMINI_API_KEY ile Gemini (ücretsiz kota); ikisi de yoksa taslak üretilmez (soru yine gelen kutusuna düşer). Prompt'a müşteri kişisel verisi girmez.
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { geminiEnabled, geminiJson } from "./gemini.ts";
 
 const Draft = z.object({
   answer: z.string(),        // müşteriye gidecek metin (10-2000 karakter)
@@ -21,23 +22,33 @@ Kurallar:
 - Rakip mağaza veya marka karşılaştırması yapma.`;
 
 let client: Anthropic | null = null;
-export const draftsEnabled = () => !!process.env.ANTHROPIC_API_KEY;
+export const draftsEnabled = () => !!process.env.ANTHROPIC_API_KEY || geminiEnabled();
+const GEMINI_SCHEMA = { type: "object", properties: { answer: { type: "string" }, unsure: { type: "boolean" }, note: { type: "string" } }, required: ["answer", "unsure", "note"] };
 
 export async function draftAnswer(q: { question: string; title: string; description?: string; attributes?: Record<string, unknown>; tone?: string }): Promise<AnswerDraft | null> {
   if (!draftsEnabled()) return null;
-  client ??= new Anthropic();
   const attrs = Object.entries(q.attributes ?? {}).filter(([k, v]) => v != null && v !== "" && !/kategori/i.test(k)).slice(0, 30).map(([k, v]) => `${k}: ${v}`).join("\n");
   const desc = String(q.description ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 3000);
+  const system = SYSTEM + (q.tone ? `\nMağazanın ton tercihi: ${q.tone.slice(0, 500)}` : "");
+  const prompt = `Ürün: ${q.title}\n${attrs ? `Özellikler:\n${attrs}\n` : ""}${desc ? `Açıklama: ${desc}\n` : ""}\nMüşteri sorusu: ${q.question.slice(0, 1500)}`;
+  let d: AnswerDraft | null = null;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    const g = Draft.safeParse(await geminiJson(system, prompt, GEMINI_SCHEMA));
+    if (!g.success) return null;
+    d = g.data;
+    return { answer: d.answer.trim().slice(0, 2000), unsure: d.unsure, note: d.note.trim().slice(0, 500) };
+  }
+  client ??= new Anthropic();
   const r = await client.beta.messages.parse({
     model: "claude-opus-5-5",
     max_tokens: 4000,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     output_config: { effort: "low", format: betaZodOutputFormat(Draft) },
-    system: SYSTEM + (q.tone ? `\nMağazanın ton tercihi: ${q.tone.slice(0, 500)}` : ""),
-    messages: [{ role: "user", content: `Ürün: ${q.title}\n${attrs ? `Özellikler:\n${attrs}\n` : ""}${desc ? `Açıklama: ${desc}\n` : ""}\nMüşteri sorusu: ${q.question.slice(0, 1500)}` }],
+    system,
+    messages: [{ role: "user", content: prompt }],
   });
   if (r.stop_reason === "refusal" || !r.parsed_output) return null;
-  const d = r.parsed_output;
+  d = r.parsed_output;
   return { answer: d.answer.trim().slice(0, 2000), unsure: d.unsure, note: d.note.trim().slice(0, 500) };
 }
