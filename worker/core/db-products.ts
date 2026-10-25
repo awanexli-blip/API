@@ -14,6 +14,7 @@ export type DbCtx = {
   minStock: number; policy: string; catMap: Map<string, any>; existing: Set<string>; lsBy: Map<string, Listing>; lsTitles: Set<string>;
   linked: Set<string>; predict: ((title: string, xmlCategory: string) => any) | null; skip: (why: string) => void; defaultVatRate: number;
   leafMatch?: ((title: string, supplierCategory: string) => { categoryId: string; categoryName: string; score: number } | null) | null; // kategori ağacından başlıkla (son çare)
+  pathMatch?: ((supplierCategory: string, title: string) => { categoryId: string; categoryName: string; score: number } | null) | null; // tedarikçi kategori yolundan (HB ağacına benzer)
   clean?: (title: string, description: string) => { title: string; description: string }; // yasaklı kelime / marka eki temizliği
   shipFor?: ((desi: number | null) => number) | null; // desi tarifesi (Hepsiburada): ürünün desisine göre kargo, yoksa cfg.shippingCost
 };
@@ -156,12 +157,13 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         // > tahmin (düşük, %50+) > ağaç eşleşmesi (zayıf). Yanlış kategori Trendyol'dan revize olarak döner (Reddedilenler).
         const tyName = ctx.marketplaceId !== "trendyol" ? String(p.attributes?.["Trendyol kategori adı"] ?? "") : "";
         const leaf = !ctx.leafMatch ? null : (tyName && ctx.leafMatch(`${tyName} ${p.title}`, `${p.category ?? ""} ${tyName}`)) || ctx.leafMatch(p.title, p.category ?? "");
-        const catName = manualCat ? null : ctx.catMap.get(p.category)?.category_id ? null : pred && pred.level !== "dusuk" ? pred.categoryName : leaf && leaf.score >= 10 ? leaf.categoryName : pred && pred.confidence >= 0.5 ? pred.categoryName : leaf?.categoryName;
-        const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id
-          ?? (pred && pred.level !== "dusuk" ? pred.categoryId : null)
-          ?? (leaf && leaf.score >= 10 ? leaf.categoryId : null)
-          ?? (pred && pred.confidence >= 0.5 ? pred.categoryId : null)
-          ?? leaf?.categoryId ?? null;
+        // Tedarikçi yolu: son adım aynı adlı yaprak (güçlü, 12+) tahminden sonra, başlık ağaç eşleşmesinden önce; zayıfı en sonda
+        const path = ctx.pathMatch ? ctx.pathMatch(p.category ?? "", p.title) : null;
+        const strongPath = path && path.score >= 12 ? path : null;
+        const pick = manualCat || ctx.catMap.get(p.category)?.category_id ? null
+          : (pred && pred.level !== "dusuk" ? pred : null) ?? strongPath ?? (leaf && leaf.score >= 10 ? leaf : null) ?? (pred && pred.confidence >= 0.5 ? pred : null) ?? path ?? leaf ?? null;
+        const catName = pick?.categoryName ?? null;
+        const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id ?? pick?.categoryId ?? null;
         for (const v of [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position)) {
           const key = keyFor(p.source, v);
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
@@ -189,7 +191,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           }
           if (String(p.source ?? "").startsWith("xml:") && !supBrand.has(p.source)) { fail(key, p, v, `Tedarikçinin pazaryeri markası ayarlanmadı (Ürünler → Tedarikçiler → "${String(p.source).slice(4)}" → Pazaryeri markası)`); continue; }
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
-          const pr = priceFor(ctx, p, v, null, avail, leaf && String(leaf.categoryId) === String(categoryId) ? leaf.categoryName : null);
+          const pr = priceFor(ctx, p, v, null, avail, pick && pick !== pred && String(pick.categoryId) === String(categoryId) ? pick.categoryName : null);
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),

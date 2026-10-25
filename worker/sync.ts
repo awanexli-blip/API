@@ -22,7 +22,7 @@ import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
-import { buildLeafMatcher } from "./core/category-tree.ts";
+import { buildLeafMatcher, buildPathMatcher } from "./core/category-tree.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
 import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
 
@@ -154,11 +154,11 @@ async function main() {
   }
   const predict = examples.length >= 50 ? buildClassifier(examples) : null;
   // Trendyol kategori ağacı (herkese açık uç): başlıktan kategori, sınıflandırıcı emin değilse son çare
-  let leafMatch: DbCtx["leafMatch"] = null, leafInfo: number | string | null = null;
+  let leafMatch: DbCtx["leafMatch"] = null, pathMatch: DbCtx["pathMatch"] = null, leafInfo: number | string | null = null;
   if (mp.categoryLeaves && process.env.CATEGORY_TREE_URL !== "off") {
     try {
       const leaves = await mp.categoryLeaves();
-      if (leaves.length) leafMatch = buildLeafMatcher(leaves, new Set(examples.map((e) => e.categoryId)));
+      if (leaves.length) { leafMatch = buildLeafMatcher(leaves, new Set(examples.map((e) => e.categoryId))); pathMatch = buildPathMatcher(leaves); }
       leafInfo = leaves.length;
     } catch (e: any) { console.error("kategori ağacı alınamadı:", e.message); leafInfo = "hata: " + String(e.message).slice(0, 300); }
   }
@@ -334,7 +334,7 @@ async function main() {
   }
 
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
-  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
+  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, pathMatch, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
     shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null };
 
   // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında; sistemin açtığı OS13- ürünler)
