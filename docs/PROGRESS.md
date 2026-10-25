@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-25 (33) — Royal -> HB, yeni fiyat kuralı
+- K: Royal markalarını kullanma izni var; tüm ürünler Hepsiburada'ya. Tedarikçi pazaryeri markası `*` = ürünün kendi XML markası (64 marka: Royaleks 30 bin, Mudanis 7,5 bin...).
+- Varyantlı ürünler: HB'de tek grup (VaryantGroupID = ürün kodu), varyantın beden/renk değeri özellik varsayılanına; "aynı başlık" koruması yalnızca ilk varyantta (önceden 2. bedenden sonrası "kopya" sayılıyordu).
+- Royal içe aktarma: 200'lük toplu kayıt sorgu süresini aşıyordu -> 50'lik + zaman aşımında bölerek tekrar. 42.795 ürün yazıldı (42.649 aktif). HB'ye 427 gönderim işi (100'erli; çalışma başına ~2.500 ürün). Tek seferlik içe aktarma iş akışı: ops/import-once.txt.
+- **Fiyat kuralı (K, 25.10):** net 60 TL üst sınırı kaldırıldı; satış fiyatının (KDV hariç) **en az %10'u ve en az 40 TL** net (net_margin_min, migration 050), Trendyol ve HB. Simülasyon (Trendyol 22.330): 4.296 aynı, 18.034 artar (9.059'u %5-10, 3.542'si %10-20). Sabit gider (TY 14,19 / HB 17,19) ve iade payı dahil.
+
 ## 2026-10-25 (32) — Çok linkli tedarikçi, Royal Tedarik, Gemini model sırası
 - **Tedarikçide birden çok XML linki** (suppliers.feeds, migration 048): ek link başına ad, adres, isteğe bağlı SKU öneki ve alan eşlemesi; içe aktarma tüm linkleri birlikte işler (biri inmezse durur, stok sıfırlanmaz). Panel: Tedarikçiler > Düzenle > Ek XML linkleri (+ İncele). Toptancım'ın iki kaydı birleştirildi (5.678 ürün xml:toptancim2 -> xml:toptacim; eski kayıt pasif).
 - **Royal Tedarik** (K, 25.10): 4 link, 42.795 ürün / 46.700 varyant (yerelde kuru çalıştırma), fiyat listPrice (KDV dahil), KDV kesirli (0.1 = %10). Kaydedildi (`royal`), gece içe aktarma açık, **pazaryeri markası boş** (marka belirlenene kadar hiçbir ürün gönderilmez). Sunucusu Cloudflare arkasında: Vercel'den (panel İncele) 403, GitHub Actions'tan iniyor (XML erişim testi iş akışı, kuru, başarılı).
