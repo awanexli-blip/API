@@ -101,8 +101,9 @@ export async function aiFillAttributes(db: any, marketplace: string, max = claud
       let filled: Record<string, string> = {};
       try { filled = await suggestAttributes({ title: c.title, description: c.description ?? "", known, ask }); }
       catch (e: any) {
-        if (e instanceof GeminiQuotaError) { out.quota = true; return; } // kota: bu çalışmada dur, ürün sonra yeniden denenir
-        out.errors++; if (out.errors <= 2) console.error("yapay zekâ özellik:", String(e?.message ?? e).slice(0, 200)); return;
+        if (e instanceof GeminiQuotaError) { out.quota = true; (out as any).quotaMessage ??= e.message; return; } // kota: bu çalışmada dur, ürün sonra yeniden denenir
+        out.errors++; (out as any).lastError ??= String(e?.message ?? e).slice(0, 300); // özet: neden (anahtar mesajda yok)
+        if (out.errors <= 2) console.error("yapay zekâ özellik:", String(e?.message ?? e).slice(0, 200)); return;
       }
       out.asked += ask.length;
       await db.from("ai_attr_runs").upsert({ product_id: c.product_id, marketplace, at: now, asked: ask.map((a) => a.name), filled }, { onConflict: "product_id,marketplace" });

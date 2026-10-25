@@ -28,8 +28,8 @@ export async function geminiJson<T>(system: string, user: string, schema: Record
       }),
     });
     if (res.status === 404) continue; // model adı yok: sıradakini dene
-    if (res.status === 429) throw new GeminiQuotaError("Gemini kotası doldu (429)");
     const j: any = await res.json().catch(() => null);
+    if (res.status === 429) throw new GeminiQuotaError(`Gemini kotası (429, ${model}): ${String(j?.error?.message ?? "").slice(0, 200)}`);
     if (!res.ok) throw new Error(`Gemini ${res.status}: ${String(j?.error?.message ?? "").slice(0, 200)}`);
     const text = j?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("") ?? "";
     try { return JSON.parse(text) as T; } catch { return null; }
