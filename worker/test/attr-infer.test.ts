@@ -1,6 +1,7 @@
 // Zorunlu özelliği metinden çıkarma: Trendyol'un gerçek değer listeleriyle (22.10 kategori uç noktası)
 // node --experimental-strip-types worker/test/attr-infer.test.ts
 import { inferAttribute, type AttrValue } from "../core/attr-infer.ts";
+import { acceptValues } from "../core/ai-attrs.ts";
 let fails = 0;
 const check = (n: string, got: AttrValue | null, want: string | null) => { const ok = (got?.name ?? null) === want; console.log(`${ok ? "OK  " : "HATA"} ${n}${ok ? "" : `  beklenen ${want}, gelen ${got?.name ?? null}`}`); if (!ok) fails++; };
 const V = (...names: string[]) => names.map((name, id) => ({ id, name }));
@@ -44,6 +45,12 @@ check("paket tekli", inferAttribute("Paket İçeriği", V("25'li", "Tekli", "4'l
 check("paket 4'lü", inferAttribute("Paket İçeriği", V("25'li", "Tekli", "4'lü"), "Mobilya Tekerleği 4 Adet"), "4'lü");
 check("tip metinde", inferAttribute("Tip", V("Duvar Tipi", "El Vantilatörü", "Masaüstü", "Ayaklı"), "Şarjlı Masaüstü Fan"), "Masaüstü");
 check("enerji sınıfı tek harf eşleşmez", inferAttribute("Enerji Sınıfı", V("A", "B (Yeni Enerji Sınıfı)"), "A Kalite Fan"), null);
+
+// Yapay zekâ cevabı doğrulama: yalnızca listedeki değer (listedeki yazımla), serbest metin yalnızca izinli ve listesiz özellikte
+const ask = [{ name: "Malzeme", opt: { values: ["Peluş", "Plastik"], custom: false } }, { name: "Renk", opt: { values: [], custom: true } }, { name: "Yaş", opt: { values: ["Çocuk"], custom: false } }];
+const acc = acceptValues(ask, { values: [{ name: "malzeme", value: "PELUŞ", basis: "baslik" }, { name: "Renk", value: "Pembe", basis: "baslik" }, { name: "Yaş", value: "Yetişkin", basis: "cikarim" }] });
+const okAcc = acc.Malzeme === "Peluş" && acc.Renk === "Pembe" && !("Yaş" in acc);
+console.log(`${okAcc ? "OK  " : "HATA"} yapay zekâ değeri listeyle doğrulanır`); if (!okAcc) fails++;
 
 if (fails) { console.log(`\n${fails} özellik çıkarma testi başarısız`); process.exit(1); }
 console.log("\nÖzellik çıkarma testleri geçti");

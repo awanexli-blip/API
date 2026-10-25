@@ -18,6 +18,7 @@ import { syncOrders, syncClaims, syncSettlements, pushTracking, loadReservations
 import { syncInbox, notifyOrders } from "./core/inbox.ts";
 import { fixImages } from "./core/image-fix.ts";
 import { flushAttrOptions } from "./core/attr-options.ts";
+import { aiFillAttributes } from "./core/ai-attrs.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
@@ -411,6 +412,8 @@ async function main() {
     sendRes = await processSendJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => { summary.sendJobsError = String(e?.message ?? e); return null; });
     if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
     summary.attrOptions = await flushAttrOptions(db).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+    // Eksik zorunlu özellikler yapay zekâ ile (başlık + açıklama, pazaryerinin değer listesinden); eksiği kalmayan yeniden gönderilir
+    if (marketplaceId !== "amazon") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     if (s.auto_sync && marketplaceId !== "amazon") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
   }
 
