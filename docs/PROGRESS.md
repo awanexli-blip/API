@@ -6,6 +6,7 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 - K: Royal markalarını kullanma izni var; tüm ürünler Hepsiburada'ya. Tedarikçi pazaryeri markası `*` = ürünün kendi XML markası (64 marka: Royaleks 30 bin, Mudanis 7,5 bin...).
 - Varyantlı ürünler: HB'de tek grup (VaryantGroupID = ürün kodu), varyantın beden/renk değeri özellik varsayılanına; "aynı başlık" koruması yalnızca ilk varyantta (önceden 2. bedenden sonrası "kopya" sayılıyordu).
 - Royal içe aktarma: 200'lük toplu kayıt sorgu süresini aşıyordu -> 50'lik + zaman aşımında bölerek tekrar. 42.795 ürün yazıldı (42.649 aktif). HB'ye 427 gönderim işi (100'erli; çalışma başına ~2.500 ürün). Tek seferlik içe aktarma iş akışı: ops/import-once.txt.
+- Tedarikçi içe aktarma günde bir yerine **saatte bir** (her saat :45; değişmeyen turlar Toptancım ~2 dk): stok tedarikçiyle saatlik eşit, pazaryerine 15 dakikada bir gider. Toptancım birleşik içe aktarma doğrulandı (iki link, 26.060 ürün).
 - **Fiyat kuralı (K, 25.10):** net 60 TL üst sınırı kaldırıldı; satış fiyatının (KDV hariç) **en az %10'u ve en az 40 TL** net (net_margin_min, migration 050), Trendyol ve HB. Simülasyon (Trendyol 22.330): 4.296 aynı, 18.034 artar (9.059'u %5-10, 3.542'si %10-20). Sabit gider (TY 14,19 / HB 17,19) ve iade payı dahil.
 
 ## 2026-10-25 (32) — Çok linkli tedarikçi, Royal Tedarik, Gemini model sırası

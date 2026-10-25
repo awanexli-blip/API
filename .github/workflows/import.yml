@@ -1,9 +1,10 @@
 name: XML içe aktarma
 
 on:
-  # Her gece "gece içe aktar" işaretli tedarikçiler (panel: Ürünler -> Tedarikçiler)
+  # Saatte bir "otomatik içe aktar" işaretli tedarikçiler (panel: Ürünler -> Tedarikçiler): stok/fiyat tedarikçiyle saatlik eşit kalsın
+  # (25.10: günde bire göre gün içinde tedarikçide biten ürün satışta kalıyordu). Değişmeyen ürün yalnızca karşılaştırılır (Toptancım ~2 dk).
   schedule:
-    - cron: "40 2 * * *"   # 05:40 TR
+    - cron: "45 * * * *"   # her saat :45 (senkron :07/:22/:37/:52 ile çakışmasın)
   workflow_dispatch:
     inputs:
       supplier:

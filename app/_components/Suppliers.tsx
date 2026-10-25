@@ -48,17 +48,17 @@ export default function Suppliers({ api, notify }: { api: Api; notify: Notify })
         </div>
         <p className="muted" style={{ fontSize: 13 }}>
           Her tedarikçinin XML'i ürün veritabanına kendi kaynak adıyla (xml:kod) girer. Bir tedarikçinin birden çok XML linki varsa düzenle → "Ek XML linkleri":
-          hepsi birlikte indirilir ve tek tedarikçi olarak görünür. "Gece" işaretliler her gece 05:40'ta kendiliğinden güncellenir.
+          hepsi birlikte indirilir ve tek tedarikçi olarak görünür. "Otomatik" işaretliler saatte bir (her saat :45) kendiliğinden güncellenir: stok ve fiyat tedarikçiyle eşit kalır.
         </p>
         {list.length === 0 ? <p className="muted">Henüz tedarikçi yok.</p> : <div className="scroll"><table className="cards">
-          <thead><tr><th>Tedarikçi</th><th className="n">Ürün</th><th>Son içe aktarma</th><th>Aktif</th><th>Gece</th><th /></tr></thead>
+          <thead><tr><th>Tedarikçi</th><th className="n">Ürün</th><th>Son içe aktarma</th><th>Aktif</th><th>Otomatik</th><th /></tr></thead>
           <tbody>{list.map((s) => (
             <tr key={s.id}>
               <td><b>{s.name}</b> <span className="muted">({s.code})</span><br /><span className="muted" style={{ fontSize: 12 }}>{s.url_masked || "adres yok"}{s.feeds?.length ? ` · +${s.feeds.length} ek link` : ""}{s.sku_prefix ? ` · SKU öneki ${s.sku_prefix}` : ""}</span></td>
               <td data-label="Ürün" className="n">{Number(s.product_count).toLocaleString("tr-TR")}</td>
               <td data-label="Son içe aktarma" style={{ fontSize: 13 }}>{s.last_run_at ? <>{when(s.last_run_at)} <span className={`pill ${s.last_status === "ok" ? "ok" : s.last_status === "error" ? "error" : "partial"}`}>{STATUS_TR[s.last_status] ?? s.last_status}</span></> : <span className="muted">hiç</span>}</td>
               <td data-label="Aktif"><input type="checkbox" checked={s.active} onChange={() => toggle(s, "active")} /></td>
-              <td data-label="Gece"><input type="checkbox" checked={s.nightly} disabled={!s.active} onChange={() => toggle(s, "nightly")} /></td>
+              <td data-label="Otomatik (saatlik)"><input type="checkbox" checked={s.nightly} disabled={!s.active} onChange={() => toggle(s, "nightly")} /></td>
               <td className="n"><div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
                 <button className="btn primary" disabled={!s.active || !s.has_url} onClick={() => run(s.code, s.name)}>İçe aktar</button>
                 <button className="btn" onClick={() => setD({ ...empty(), ...s, feeds: (s.feeds ?? []).map((f: Row) => ({ id: f.id, label: f.label ?? "", url: "", url_masked: f.url_masked, sku_prefix: f.sku_prefix ?? "", mapping: f.mapping ?? null, item_path: f.item_path ?? "", own: !!f.mapping })), xml_url: "", item_path: s.item_path ?? "", marketplace_brand: s.marketplace_brand ?? "", default_attributes: Object.entries(s.default_attributes ?? {}).map(([k, v]) => `${k} = ${v}`).join("\n") })}>Düzenle</button>
@@ -216,7 +216,7 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
         </div>
         <div className="row" style={{ marginTop: 12, gap: 16 }}>
           <label className="check"><input type="checkbox" checked={d.sku_ascii} onChange={(e) => set("sku_ascii", e.target.checked)} />SKU'dan Türkçe/özel karakterleri at</label>
-          <label className="check"><input type="checkbox" checked={d.nightly} onChange={(e) => set("nightly", e.target.checked)} />Her gece otomatik içe aktar</label>
+          <label className="check"><input type="checkbox" checked={d.nightly} onChange={(e) => set("nightly", e.target.checked)} />Saatte bir otomatik içe aktar</label>
         </div>
       </div>}
 
