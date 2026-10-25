@@ -80,14 +80,24 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     if (dry) { console.log(JSON.stringify({ sample: items.slice(0, 2), errors: errors.slice(0, 20) }, null, 1)); return; }
     rows.push(...errors.map((e) => ({ job_id: job.id, row_no: e.row, sku: e.sku, status: "error", errors: { _: e.error } })));
     await db.from("import_jobs").update({ total }).eq("id", job.id);
-    for (const [n, part] of chunk(items, 200).entries()) {
-      const { data, error } = await db.rpc("product_import_batch", { items: part, actor, opts: { mode: "upsert", keep_missing_variants: false, source } });
-      if (error) throw new Error(`Toplu kayıt hatası: ${error.message}`);
-      for (const r of data as any[]) {
+    // 50'lik parçalar; sorgu süre sınırına takılırsa parça bölünerek yeniden denenir (yeni tedarikçide ilk kayıt ağır: varyant + görsel)
+    const saveBatch = async (part: any[]): Promise<any[]> => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error } = await db.rpc("product_import_batch", { items: part, actor, opts: { mode: "upsert", keep_missing_variants: false, source } });
+        if (!error) return data as any[];
+        if (!/statement timeout|timeout/i.test(error.message)) throw new Error(`Toplu kayıt hatası: ${error.message}`);
+        if (part.length > 5) { const h = Math.ceil(part.length / 2); return [...(await saveBatch(part.slice(0, h))), ...(await saveBatch(part.slice(h)))]; }
+        await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+      }
+      throw new Error("Toplu kayıt hatası: veritabanı zaman aşımı (tekrar denendi)");
+    };
+    for (const [n, part] of chunk(items, 50).entries()) {
+      const data = await saveBatch(part);
+      for (const r of data) {
         count[r.action] = (count[r.action] ?? 0) + 1;
         if (r.action === "error" || r.action === "skipped") rows.push({ job_id: job.id, row_no: r.row, sku: r.sku, status: r.action, errors: { _: r.error } });
       }
-      if (n % 20 === 0) console.log(`${sup.code}: ${Math.min((n + 1) * 200, items.length)} / ${items.length}`, count);
+      if (n % 80 === 0) console.log(`${sup.code}: ${Math.min((n + 1) * 50, items.length)} / ${items.length}`, count);
     }
     // XML'den kalkan ürünler: stok 0 (rezerve stok korunur)
     const inXml = new Set(items.map((i) => i.payload.sku));
