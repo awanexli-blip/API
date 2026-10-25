@@ -11,7 +11,11 @@ const mask = (u?: string | null) => {
   if (!u) return "";
   try { const x = new URL(u); return `${x.protocol}//${x.host}${x.pathname.length > 1 ? "/…" : ""}${x.search ? "?…" : ""}`; } catch { return "…"; }
 };
-const view = (s: any) => ({ ...s, xml_url: undefined, url_masked: s.url_from_env ? `GitHub Secret: ${s.url_from_env}` : mask(s.xml_url), has_url: !!(s.xml_url || s.url_from_env) });
+// Ek linkler (feeds): adres tarayıcıya gitmez, maskeli gösterilir
+const view = (s: any) => ({ ...s, xml_url: undefined, url_masked: s.url_from_env ? `GitHub Secret: ${s.url_from_env}` : mask(s.xml_url), has_url: !!(s.xml_url || s.url_from_env),
+  feeds: (Array.isArray(s.feeds) ? s.feeds : []).map((f: any) => ({ id: f.id, label: f.label ?? "", sku_prefix: f.sku_prefix ?? "", mapping: f.mapping ?? null, item_path: f.item_path ?? "", url_masked: mask(f.url), has_url: !!f.url })) });
+const okUrl = (u: string) => { try { const x = new URL(u.trim()); return /^https?:$/.test(x.protocol) ? x.toString() : null; } catch { return null; } };
+const mapCheck = (m: Record<string, string>) => { const v = Object.values(m); return (v.includes("model") || v.includes("variant_sku")) && v.includes("title"); };
 
 export async function GET(req: NextRequest) {
   const a = await authorize(req, "admin");
@@ -64,8 +68,30 @@ export async function PUT(req: NextRequest) {
     if (!vals.includes("model") && !vals.includes("variant_sku")) return NextResponse.json({ error: "Eşlemede \"Model kodu\" alanı seçilmeli" }, { status: 400 });
     if (!vals.includes("title")) return NextResponse.json({ error: "Eşlemede \"Ürün adı\" alanı seçilmeli" }, { status: 400 });
   }
-  row.updated_at = new Date().toISOString();
   const db = admin();
+  // Ek linkler: [{ id?, label, url? (yeni/değişen), sku_prefix, mapping|null, item_path }]; adresi gönderilmeyen link kayıtlı adresini korur
+  if ("feeds" in b) {
+    if (!Array.isArray(b.feeds) || b.feeds.length > 10) return NextResponse.json({ error: "En fazla 10 ek link" }, { status: 400 });
+    const old = b.id ? (await db.from("suppliers").select("feeds").eq("id", b.id).maybeSingle()).data?.feeds ?? [] : [];
+    const byId = new Map<string, any>((Array.isArray(old) ? old : []).map((f: any) => [f.id, f]));
+    const out: any[] = [];
+    for (const [i, f] of (b.feeds as any[]).entries()) {
+      const id = /^[a-z0-9-]{1,40}$/.test(String(f.id ?? "")) ? String(f.id) : `l${Date.now().toString(36)}${i}`;
+      const url = f.url ? okUrl(String(f.url)) : byId.get(id)?.url ?? null;
+      if (f.url && !url) return NextResponse.json({ error: `${i + 1}. ek link: adres http(s) ile başlamalı` }, { status: 400 });
+      if (!url) return NextResponse.json({ error: `${i + 1}. ek link: XML adresi gerekli` }, { status: 400 });
+      const prefix = String(f.sku_prefix ?? "").trim();
+      if (!/^[A-Za-z0-9._-]{0,12}$/.test(prefix)) return NextResponse.json({ error: `${i + 1}. ek link: SKU öneki en fazla 12 karakter` }, { status: 400 });
+      let mapping: Record<string, string> | null = null;
+      if (f.mapping && typeof f.mapping === "object" && Object.keys(f.mapping).length) {
+        mapping = Object.fromEntries(Object.entries(f.mapping).filter(([k, v]) => k.length <= 200 && FIELDS.includes(String(v))).slice(0, 200)) as Record<string, string>;
+        if (!mapCheck(mapping)) return NextResponse.json({ error: `${i + 1}. ek link: eşlemede Model kodu ve Ürün adı seçilmeli` }, { status: 400 });
+      }
+      out.push({ id, label: String(f.label ?? "").trim().slice(0, 60) || `Link ${i + 2}`, url, sku_prefix: prefix || null, mapping, item_path: String(f.item_path ?? "").trim().slice(0, 200) || null });
+    }
+    row.feeds = out;
+  }
+  row.updated_at = new Date().toISOString();
   const q = b.id ? db.from("suppliers").update(row).eq("id", b.id) : db.from("suppliers").insert(row);
   const { data, error } = await q.select("*").single();
   if (error) return error.code === "23505" ? NextResponse.json({ error: "Bu kısa kod zaten kullanılıyor" }, { status: 409 }) : dbError(error);

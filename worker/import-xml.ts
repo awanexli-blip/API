@@ -4,22 +4,24 @@
 // - Kaynak "xml:<kod>"; aynı model kodlu ürünler tek ürünün varyantları olur
 // - İçerik aynıysa (source_hash) yalnızca stok güncellenir; fiyat/içerik değişikliği denetim kaydına yazılır
 // - XML'den kalkan ürünler silinmez: stokları 0 yapılır (silme açık bir işlemdir)
+// - Bir tedarikçinin birden çok linki olabilir (suppliers.feeds): hepsi birlikte indirilir ve tek liste gibi işlenir; biri inmezse
+//   içe aktarma durur (yoksa o linkin ürünleri "XML'den kalktı" sanılıp stokları sıfırlanırdı)
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
 import { env, chunk, arg, SUPPLIER_ARG } from "./core/util.ts";
 import { safeFetch } from "./core/safe-fetch.ts";
-import { findItems, itemsToGroups, supplierPayload, type Supplier } from "../lib/supplier-xml.ts";
+import { feedSupplier, findItems, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
 
 const stable = (v: any): string => Array.isArray(v) ? `[${v.map(stable).join(",")}]`
   : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}` : JSON.stringify(v);
 const hashOf = (p: any) => createHash("sha1").update(stable({ ...p, variants: p.variants.map(({ stock, ...v }: any) => v) })).digest("hex");
 
 // Ayrıştırılmış XML -> içe aktarma kalemleri ve satır hataları (saf fonksiyon, test edilir)
-export function buildItems(parsed: any, sup: Supplier) {
+// seen/seenSku: aynı tedarikçinin linkleri arasında paylaşılır (barkod ve SKU tekrarı linkler arasında da yakalanır)
+export function buildItems(parsed: any, sup: Supplier, seen = new Set<string>(), seenSku = new Set<string>()) {
   const { items: raw, path } = findItems(parsed, sup.item_path);
   const groups = itemsToGroups(raw, sup.mapping);
-  const seen = new Set<string>(), seenSku = new Set<string>();
   const items: { row: number; payload: any; hash: string }[] = [];
   const errors: { row: number; sku: string; error: string }[] = [];
   for (const g of groups) {
@@ -52,16 +54,29 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     await db.from("suppliers").update({ last_run_at: new Date().toISOString(), last_status: patch.status }).eq("code", sup.code);
   };
   try {
-    const url = sup.xml_url || (sup.url_from_env && /^[A-Z0-9_]+$/.test(sup.url_from_env) ? process.env[sup.url_from_env] : "");
-    if (!url) throw new Error(`XML adresi yok${sup.url_from_env ? ` (GitHub Secret ${sup.url_from_env} boş)` : ""}`);
-    // İç ağ adresi, sonsuz yönlendirme ve 300 MB üstü gövde reddedilir (denetim S2.1)
-    const res = await safeFetch(url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
-    if (!res.ok) throw new Error(`XML indirilemedi (HTTP ${res.status})`);
-    const built = buildItems(parseXml(res.text()), sup);
-    const { items, total, path } = built;
-    errors = built.errors;
-    console.log(`${sup.name}: ${total} ürün (${path}), ${items.length} geçerli, ${errors.length} hatalı`);
-    if (!total) throw new Error("XML'de ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)");
+    const mainUrl = sup.xml_url || (sup.url_from_env && /^[A-Z0-9_]+$/.test(sup.url_from_env) ? process.env[sup.url_from_env] : "");
+    if (!mainUrl) throw new Error(`XML adresi yok${sup.url_from_env ? ` (GitHub Secret ${sup.url_from_env} boş)` : ""}`);
+    const feeds: (Feed & { url: string })[] = [{ id: "ana", label: "Ana link", url: mainUrl }, ...((Array.isArray(sup.feeds) ? sup.feeds : []) as Feed[]).map((f) => ({ ...f, url: String(f.url ?? "") }))];
+    const items: { row: number; payload: any; hash: string }[] = [];
+    const seen = new Set<string>(), seenSku = new Set<string>();
+    const perFeed: string[] = [];
+    let total = 0;
+    for (const [fi, feed] of feeds.entries()) {
+      const name = feed.label || `Link ${fi + 1}`;
+      if (!feed.url) throw new Error(`${name}: XML adresi yok`);
+      // İç ağ adresi, sonsuz yönlendirme ve 300 MB üstü gövde reddedilir (denetim S2.1)
+      const res = await safeFetch(feed.url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
+      if (!res.ok) throw new Error(`${name}: XML indirilemedi (HTTP ${res.status})`);
+      const built = buildItems(parseXml(res.text()), feedSupplier(sup, feed), seen, seenSku);
+      if (!built.total) throw new Error(`${name}: XML'de ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
+      // Satır numaraları link başına ayrı aralıkta (hata listesinde hangi linkten geldiği anlaşılsın)
+      const off = fi * 1_000_000;
+      items.push(...built.items.map((i) => ({ ...i, row: i.row + off })));
+      errors.push(...built.errors.map((e) => ({ ...e, row: e.row + off })));
+      total += built.total;
+      perFeed.push(`${name}: ${built.total}`);
+      console.log(`${sup.name} / ${name}: ${built.total} ürün (${built.path}), ${built.items.length} geçerli, ${built.errors.length} hatalı`);
+    }
     if (dry) { console.log(JSON.stringify({ sample: items.slice(0, 2), errors: errors.slice(0, 20) }, null, 1)); return; }
     rows.push(...errors.map((e) => ({ job_id: job.id, row_no: e.row, sku: e.sku, status: "error", errors: { _: e.error } })));
     await db.from("import_jobs").update({ total }).eq("id", job.id);
@@ -94,7 +109,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     const failed = (count.error ?? 0) + errors.length;
     await finish({
       status: failed ? "partial" : "ok", failed,
-      message: safe ? `XML'den kalkan ${gone.length} ürün (${zeroed} varyantın stoğu 0 yapıldı)` : `XML'den kalkan ${gone.length} ürün çok fazla, güvenlik için stokları sıfırlanmadı (XML eksik inmiş olabilir)`,
+      message: (feeds.length > 1 ? `${perFeed.join(", ")} · ` : "") + (safe ? `XML'den kalkan ${gone.length} ürün (${zeroed} varyantın stoğu 0 yapıldı)` : `XML'den kalkan ${gone.length} ürün çok fazla, güvenlik için stokları sıfırlanmadı (XML eksik inmiş olabilir)`),
     });
     console.log(`${sup.code} bitti`, count, { xmlErrors: errors.length, gone: gone.length, zeroed });
     // Yeni ürünler girdiyse pazaryeri ilanlarını bunlara bağla (iş kuyruğu, aynı içe aktarma için bir kez)

@@ -8,6 +8,13 @@ export type Supplier = {
   price_includes_vat?: boolean; default_vat?: number; default_brand?: string; currency?: string;
 };
 
+// Aynı tedarikçinin ek XML linki (suppliers.feeds, migration 048). Boş alanlar ana linkin ayarını kullanır.
+export type Feed = { id: string; label?: string; url?: string; sku_prefix?: string | null; mapping?: Record<string, Field> | null; item_path?: string | null };
+export function feedSupplier<T extends Supplier>(sup: T, feed?: Feed | null): T {
+  if (!feed) return sup;
+  return { ...sup, sku_prefix: feed.sku_prefix ?? sup.sku_prefix, mapping: feed.mapping && Object.keys(feed.mapping).length ? feed.mapping : sup.mapping, item_path: feed.item_path || sup.item_path };
+}
+
 const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
 
 // Ürün listesi: verilen yol ya da en büyük nesne dizisi

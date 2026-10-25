@@ -10,13 +10,19 @@ export const maxDuration = 120;
 
 const MAX = 120 * 1024 * 1024;
 
-// XML'i incele: { id } (kayıtlı adres) veya { url } (yeni) + isteğe bağlı { item_path, mapping, ...ayarlar } (önizleme için)
+// XML'i incele: { id } (kayıtlı adres), { id, feed_id } (kayıtlı ek link) veya { url } (yeni) + isteğe bağlı { item_path, mapping, ...ayarlar } (önizleme için)
 // Dönüş: ürün listesi yolu, ürün sayısı, alanlar (doluluk + örnek), önerilen eşleme, ilk ürünlerin önizlemesi
 export async function POST(req: NextRequest) {
   const a = await authorize(req, "admin");
   if (a instanceof NextResponse) return a;
   const b = await req.json().catch(() => ({}));
   let url = String(b.url ?? "").trim();
+  // Kayıtlı ek link: { id, feed_id }
+  if (!url && b.id && b.feed_id) {
+    const { data } = await admin().from("suppliers").select("feeds").eq("id", b.id).maybeSingle();
+    url = (Array.isArray(data?.feeds) ? data!.feeds : []).find((f: any) => f.id === b.feed_id)?.url ?? "";
+    if (!url) return NextResponse.json({ error: "Ek link bulunamadı" }, { status: 400 });
+  }
   if (!url && b.id) {
     const { data } = await admin().from("suppliers").select("xml_url, url_from_env").eq("id", b.id).maybeSingle();
     if (data?.url_from_env && !data.xml_url) return NextResponse.json({ error: `Bu tedarikçinin adresi GitHub Secret'ta (${data.url_from_env}); panelden incelenemez. Eşleme hazır, doğrudan içe aktarabilirsin.` }, { status: 400 });
