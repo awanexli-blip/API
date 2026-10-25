@@ -22,8 +22,8 @@ jobs:
       - name: XML -> ürünler
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
           ACTOR: claude (tek seferlik)
         run: |
           SUPPLIER=$(head -n1 ops/import-once.txt | awk '{print $1}' | tr -cd 'a-z0-9-')

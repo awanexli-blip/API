@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-25 (34) — Veritabanı çöktü, yeni Supabase projesi
+- Eski proje (`xovqsjiddoituaayyhae`, ücretsiz 0,5 GB) 1 GB'ı aştı; `vacuum full audit_log` disk dolu hatası verdi, Postgres kurtarma döngüsünde kaldı (pg_wal yazılamıyor). Restart işe yaramadı; destek talebi SU-524672 (ücretsiz plan, garanti yok).
+- K kararı: ödeme yok, sıfırdan. Yeni ücretsiz proje **trentakip-v2** (`utuwjqfcaiqlqdzzagmm`, eu-central-1). Şema: `supabase/full_schema.sql` (schema.sql + tüm migration'lar; K SQL Editor'de çalıştırdı, 37 tablo).
+- Ayarlar geri yazıldı: TY %10 / en az 40 TL net, sabit gider 14,19, iade 0,05×180, smart, max 50.000, squeeze 15, çoklu adet 40; HB sabit 17,19, kargo basamakları 43,99/75,99. auto_sync ikisinde de kapalı (ürünler yüklenince açılacak). BayilikXML kaydı pasif.
+- GitHub Secrets yeni adlarla: `SUPABASE_URL2`, `SUPABASE_SERVICE_ROLE_KEY2` (iş akışları güncellendi). Vercel, Supabase entegrasyonuyla bağlandı.
+- Açık: K panel kullanıcısını yeni projede açacak, tedarikçileri (Royal 4 link, Toptancım 2 link...) yeniden girecek; sonra içe aktarma, ilan senkronu, auto_sync açma. Kaybolanlar: kategori eşleşmeleri, ürün istisnaları, kâr kuralları, sipariş geçmişi.
+
 ## 2026-10-25 (33) — Royal -> HB, yeni fiyat kuralı
 - K: Royal markalarını kullanma izni var; tüm ürünler Hepsiburada'ya. Tedarikçi pazaryeri markası `*` = ürünün kendi XML markası (64 marka: Royaleks 30 bin, Mudanis 7,5 bin...).
 - Varyantlı ürünler: HB'de tek grup (VaryantGroupID = ürün kodu), varyantın beden/renk değeri özellik varsayılanına; "aynı başlık" koruması yalnızca ilk varyantta (önceden 2. bedenden sonrası "kopya" sayılıyordu).

@@ -35,8 +35,8 @@ jobs:
       - run: npm ci --prefix worker
       - name: Çalıştır
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
           XML_URL: ${{ secrets.XML_URL }}
           HB_MERCHANT_ID: ${{ secrets.HB_MERCHANT_ID }}
           HB_USERNAME: ${{ secrets.HB_USERNAME }}

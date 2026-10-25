@@ -164,7 +164,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 
 **Hepsiburada (GitHub Secrets):** `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`; Variables: `HB_ENV` (boş=SIT, `prod`), `HB_USER_AGENT`.
 
-**GitHub Secrets (worker):** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `XML_URL`, `TRENDYOL_SELLER_ID`, `TRENDYOL_API_KEY`, `TRENDYOL_API_SECRET`, `TRENDYOL_SHIPMENT_ADDRESS_ID`, `TRENDYOL_RETURN_ADDRESS_ID` (opsiyonel, `create` için; V2'de `TRENDYOL_CARGO_COMPANY_ID` kullanılmıyor). **GitHub Variables (opsiyonel):** `TRENDYOL_STOREFRONT`, `TRENDYOL_BRAND_NAME`.
+**GitHub Secrets (worker):** `SUPABASE_URL2`, `SUPABASE_SERVICE_ROLE_KEY2` (25.10 yeni proje; eski adlar ölü projeye işaret eder), `XML_URL`, `TRENDYOL_SELLER_ID`, `TRENDYOL_API_KEY`, `TRENDYOL_API_SECRET`, `TRENDYOL_SHIPMENT_ADDRESS_ID`, `TRENDYOL_RETURN_ADDRESS_ID` (opsiyonel, `create` için; V2'de `TRENDYOL_CARGO_COMPANY_ID` kullanılmıyor). **GitHub Variables (opsiyonel):** `TRENDYOL_STOREFRONT`, `TRENDYOL_BRAND_NAME`.
 
 **Vercel (panel):** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `GH_TOKEN` (fine-grained, bu repo, Actions: Read and write), `GH_REPO` (`awanexli-blip/API`).
 

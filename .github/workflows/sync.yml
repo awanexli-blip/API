@@ -48,16 +48,16 @@ jobs:
         timeout-minutes: 8
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
           ACTOR: zamanlı-senkron
         run: node --experimental-strip-types worker/import-xml.ts all
       - name: Sync
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           TRIGGER: ${{ github.event_name == 'schedule' && 'schedule' || 'manual' }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
           XML_URL: ${{ secrets.XML_URL }}
           TRENDYOL_SELLER_ID: ${{ secrets.TRENDYOL_SELLER_ID }}
           TRENDYOL_API_KEY: ${{ secrets.TRENDYOL_API_KEY }}
@@ -87,7 +87,7 @@ jobs:
       - name: İş kuyruğu (Faz 3)
         if: always() && matrix.marketplace == 'trendyol'
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
         run: node --experimental-strip-types worker/jobs.ts 240
       # preview.csv / xml_dump.csv yüklenmez: maliyet içerir ve depo herkese açık (denetim S1.2). Önizleme panelde: Fiyat önizleme.

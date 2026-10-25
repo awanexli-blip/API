@@ -23,8 +23,8 @@ jobs:
       - run: npm ci --prefix worker
       - name: Marka listesini çek
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
           TRENDYOL_SELLER_ID: ${{ secrets.TRENDYOL_SELLER_ID }}
           TRENDYOL_API_KEY: ${{ secrets.TRENDYOL_API_KEY }}
           TRENDYOL_API_SECRET: ${{ secrets.TRENDYOL_API_SECRET }}

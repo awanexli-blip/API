@@ -24,7 +24,7 @@ jobs:
       - name: XML indir ve oku (kuru)
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
           SUPPLIER: ${{ github.event.inputs.supplier || 'royal' }}
         run: node --experimental-strip-types worker/import-xml.ts "$SUPPLIER" --dry | head -c 3000
