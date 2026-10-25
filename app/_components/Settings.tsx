@@ -27,6 +27,7 @@ const FIELDS: Field[] = [
   { key: "return_rate", label: "İade oranı (%)", kind: "pct", hint: "Siparişlerin yüzde kaçı iade geliyor (ör. 5)" },
   { key: "return_cost", label: "İade başına maliyet (TL)", kind: "num", hint: "İade kargosu + gidiş kargosu + hasar payı, KDV dahil (ör. 180)" },
   { key: "net_profit_min", label: "Net kâr aralığı: en az (TL)", kind: "num", optional: true, hint: "Doluysa fiyat yüzde hedefine göre değil, en az bu kadar net kâr bırakan en ucuz fiyata göre hesaplanır (kâr kuralları ve 1,3x taban kullanılmaz). Boş = yüzde hedefi" },
+  { key: "net_margin_min", label: "Net kâr aralığı: en az marj (%)", kind: "pct", optional: true, hint: "Net kâr TL modunda fiyat hem en az TL tutarını hem satış fiyatının (KDV hariç) en az bu yüzdesini bırakır (ör. 10 = %10, en az 40 TL). Boş = yalnızca TL" },
   { key: "net_profit_max", label: "Net kâr aralığı: en çok (TL)", kind: "num", optional: true, hint: "Bilgi amaçlı üst sınır: yuvarlama veya kargo basamağı yüzünden bunu geçen ürünler not alır" },
   { key: "multi_unit_min_net", label: "Çoklu adet koruması: en az net kâr (TL)", kind: "num", optional: true, hint: "300 TL altı üründen 2-3 adet alınıp sepet 300'ü geçince kargo sana kalır. Doluysa fiyat, o durumda bile bu kadar net kalacak şekilde ayarlanır. Boş = kapalı" },
   { key: "squeeze_min_net", label: "299,90'a çekerken en az net kâr (TL)", kind: "num", optional: true, hint: "Doluysa: kargo alıcıda kalsın diye 299,90'a çekmede yalnızca bu tutara bakılır (yüzde eşiği ve kural şartı yerine). Boş = yüzde eşiği" },
@@ -50,7 +51,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
 
   const toForm = (d: Row) => {
     const o: Row = { ...d };
-    for (const x of FIELDS) if (x.kind === "pct") o[x.key] = String(Math.round(Number(d[x.key]) * 10000) / 100);
+    for (const x of FIELDS) if (x.kind === "pct") o[x.key] = x.optional && d[x.key] == null ? "" : String(Math.round(Number(d[x.key]) * 10000) / 100);
     for (const x of FIELDS) if (x.kind !== "pct") o[x.key] = x.optional && d[x.key] == null ? "" : String(d[x.key]);
     if (d.update_prices === false) o.existing_price_policy = "keep";
     if ("shipping_bands" in d) o.shipping_bands_text = bandsText(d.shipping_bands);
@@ -72,6 +73,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     multiUnitMinNet: String(f.multi_unit_min_net ?? "").trim() === "" ? null : num("multi_unit_min_net"),
     netProfitMin: String(f.net_profit_min ?? "").trim() === "" ? null : num("net_profit_min"),
     netProfitMax: String(f.net_profit_max ?? "").trim() === "" ? null : num("net_profit_max"),
+    netMarginMin: String(f.net_margin_min ?? "").trim() === "" ? null : num("net_margin_min") / 100,
     vatRate: simVat / 100,
     commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false, shippingBands: bandsFrom(parseBands(String(f.shipping_bands_text ?? "")) || null),
   };

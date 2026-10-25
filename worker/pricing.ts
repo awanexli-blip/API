@@ -23,6 +23,9 @@ export interface PricingConfig {
   // 1,3x taban kullanılmaz: fiyat, en az netProfitMin bırakan en ucuz x9,90 fiyattır (yuvarlama payıyla netProfitMax'ı geçmez).
   netProfitMin?: number | null;
   netProfitMax?: number | null;
+  // En az kâr marjı (K, 25.10: "marj %10-20, ama cebime en az 40 TL"): net kâr TL modunda fiyat hem en az netProfitMin TL hem en az bu oran
+  // (KDV hariç satışa göre net) bırakan en ucuz fiyat. Boş = yalnızca TL alt sınırı.
+  netMarginMin?: number | null;
   squeezeMinNet?: number | null; // 300 TL eşiğinin altına (299,90) çekerken kabul edilen en az net kâr (TL). Doluysa yüzde eşiği ve kural TL şartı yerine geçer
   returnRate?: number;           // iade oranı (0.05 = siparişlerin %5'i iade)
   returnCost?: number;           // iade başına maliyet (KDV dahil TL: iade kargosu, gidiş kargosu, paketleme/hasar payı)
@@ -158,7 +161,7 @@ export function calcPrice(
   if (!(cost > 0)) return fail("maliyet yok");
   if (cfg.netProfitMin != null && cfg.netProfitMin >= 0 && !(cfg as any)._band) {
     const lo = cfg.netProfitMin, hi = Math.max(lo, cfg.netProfitMax ?? Infinity);
-    const r = calcPrice(cost, { ...cfg, targetProfitRate: 0, minMarkup: 0, minNetProfit: lo, _band: true } as PricingConfig, commissionRate);
+    const r = calcPrice(cost, { ...cfg, targetProfitRate: Math.max(0, Math.min(0.5, cfg.netMarginMin ?? 0)), minMarkup: 0, minNetProfit: lo, _band: true } as PricingConfig, commissionRate);
     if (r.ok && r.netProfit > hi + 0.01) r.note = [r.note, `net kâr aralığın üstünde (${r.netProfit.toFixed(0)} TL)`].filter(Boolean).join(" · ");
     return r;
   }

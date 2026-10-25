@@ -109,6 +109,11 @@ const netOf = (p: number, cost: number, k: number) => breakdown(p, cost, cfg, k)
   const ty = { ...cfg, netProfitMin: 40, netProfitMax: 60, multiUnitMinNet: null };
   for (const c of [30, 150, 1000]) { const r = calcPrice(c, ty, 0.18); check(`net aralık (Trendyol): ${c} -> ${r.price} net ${r.netProfit}`, r.ok && r.netProfit >= 39.99 && r.netProfit <= 60, r); }
   check("net aralık: oran modundan ucuz", calcPrice(800, hb, 0.1).price < calcPrice(800, { ...hb, netProfitMin: null }, 0.1).price);
+  // En az marj (%10, KDV hariç satışa göre) + en az 40 TL: ucuzda TL tabanı, pahalıda yüzde tabanı belirler
+  const mg = { ...ty, netProfitMax: null, netMarginMin: 0.10 };
+  const cheap = calcPrice(30, mg, 0.18), dear = calcPrice(1000, mg, 0.18);
+  check(`en az marj: ucuzda en az 40 TL (${cheap.price} net ${cheap.netProfit})`, cheap.ok && cheap.netProfit >= 39.99 && cheap.price === calcPrice(30, ty, 0.18).price, cheap);
+  check(`en az marj: pahalıda en az %10 (${dear.price} oran ${dear.profitRate})`, dear.ok && dear.profitRate >= 0.0999 && dear.price > calcPrice(1000, ty, 0.18).price, dear);
 }
 
 console.log(fails ? `\n${fails} birim testi başarısız` : "\nBirim testleri geçti");
