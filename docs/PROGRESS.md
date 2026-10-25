@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-25 (30) — HB kategori yolu, yapay zekâ ile özellik
+- Dünkü düzeltmenin etkisi: HB canlı 10.772 -> 13.371, özellik hatası 11.144 -> 5.579; kitaptan çıkan ürünlerin bir kısmı "kategori yok"a düştü (947 -> 3.836).
+- **Tedarikçi kategori yolu eşleştirici** (`buildPathMatcher`): Toptancım yolları HB ağacına benzer ("... >>> Oyuncak >>> Eğitici Oyuncak"); son adımla aynı adlı yaprak, ara kategoride başlıkla alt yaprak, yoksa "Diğer ...". Sıra: elle > eşleme > tahmin (yüksek/orta) > yol (güçlü) > başlık ağacı > ...
+- **Yapay zekâ ile özellik** (`worker/core/ai-attrs.ts`, migration 045): eksik zorunlu özellik, başlık + açıklamadan, pazaryerinin değer listesinden (yalnızca listedeki değer kabul; ölçü/sayı uydurma yok; emin değilse boş -> Özellik tamamla). Ürün kaydına yazılır, eksiği kalmayan yeniden gönderilir. Çalışma başına 120 ürün, ürün başına 7 günde bir. K: GitHub Secrets'a ANTHROPIC_API_KEY (soru taslakları da bunu bekliyor; şu an 0 taslak).
+
 ## 2026-10-24 (29) — Hizmet bedeli, eksik ürün analizi, HB yanlış kategori döngüsü
 - K onayı: Trendyol sabit gideri 4 -> **14,19 TL** (4 tedarikçi kargosu + 10,19 hizmet bedeli). Simülasyon (22.330 canlı ürün): ortalama +13,1 TL; 17.169 ürün +1-15, 4.954 ürün +16-30, 207 ürün +90-100 (299,90'da net 40 TL altına düştüğü için eşik üstüne çıkıyor, K kuralı net ≥ 40).
 - **Gerçek komisyon doğrulandı** (24 hakediş): komisyon = oran × fiyat (KDV eklenmez, formül doğru). Fark yalnız indirimli satışta (komisyon indirim öncesi fiyattan): toplam 2.379 tahmin / 2.424 gerçek (%1,9).
