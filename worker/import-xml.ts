@@ -125,6 +125,12 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     // Satış hızı için tedarikçi stok düşüşü (ürün seçimi / fırsat puanı, migration 051)
     const snap = await db.rpc("snap_supplier_stock", { p_source: source });
     if (snap.error) console.error("stok kaydı:", snap.error.message);
+    // Saklama süreleri (veritabanı ücretsiz plan sınırında kalsın): stok geçmişi 21 gün, değişiklik geçmişi 30 gün
+    const day = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+    const rs = await db.from("supplier_stock_snap").delete().lt("day", day(21).slice(0, 10));
+    if (rs.error) console.error("stok geçmişi saklama:", rs.error.message);
+    const ra = await db.from("audit_log").delete().lt("at", day(30));
+    if (ra.error) console.error("değişiklik geçmişi saklama:", ra.error.message);
     // Yeni ürünler girdiyse pazaryeri ilanlarını bunlara bağla (iş kuyruğu, aynı içe aktarma için bir kez)
     if (count.created) await db.from("jobs").insert({ type: "link_listings", marketplace: "trendyol", idempotency_key: `link-after-import-${job.id}`, created_by: actor });
   } catch (e: any) {

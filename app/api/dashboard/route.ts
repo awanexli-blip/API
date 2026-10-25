@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
   const waiting = (unmapped.data ?? []).reduce((t: number, u: any) => t + (u.product_count ?? 0), 0);
   if (waiting > 0) alerts.push({ level: "info", text: `${waiting.toLocaleString("tr-TR")} yeni ürün kategori eşleşmesi bekliyor.`, go: "pazaryeri/trendyol/kategoriler" });
   for (const sp of out.suppliers) if (sp.active && sp.last_status === "error") alerts.push({ level: "bad", text: `${sp.name} XML içe aktarması hata verdi.`, go: "tedarikciler" });
-  if (!brands) alerts.push({ level: "info", text: "Trendyol marka listesi çekilmemiş: ürün formunda marka önerisi çıkmaz (GitHub Actions → Marka listesi → Run).", go: "pazaryeri/trendyol/markalar" });
+  // Marka listesi bilerek tutulmuyor (25.10, veritabanı alanı): uyarı verilmez
   if (!rules) alerts.push({ level: "info", text: "Akıllı kâr kuralı yok: tüm ürünlerde tek kâr oranı kullanılıyor. Önerilen kademeli kuralları dene.", go: "pazaryeri/trendyol/kar" });
   const missing = ["GH_TOKEN", "GH_REPO", "ADMIN_EMAIL"].filter((k) => !process.env[k]);
   if (missing.length) alerts.push({ level: "bad", text: `Vercel ortam değişkeni eksik: ${missing.join(", ")}. Panel düğmeleri çalışmaz.`, go: "ayarlar" });

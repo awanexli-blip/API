@@ -53,7 +53,7 @@ export default function Brands({ api, notify, marketplace }: Props) {
           {prev && <button className="btn" disabled={busy} onClick={() => put({ revert: true }, `Eski markaya dönüldü: ${prev.brand || d.default}`)}>↶ Geri al ({prev.brand || d.default})</button>}
           {d.current && <button className="btn" disabled={busy} onClick={() => put({ brand: "" }, `Varsayılan markaya dönüldü: ${d.default}`)}>Varsayılana dön</button>}
         </div>
-        {d.brandListCount === 0 && <p className="muted" style={{ fontSize: 13 }}>{label} marka listesi henüz çekilmedi; öneriler boş görünebilir. GitHub → Actions → "Marka listesi" → Run workflow ile çalıştır (haftada bir kendiliğinden çalışır).</p>}
+        {d.brandListCount === 0 && <p className="muted" style={{ fontSize: 13 }}>{label} marka listesi henüz çekilmedi; öneriler boş görünebilir. GitHub → Actions → "Marka listesi" → Run workflow ile çalıştır (yer kaplamasın diye zamanlı çalışma kapalı; ürünler tedarikçi markasıyla açıldığı için gerekmiyor).</p>}
         {d.issues?.length > 0 && <div className="msg err" style={{ marginTop: 12 }}>
           <b>Markayla ilgili sorunlar</b>
           <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{d.issues.map((x: string) => <li key={x}>{x}</li>)}</ul>
