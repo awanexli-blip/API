@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-25 (32) — Çok linkli tedarikçi, Royal Tedarik, Gemini model sırası
+- **Tedarikçide birden çok XML linki** (suppliers.feeds, migration 048): ek link başına ad, adres, isteğe bağlı SKU öneki ve alan eşlemesi; içe aktarma tüm linkleri birlikte işler (biri inmezse durur, stok sıfırlanmaz). Panel: Tedarikçiler > Düzenle > Ek XML linkleri (+ İncele). Toptancım'ın iki kaydı birleştirildi (5.678 ürün xml:toptancim2 -> xml:toptacim; eski kayıt pasif).
+- **Royal Tedarik** (K, 25.10): 4 link, 42.795 ürün / 46.700 varyant (yerelde kuru çalıştırma), fiyat listPrice (KDV dahil), KDV kesirli (0.1 = %10). Kaydedildi (`royal`), gece içe aktarma açık, **pazaryeri markası boş** (marka belirlenene kadar hiçbir ürün gönderilmez). Sunucusu Cloudflare arkasında: Vercel'den (panel İncele) 403, GitHub Actions'tan iniyor (XML erişim testi iş akışı, kuru, başarılı).
+- İçe aktarıcı: iç içe varyant listesi (variants.variant) her varyant ayrı satır (stok/barkod varyanttan; önceden yalnızca ilk eleman okunuyordu), name/value çiftleri renk/beden, kesirli KDV, XML pasif ürün taslak.
+- Gemini teşhisi: "gemini-flash-latest" takma adı ücretsiz kotası olmayan modele gidiyordu (429 "check your plan"), bir kez 503. Model sırası: GEMINI_MODEL > 2.5 Flash > 2.5 Flash-Lite; kota/yoğunlukta sıradakine geçer. HB aday sorgusu zaman aşımı -> kısmi indeks + önce sınırla (80 ms, migration 049).
+- Rekabet ilk tur: 1.971 ilan kontrol edildi, buybox 17'sinde başkasında, 3'ü kârla alınabilir.
+
 ## 2026-10-25 (31) — Gemini, Rekabet (buybox), birikmiş özellikler
 - **Gemini** (`worker/core/gemini.ts`): ANTHROPIC_API_KEY yoksa yapay zekâ işleri (eksik özellik, soru taslağı) GEMINI_API_KEY ile; ücretsiz kota için istekler arası 6,5 sn, 429'da o çalışmada durur, çalışma başına 20 ürün. K: GEMINI_API_KEY Secrets'a eklendi (25.10).
 - **Rekabet** (Pazaryeri > Trendyol > Rekabet, migration 046): Trendyol Ürün Buybox Kontrol (POST products/buybox-information, 10 barkod/istek) ile sıra, buybox ve 2./3. fiyat; şimdiki net ve "1 TL altına inersek" net. Çalışma başına 2.000 ilan (en eski bakılan önce). "Bu fiyata in" = elle fiyat (product_overrides); zarar ettiren elle fiyat uygulanmaz. Veritabanı ürünleri artık elle fiyat/gizle istisnalarını okuyor (önceden yalnızca eski XML akışı okuyordu).

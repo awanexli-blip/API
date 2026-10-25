@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
   try {
     // SSRF koruması: DNS çözümü + iç ağ engeli, yönlendirme her adımda doğrulanır, gövde akışla 120 MB sınırı (worker/core/safe-fetch.ts)
     const r = await safeFetch(url, { maxBytes: MAX, timeoutMs: 90000 });
+    // 403: bazı tedarikçiler (Cloudflare) yurt dışı bulut sunucularını engelliyor; panel Vercel'de (ABD), içe aktarma GitHub'da çalışır
+    if (r.status === 403) return NextResponse.json({ error: "Tedarikçinin sunucusu panelin sunucusunu engelliyor (HTTP 403). İnceleme panelden yapılamıyor; eşlemeyi kaydedip \"İçe aktar\" ile dene (içe aktarma başka sunucudan çalışır, Royal Tedarik'te çalıştığı doğrulandı)." }, { status: 400 });
     if (!r.ok) return NextResponse.json({ error: `XML indirilemedi (HTTP ${r.status})` }, { status: 400 });
     text = r.text();
   } catch (e: any) { return NextResponse.json({ error: `XML indirilemedi: ${e.message}` }, { status: 400 }); }
