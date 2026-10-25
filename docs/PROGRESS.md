@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-25 (31) — Gemini, Rekabet (buybox), birikmiş özellikler
+- **Gemini** (`worker/core/gemini.ts`): ANTHROPIC_API_KEY yoksa yapay zekâ işleri (eksik özellik, soru taslağı) GEMINI_API_KEY ile; ücretsiz kota için istekler arası 6,5 sn, 429'da o çalışmada durur, çalışma başına 20 ürün. K: GEMINI_API_KEY Secrets'a eklendi (25.10).
+- **Rekabet** (Pazaryeri > Trendyol > Rekabet, migration 046): Trendyol Ürün Buybox Kontrol (POST products/buybox-information, 10 barkod/istek) ile sıra, buybox ve 2./3. fiyat; şimdiki net ve "1 TL altına inersek" net. Çalışma başına 2.000 ilan (en eski bakılan önce). "Bu fiyata in" = elle fiyat (product_overrides); zarar ettiren elle fiyat uygulanmaz. Veritabanı ürünleri artık elle fiyat/gizle istisnalarını okuyor (önceden yalnızca eski XML akışı okuyordu).
+- Birikmiş özellikler (Claude, oturumda, başlıktan kesin olanlar): HB peluş tipi 357, tıraş başlık modeli 124, kulaklık modeli 7 -> 488 ürüne yazıldı, eksiği kalmayan 376 ürün sıraya. Belirsizler Gemini'ye.
+- Yanlış kategori temizliği: HB'de hâlâ kitap kategorisinde bekleyen 844 ürün ve "Metal" (karyola) kategorisine düşen 131 ürün yeniden gönderim sırasına alındı. Kategori ağacı: tek kelimelik genel yaprak adları (Metal, Çocuk, Dekorasyon...) yalnızca tedarikçi yolunda da geçerse seçilir.
+- attr_fix_apply iş anahtarı özellik+değer içerir (aynı işlemde birden çok değer çakışıyordu, migration 047).
+
 ## 2026-10-25 (30) — HB kategori yolu, yapay zekâ ile özellik
 - Dünkü düzeltmenin etkisi: HB canlı 10.772 -> 13.371, özellik hatası 11.144 -> 5.579; kitaptan çıkan ürünlerin bir kısmı "kategori yok"a düştü (947 -> 3.836).
 - **Tedarikçi kategori yolu eşleştirici** (`buildPathMatcher`): Toptancım yolları HB ağacına benzer ("... >>> Oyuncak >>> Eğitici Oyuncak"); son adımla aynı adlı yaprak, ara kategoride başlıkla alt yaprak, yoksa "Diğer ...". Sıra: elle > eşleme > tahmin (yüksek/orta) > yol (güçlü) > başlık ağacı > ...
