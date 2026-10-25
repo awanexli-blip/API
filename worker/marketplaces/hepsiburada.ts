@@ -293,7 +293,7 @@ export function createHepsiburada(): Marketplace {
           categoryId: Number(p.cat.category_id),
           merchant: MERCHANT,
           attributes: {
-            merchantSku: p.id, VaryantGroupID: p.id, Barcode: p.id,
+            merchantSku: p.id, VaryantGroupID: (p.groupId ?? p.id).slice(0, 40), Barcode: p.id,
             UrunAdi: p.name.slice(0, 200), UrunAciklamasi: p.detail.slice(0, 30000) || p.name,
             Marka: ctx.brandName || BRAND_NAME, GarantiSuresi: hbWarrantyMonths(p.name), kg: String(p.desi), tax_vat_rate: String(Number(p.cat.vat_rate ?? ctx.vatRate)),
             price: String(p.price).replace(".", ","), stock: String(Math.min(Math.floor(p.qty), 20000)),

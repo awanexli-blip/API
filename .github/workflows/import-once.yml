@@ -1,0 +1,30 @@
+name: Tek seferlik içe aktarma
+
+# ops/import-once.txt değişince içindeki tedarikçi kodu içe aktarılır (yöneticinin panel dışından başlattığı içe aktarma; panelde "İçe aktar" ile aynı iş).
+on:
+  push:
+    paths: ["ops/import-once.txt"]
+
+concurrency:
+  group: import-xml
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix worker
+      - name: XML -> ürünler
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACTOR: claude (tek seferlik)
+        run: |
+          SUPPLIER=$(head -n1 ops/import-once.txt | tr -cd 'a-z0-9-')
+          node --experimental-strip-types worker/import-xml.ts "$SUPPLIER"

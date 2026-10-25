@@ -69,6 +69,7 @@ export interface NewProduct {
   pid?: string; known?: Record<string, unknown>; catName?: string | null; // ürün kaydı (öğrenilen özelliklerin yazılacağı yer)
   xmlCategory?: string; // tedarikçi kategori yolu (garanti/kural tahminleri için)
   learned?: Record<string, string>; // adaptörün başlık/açıklama/benzer ilandan bulduğu özellikler (özellik adı -> değer); ürün kaydına yazılır, diğer pazaryerleri tekrar aramaz
+  groupId?: string;     // çok varyantlı ürünün grup kodu (Hepsiburada VaryantGroupID); yoksa varyant kendi başına
   price: number;
   qty: number;
 }

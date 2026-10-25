@@ -173,13 +173,17 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           : (pred && pred.level !== "dusuk" ? pred : null) ?? strongPath ?? (leaf && leaf.score >= 10 ? leaf : null) ?? (pred && pred.confidence >= 0.5 ? pred : null) ?? path ?? leaf ?? null;
         const catName = pick?.categoryName ?? null;
         const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id ?? pick?.categoryId ?? null;
-        for (const v of [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position)) {
+        // Çok varyantlı ürün (beden/renk): varyantlar pazaryerinde tek ürün grubu; "aynı başlık" koruması yalnızca ilk varyantta bakılır
+        const vlist = [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position);
+        const multi = vlist.length > 1;
+        let titleClaimed = false;
+        for (const v of vlist) {
           const key = keyFor(p.source, v);
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
           if (ctx.existing.has(key)) { rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: ctx.lsBy.get(key)?.status === "pending" ? "pending_approval" : "live", updated_at: now }); continue; }
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
           if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
-          if (ctx.lsTitles.has(normFull(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
+          if (!titleClaimed && ctx.lsTitles.has(normFull(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
           if (!images.length) { fail(key, p, v, "Görsel yok"); continue; }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
@@ -207,14 +211,18 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
             pid: p.id, known: p.attributes ?? {}, catName, xmlCategory: p.category ?? "",
-            refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes) }, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
+            refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes), ...productAttrs(v.attributes) }, groupId: multi ? p.sku : undefined, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
           // Tedarikçi ürünü: tedarikçi ayarındaki pazaryeri markası; elle girilen ürün: kendi markası (pazaryerinde kayıtlıysa) yoksa mağaza markası
           const fromSupplier = String(p.source ?? "").startsWith("xml:");
-          const brand = fromSupplier ? supBrand.get(p.source) ?? "" : (await brandOk(p.brand)) ? p.brand : "";
+          // "*" = her ürün XML'deki kendi markasıyla (tedarikçi markalarını kullanma yetkisi var; K, 25.10 Royal Tedarik)
+          const sb = fromSupplier ? supBrand.get(p.source) ?? "" : "";
+          const brand = fromSupplier ? (sb === "*" ? String(p.brand ?? "").trim().slice(0, 100) : sb) : (await brandOk(p.brand)) ? p.brand : "";
+          if (fromSupplier && !brand) { fail(key, p, v, "Ürünün XML'de markası yok (tedarikçi ayarı: kendi markası)"); continue; }
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
           ctx.lsTitles.add(normFull(title)); // aynı başlıklı ikinci ürün (başka tedarikçiden) aynı çalışmada çift ilan açmasın
+          titleClaimed = true;
           rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
           out.keys.set(key, job.id);
         }
