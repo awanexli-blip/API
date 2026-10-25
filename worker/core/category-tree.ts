@@ -12,6 +12,10 @@ const STOP = new Set(["ve", "ile", "için", "diğer"]);
 const wordsOf = (s: string) => lo(s).match(/[0-9a-zçğıöşü]+/g) ?? [];
 const keyOf = (w: string) => w.slice(0, w.length <= 5 ? w.length : Math.max(5, w.length - 2));
 const negated = (w: string) => /(siz|sız|suz|süz)$/.test(w);
+// Tek kelimelik genel yaprak adları ("Metal", "Çocuk", "Dekorasyon"): başlıkta geçmesi yetmez, tedarikçi kategori yolunda da geçmeli
+// (25.10: buz küpü ve masa saati "Metal" karyola kategorisine, oyuncaklar kitaptaki "Çocuk" kategorisine düşüyordu)
+const GENERIC_LEAF = new Set(["metal", "ahşap", "plast", "cam", "çelik", "deri", "kumaş", "gold", "gümüş", "altın", "bambu", "hasır", "seram", "porse",
+  "çocuk", "kadın", "erkek", "bebek", "genç", "dekor", "aksesu", "hediye", "set", "mini", "klasi", "modern", "diğer", "genel", "özel"]);
 
 export function leavesOf(tree: TreeNode[]): Leaf[] {
   const out: Leaf[] = [];
@@ -39,6 +43,9 @@ export function buildLeafMatcher(leaves: Leaf[], known: Set<string> = new Set())
     for (const x of idx) {
       // Kısa kelime (≤3 harf: "oto", "led") tam kelime olmalı; uzun kelimede en fazla 4 harf ek ("lambası", "hoparlörü")
       if (!x.need.every((k) => tw.some((w) => (k.length <= 3 ? w === k : w.startsWith(k) && w.length - k.length <= 4)))) continue;
+      if (x.need.length === 1 && (GENERIC_LEAF.has(x.need[0].slice(0, 6)) || GENERIC_LEAF.has(x.need[0].slice(0, 5)))) {
+        if (![...sup].some((w) => x.need[0].startsWith(w) || w.startsWith(x.need[0].slice(0, 5)))) continue;
+      }
       let score = x.need.reduce((s, k) => s + k.length, 0) + (x.need.length - 1) * 3;
       for (const w of x.path) if (sup.has(w) || t5.has(w)) score += 1;
       if (known.has(x.l.id)) score += 3;

@@ -30,5 +30,10 @@ check("yol: ara kategori, başlık tutmazsa Diğer", pid("Anne, Bebek, Çocuk >>
 check("yol: farklı ağaç yolu, ad aynı", pid("Elektronik >>> Akıllı Ev Aletleri >>> Hava Nemlendirici", "Ultrasonik Nemlendirici"), "60");
 check("yol: eşleşme yoksa null", pid("Spor >>> Fitness", "Dambıl"), null);
 
+// Tek kelimelik genel yaprak: başlıkta geçmesi yetmez
+const gm = buildLeafMatcher(leavesOf([node(8, "Mobilya", [node(80, "Metal")]), node(9, "Mutfak", [node(90, "Buz Kalıbı")])]));
+check("genel yaprak: 'metal' başlıkta geçiyor diye Metal seçilmez", gm("Şık Metal Masa Saati 13 Cm")?.categoryId ?? null, null);
+check("genel yaprak: tedarikçi yolunda geçerse seçilir", gm("Metal Karyola 90x190", "Mobilya >>> Metal")?.categoryId ?? null, "80");
+
 if (fails) { console.log(`\n${fails} kategori ağacı testi başarısız`); process.exit(1); }
 console.log("\nKategori ağacı testleri geçti");

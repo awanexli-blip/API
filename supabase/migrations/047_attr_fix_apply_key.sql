@@ -1,0 +1,3 @@
+-- attr_fix_apply iş anahtarına özellik + değer eklendi: aynı işlemde birden çok değer uygulanınca anahtar çakışıyordu (25.10).
+-- Fonksiyonun tam metni canlı veritabanında (041'deki gövde + anahtar değişikliği):
+--   'attrfix:' || p_mp || ':' || v_now::text || ':' || md5(p_name || '|' || p_value) || ':' || i
