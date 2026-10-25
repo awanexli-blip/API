@@ -31,6 +31,8 @@ export type ClaimLineIn = { key: string; title: string; qty: number; price: numb
 export type ClaimIn = { id: string; orderNo: string | null; packageId: string | null; status: string; reason: string | null; reasonCode: string | null; claimedAt: number | null; amount: number; cargo: string | null; tracking: string | null; lines: ClaimLineIn[] };
 // Hakediş kaydı (gerçek komisyon ve satıcıya ödenecek tutar), paket bazında toplanır
 export type SettlementIn = { packageId: string | null; orderNo: string | null; commission: number; revenue: number };
+// Buybox (rakip fiyatı): sıra 1 = buybox bizde
+export type BuyboxInfo = { id: string; order: number | null; price: number | null; second: number | null; third: number | null; multiple: boolean | null };
 export type SalesDay = { day: string; orders: number; units: number; revenue: number; cancelled: number; returns: number | null };
 
 export interface BatchCheck {
@@ -123,6 +125,8 @@ export interface Marketplace {
   fetchSettlements?(fromMs: number, toMs: number): Promise<SettlementIn[]>;
   /** Takip kodunu pazaryerine bildir (yalnızca paneldeki onaylı kuyruktan, worker/core/orders.ts pushTracking) */
   updateTracking?(packageId: string, providerCode: string, trackingNo: string): Promise<void>;
+  /** Buybox / rakip fiyatı (Trendyol Ürün Buybox Kontrol, istek başına en fazla 10 barkod) */
+  buybox?(ids: string[]): Promise<BuyboxInfo[]>;
   /** Sipariş uçlarının teşhisi (hangi uç çalıştı, alan adları; kişisel veri yok) */
   orderDiag?: Record<string, unknown>;
   answerQuestion?(id: string, text: string): Promise<void>;

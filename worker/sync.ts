@@ -19,6 +19,7 @@ import { syncInbox, notifyOrders } from "./core/inbox.ts";
 import { fixImages } from "./core/image-fix.ts";
 import { flushAttrOptions } from "./core/attr-options.ts";
 import { aiFillAttributes } from "./core/ai-attrs.ts";
+import { syncBuybox } from "./core/buybox.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
@@ -335,7 +336,7 @@ async function main() {
   }
 
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
-  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, pathMatch, skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
+  const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, pathMatch, overrides: ovMap, econ: new Map(), skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
     shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null };
 
   // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında; sistemin açtığı OS13- ürünler)
@@ -433,6 +434,8 @@ async function main() {
     }
     const r = await mp.pushInventory(toUpdate);
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
+    // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
+    if (mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000)).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
 
     // XML'den kalkan ürünler: yalnızca eşleşme güvenilirse stoğu sıfırla
     if (s.zero_missing) {

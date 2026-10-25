@@ -23,6 +23,7 @@ import Rejections from "./_components/Rejections";
 import Unsent from "./_components/Unsent";
 import ListingStatus from "./_components/ListingStatus";
 import AttrFix from "./_components/AttrFix";
+import Competition from "./_components/Competition";
 import Orders from "./_components/Orders";
 import Inbox from "./_components/Inbox";
 import SalesReport from "./_components/SalesReport";
@@ -36,7 +37,7 @@ const MARKETS: { id: string; label: string; live: boolean }[] = [
   ...UPCOMING.filter((u) => u.id !== "hepsiburada" && u.id !== "amazon").map((u) => ({ id: u.id, label: u.label, live: false })),
 ];
 const SUBS: [string, string][] = [
-  ["ozet", "Özet"], ["fiyat", "Fiyat ayarları"], ["kar", "Akıllı kâr"], ["durum", "Gönderim durumu"], ["ozellik", "Özellik tamamla"], ["eslestirme", "Eşleştirme"], ["gonderilemeyen", "Gönderilemeyenler"], ["reddedilen", "Reddedilenler"], ["markalar", "Markalar"], ["kategoriler", "Kategoriler"], ["istisnalar", "Ürün istisnaları"],
+  ["ozet", "Özet"], ["fiyat", "Fiyat ayarları"], ["kar", "Akıllı kâr"], ["durum", "Gönderim durumu"], ["ozellik", "Özellik tamamla"], ["rekabet", "Rekabet"], ["eslestirme", "Eşleştirme"], ["gonderilemeyen", "Gönderilemeyenler"], ["reddedilen", "Reddedilenler"], ["markalar", "Markalar"], ["kategoriler", "Kategoriler"], ["istisnalar", "Ürün istisnaları"],
 ];
 
 // Adres çubuğu ile gezinme: #/urunler, #/pazaryeri/trendyol/kar ... (yenileyince aynı ekran, geri tuşu çalışır)
@@ -175,7 +176,7 @@ function Panel({ token, email }: { token: string; email: string }) {
     page = info ? <Upcoming info={info} /> : (
       <>
         <div className="tabs" role="tablist">
-          {SUBS.filter(([k]) => (mp === "amazon" ? !["markalar", "kategoriler", "reddedilen", "gonderilemeyen", "durum", "ozellik"].includes(k) : k !== "eslestirme" && (mp === "trendyol" || (k !== "reddedilen" && k !== "gonderilemeyen")))).map(([k, label]) => <button key={k} role="tab" aria-selected={sub === k} className="tab" onClick={() => nav(`pazaryeri/${mp}/${k}`)}>{label}</button>)}
+          {SUBS.filter(([k]) => (mp === "amazon" ? !["markalar", "kategoriler", "reddedilen", "gonderilemeyen", "durum", "ozellik", "rekabet"].includes(k) : k !== "eslestirme" && (mp === "trendyol" || (k !== "reddedilen" && k !== "gonderilemeyen" && k !== "rekabet")))).map(([k, label]) => <button key={k} role="tab" aria-selected={sub === k} className="tab" onClick={() => nav(`pazaryeri/${mp}/${k}`)}>{label}</button>)}
         </div>
         <div key={mp + sub}>
           {sub === "ozet" && <Overview {...props} />}
@@ -184,6 +185,7 @@ function Panel({ token, email }: { token: string; email: string }) {
           {sub === "eslestirme" && mp === "amazon" && <AmazonMatching {...props} />}
           {sub === "durum" && mp !== "amazon" && <ListingStatus {...props} />}
           {sub === "ozellik" && mp !== "amazon" && <AttrFix {...props} />}
+          {sub === "rekabet" && mp === "trendyol" && <Competition {...props} />}
           {sub === "reddedilen" && mp === "trendyol" && <Rejections {...props} />}
           {sub === "gonderilemeyen" && mp === "trendyol" && <Unsent {...props} />}
           {sub === "markalar" && <Brands {...props} />}

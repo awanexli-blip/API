@@ -2,7 +2,7 @@
 //  - dbInventory: veritabanından gönderilmiş ilanların stok/fiyatı (BayilikXML ilanları XML akışında kalır)
 //  - processSendJobs: paneldeki "Pazaryerine gönder" kuyruğu (jobs: send_products:<pazaryeri>) -> ürün açma
 // Ürün pazaryerinde doğrulanmadan "yayında" sayılmaz: gönderilen ilan "sent" olur, durumu sonraki senkronlarda pazaryerinden okunur.
-import { calcPrice, existingPriceSafe, type PricingConfig } from "../pricing.ts";
+import { breakdown, calcPrice, existingPriceSafe, type PricingConfig } from "../pricing.ts";
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle, normFull } from "./util.ts";
@@ -17,6 +17,8 @@ export type DbCtx = {
   pathMatch?: ((supplierCategory: string, title: string) => { categoryId: string; categoryName: string; score: number } | null) | null; // tedarikçi kategori yolundan (HB ağacına benzer)
   clean?: (title: string, description: string) => { title: string; description: string }; // yasaklı kelime / marka eki temizliği
   shipFor?: ((desi: number | null) => number) | null; // desi tarifesi (Hepsiburada): ürünün desisine göre kargo, yoksa cfg.shippingCost
+  overrides?: Map<string, any>; // product_overrides (ilan anahtarı -> elle fiyat / gizle)
+  econ?: Map<string, { cost: number; comm: number; pcfg: PricingConfig; price: number }>; // ilan başına maliyet/komisyon (buybox kâr hesabı)
 };
 
 // Görsel adının kök kısmı (tedarikçi CDN'i: "...-model-1-12345-sw1024sh1024.webp" -> "...-model")
@@ -71,9 +73,16 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       const ls = ctx.lsBy.get(key);
       if (!ls || (ls.status ?? "active") !== "active") { stats.notLive++; continue; } // onay bekleyen / kapalı ilana gönderilemez
       const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
+      const ov = ctx.overrides?.get(key);
+      if (ov?.hidden) { items.push({ id: key, price: null, quantity: 0 }); stats.zeroed++; continue; } // panelde gizlenen ilan
       const pr = priceFor(ctx, p, v, key, avail);
       if (!pr.ok) { items.push({ id: key, price: null, quantity: 0 }); stats.zeroed++; ctx.skip(`veritabanı ürünü: ${pr.reason} (stok 0)`); continue; }
-      const sendPrice = existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
+      // Elle fiyat (panel: Rekabet / Ürün istisnaları): zarar ettiriyorsa uygulanmaz
+      const ovPrice = ov?.price_override ? Number(ov.price_override) : null;
+      const ovOk = ovPrice != null && ovPrice > 0 && breakdown(ovPrice, pr.cost, pr.pcfg, pr.comm).net > 0;
+      if (ovPrice != null && !ovOk) { stats.overrideLoss = (stats.overrideLoss ?? 0) + 1; ctx.skip("elle fiyat zarar ettiriyor: formül fiyatı kullanıldı"); }
+      const sendPrice = ovOk ? ovPrice : existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
+      ctx.econ?.set(key, { cost: pr.cost, comm: pr.comm, pcfg: pr.pcfg, price: sendPrice ?? Number(ls.price) });
       const qty = p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
       items.push({ id: key, price: sendPrice, quantity: qty });
       stats.updated++;

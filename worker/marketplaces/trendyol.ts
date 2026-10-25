@@ -6,7 +6,7 @@ import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
-import type { BatchCheck, BatchResult, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
+import type { BatchCheck, BatchResult, BuyboxInfo, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
   try { return JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8")); } catch { return {}; }
@@ -525,6 +525,22 @@ export function createTrendyol(): Marketplace {
         }
       }
       return [...by.values()].map((x) => ({ ...x, commission: Math.round(x.commission * 100) / 100, revenue: Math.round(x.revenue * 100) / 100 }));
+    },
+
+    // Ürün Buybox Kontrol (dokümandan; ikinci/üçüncü fiyat alanları canlıda doğrulanacak): istek başına 10 barkod, dakikada 1.000 istek
+    async buybox(ids: string[]): Promise<BuyboxInfo[]> {
+      const out: BuyboxInfo[] = [];
+      const num = (x: any) => (x != null && x !== "" && Number.isFinite(Number(x)) ? Number(x) : null);
+      for (let i = 0; i < ids.length; i += 10) {
+        const r = await tg(`/product/sellers/${SELLER_ID}/products/buybox-information`, { method: "POST", body: JSON.stringify({ barcodes: ids.slice(i, i + 10) }) });
+        const list: any[] = Array.isArray(r) ? r : r.buyboxInfo ?? r.content ?? Object.values(r ?? {}).find(Array.isArray) ?? [];
+        for (const x of list) {
+          if (!x?.barcode) continue;
+          out.push({ id: String(x.barcode), order: num(x.buyboxOrder), price: num(x.buyboxPrice), second: num(x.secondBuyboxPrice), third: num(x.thirdBuyboxPrice), multiple: x.hasMultipleSeller == null ? null : !!x.hasMultipleSeller });
+        }
+        await sleep(80);
+      }
+      return out;
     },
 
     // Takip kodunu bildir (yalnızca paneldeki "Pazaryerine bildir" kuyruğundan). Paket "Picking" durumunda olmalı; Shipped sonrası değişmez.
