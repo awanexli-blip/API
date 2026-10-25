@@ -107,7 +107,7 @@ export function groupRows(rows: RawRow[]): Group[] {
 
 const num = (v?: string) => (v == null || v === "" ? undefined : v.replace(/\s/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
 const VAT_MAP: Record<string, string> = { "0": "0", "1": "1", "8": "10", "10": "10", "18": "20", "20": "20" };
-const STATUS_MAP: Record<string, string> = { aktif: "active", active: "active", taslak: "draft", draft: "draft", pasif: "draft", arsiv: "archived", archived: "archived" };
+const STATUS_MAP: Record<string, string> = { "1": "active", "0": "draft", evet: "active", hayir: "draft", aktif: "active", active: "active", taslak: "draft", draft: "draft", pasif: "draft", arsiv: "archived", archived: "archived" };
 const CUR_MAP: Record<string, string> = { tl: "TRY", try: "TRY", "₺": "TRY", usd: "USD", "$": "USD", eur: "EUR", "€": "EUR" };
 
 // "Malzeme: Bambu; Menşei: TR" -> { Malzeme: "Bambu", Menşei: "TR" }
@@ -123,7 +123,9 @@ export function groupToPayload(g: Group) {
   set("description", pick("description"));
   set("brand", pick("brand"));
   set("category", pick("category"));
-  const vat = pick("vat_rate"); if (vat) p.vat_rate = VAT_MAP[vat.replace(/[%\s]/g, "")] ?? vat;
+  // KDV: "%20", "20", "18" (eski oran) ya da kesir "0.2" / "0,1" / "0.08"
+  const vat = pick("vat_rate");
+  if (vat) { const t = vat.replace(/[%\s]/g, "").replace(",", "."), f = Number(t); const k = f > 0 && f < 1 ? String(Math.round(f * 100)) : t; p.vat_rate = VAT_MAP[k] ?? k; }
   set("desi", num(pick("desi")));
   set("cost_price", num(pick("cost_price")));
   const cur = pick("currency"); if (cur) p.currency = CUR_MAP[cur.toLowerCase()] ?? cur.toUpperCase();

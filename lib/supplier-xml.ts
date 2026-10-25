@@ -87,19 +87,60 @@ export function suggestMapping(paths: string[]): Record<string, Field> {
   return out;
 }
 
-// XML ürünleri -> gruplar (her ürün = bir satır; aynı model kodu = varyant)
-export function itemsToGroups(items: any[], mapping: Record<string, Field>): Group[] {
-  const rows: RawRow[] = items.map((it, i) => {
-    const flat = flatten(it);
-    const values: Partial<Record<Field, string>> = {};
-    const images: string[] = [];
-    for (const [path, field] of Object.entries(mapping)) {
-      const v = flat[path];
-      if (v == null) continue;
-      if (field === "images") images.push(...(Array.isArray(v) ? v : v.split(/[\s|,;]+/)).filter((u) => /^https?:\/\//i.test(u)));
-      else if (values[field] == null) values[field] = Array.isArray(v) ? v[0] : v;
+// Yoldaki değer (a.b.c)
+const at = (o: any, path: string) => path.split(".").reduce((x, k) => (x == null ? x : x[k]), o);
+// İç içe varyant listesi ("variants.variant" gibi nesne dizisi): eşlemede bu yolun altındaki alan varsa her eleman ayrı satır olur
+function variantContainers(items: any[], mapping: Record<string, Field>): string[] {
+  const out = new Set<string>();
+  for (const key of Object.keys(mapping)) {
+    const segs = key.split(".");
+    for (let n = segs.length - 1; n >= 1; n--) {
+      const pre = segs.slice(0, n).join(".");
+      if (items.slice(0, 3000).some((it) => { const v = at(it, pre); return Array.isArray(v) && v.some(isObj); })) { out.add(pre); break; }
     }
-    return { row: i + 1, values, images };
+  }
+  return [...out];
+}
+// Varyant elemanındaki ad/değer çiftleri (name1=Renk, value1=Kırmızı; name2=Beden, value2=M) -> renk / beden
+function pairValues(el: any): { color?: string; size?: string } {
+  const out: { color?: string; size?: string } = {};
+  for (const k of Object.keys(el ?? {})) {
+    const m = /^(name|ad|isim)(\d*)$/i.exec(k);
+    if (!m) continue;
+    const name = String(el[k] ?? "").trim(), val = String(el[`value${m[2]}`] ?? el[`deger${m[2]}`] ?? "").trim();
+    if (!name || !val) continue;
+    if (/renk|colou?r/i.test(name)) out.color ??= val;
+    else out.size ??= /^(beden|numara|size)$/i.test(name) ? val : `${name} ${val}`;
+  }
+  return out;
+}
+
+// XML ürünleri -> gruplar (her ürün = bir satır; aynı model kodu = varyant). İç içe varyant listesi varsa her varyant bir satır:
+// varyantın alanları (stok, barkod) ürün düzeyindekinin önüne geçer.
+export function itemsToGroups(items: any[], mapping: Record<string, Field>): Group[] {
+  const containers = variantContainers(items, mapping);
+  const rows: RawRow[] = [];
+  items.forEach((it, i) => {
+    const cont = containers.find((c) => at(it, c) != null);
+    const raw = cont ? at(it, cont) : null;
+    const els: any[] = cont ? (Array.isArray(raw) ? raw : [raw]).filter(isObj) : [null];
+    const base = flatten(it);
+    for (const el of els.length ? els : [null]) {
+      const flat: Record<string, string | string[]> = { ...base };
+      if (el && cont) { for (const k of Object.keys(flat)) if (k.startsWith(cont + ".")) delete flat[k]; Object.assign(flat, flatten(el, cont)); }
+      const values: Partial<Record<Field, string>> = {};
+      const images: string[] = [];
+      // Önce varyant yolları, sonra ürün yolları (aynı alana ikisi de eşlenmişse varyantınki geçerli)
+      const entries = Object.entries(mapping).sort(([a], [b]) => Number(!!cont && b.startsWith(cont + ".")) - Number(!!cont && a.startsWith(cont + ".")));
+      for (const [path, field] of entries) {
+        const v = flat[path];
+        if (v == null) continue;
+        if (field === "images") images.push(...(Array.isArray(v) ? v : v.split(/[\s|,;]+/)).filter((u) => /^https?:\/\//i.test(u)));
+        else if (values[field] == null) values[field] = Array.isArray(v) ? v[0] : v;
+      }
+      if (el) { const pv = pairValues(el); if (pv.color && values.color == null) values.color = pv.color; if (pv.size && values.size == null) values.size = pv.size; }
+      rows.push({ row: i + 1, values, images });
+    }
   });
   return groupRows(rows.filter((r) => Object.keys(r.values).length));
 }
@@ -130,7 +171,7 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
   const cost = Number(p.cost_price);
   p.cost_price = cost > 0 ? Math.round((sup.price_includes_vat === false ? cost * (1 + p.vat_rate / 100) : cost) * 100) / 100 : null;
   const desi = Number(p.desi); p.desi = desi > 0 ? desi : null;
-  p.status = "active";
+  p.status = p.status === "draft" ? "draft" : "active"; // XML pasif işaretliyse taslak (ör. active=0)
   p.source_ref = String(g.model).slice(0, 200);
   const used = new Set<string>();
   p.variants = p.variants.map((v: any, i: number) => {

@@ -1,0 +1,30 @@
+name: XML erişim testi
+
+# Tedarikçi XML'lerinin GitHub sunucularından inip okunabildiğini dener (--dry: veritabanına hiçbir şey yazmaz).
+# Bu dosya değişince bir kez çalışır; elle de başlatılabilir. Adresler veritabanında, loglara yazılmaz.
+on:
+  push:
+    paths: [".github/workflows/xml-probe.yml"]
+  workflow_dispatch:
+    inputs:
+      supplier:
+        description: "Tedarikçi kodu"
+        default: "royal"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix worker
+      - name: XML indir ve oku (kuru)
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPPLIER: ${{ github.event.inputs.supplier || 'royal' }}
+        run: node --experimental-strip-types worker/import-xml.ts "$SUPPLIER" --dry | head -c 3000
