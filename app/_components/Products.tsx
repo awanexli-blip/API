@@ -17,7 +17,12 @@ const LISTING_TR: Record<string, string> = { live: "yayında", pending_approval:
 const LISTING_PILL: Record<string, string> = { live: "ok", pending_approval: "partial", queued: "partial", sent: "info", rejected: "error", closed: "error", error: "error", gone: "" };
 const ACTION_TR: Record<string, string> = { create: "oluşturuldu", update: "güncellendi", archive: "arşivlendi", delete: "silindi" };
 const COLORS = ["Siyah", "Beyaz", "Gri", "Kırmızı", "Mavi", "Lacivert", "Yeşil", "Sarı", "Turuncu", "Pembe", "Mor", "Kahverengi", "Bej", "Gümüş", "Altın", "Çok Renkli", "Şeffaf"];
-const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "3XL", "Standart"];
+// Beden grupları (ayakkabıda numara). Değer pazaryerinde "Beden"/"Numara" özelliğine eş anlamlıyla eşlenir (worker attr-infer defaultFor)
+const SIZE_GROUPS: Record<string, string[]> = {
+  Giyim: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "Standart"],
+  Ayakkabı: Array.from({ length: 12 }, (_, i) => String(35 + i)),
+  "Çocuk ayakkabı": Array.from({ length: 16 }, (_, i) => String(20 + i)),
+};
 const DESI = ["1", "2", "3", "4", "5", "8", "10", "15", "20"];
 
 // "Renk: Kırmızı, Beden: M" <-> { Renk: "Kırmızı", Beden: "M" }
@@ -105,6 +110,22 @@ async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmi
     notify("good", `${r.products} ürün (${r.queued} varyant) ${label}${marketplace === "hepsiburada" ? "'ya" : "'a"} gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${extra}`);
     return true;
   } catch (e: any) { notify("err", e.message); return false; }
+}
+
+// Tek tık: Trendyol + Hepsiburada. Tek onay; ikisi ayrı kuyruk işi (biri hata verirse diğeri yine gönderilir)
+async function sendToMarketplaces(api: Api, notify: Notify, ids: string[], isAdmin: boolean) {
+  const now = isAdmin && confirm(`${ids.length} ürün Trendyol ve Hepsiburada'ya gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
+  const out: string[] = [];
+  let ok = false;
+  for (const [mp, label] of [["trendyol", "Trendyol"], ["hepsiburada", "Hepsiburada"]] as const) {
+    try {
+      const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace: mp, now }) });
+      ok = true;
+      out.push(`${label}: ${r.queued} varyant sırada${r.duplicate ? " (zaten sıradaydı)" : ""}${r.started ? ", senkron başladı" : r.startError ? ` (senkron başlatılamadı: ${r.startError})` : ""}${r.problems?.length ? ` · atlanan: ${r.problems.slice(0, 2).join("; ")}` : ""}`);
+    } catch (e: any) { out.push(`${label}: ${e.message}`); }
+  }
+  notify(ok ? "good" : "err", `${out.join(" · ")}. Sonuç birkaç dakika içinde ürün detayındaki "Pazaryerlerinde" bölümünde görünür.`);
+  return ok;
 }
 
 // Vitrin: mağaza sayfası gibi büyük görsel ve fiyat. Fiyat = Trendyol ilanındaki fiyat; ilan yoksa ayarlar + akıllı kârla tahmini satış fiyatı.
@@ -237,7 +258,8 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
           <button className="btn" onClick={() => runBulk({ status: "active" }, "aktif yap")}>Aktif yap</button>
           <button className="btn" onClick={() => runBulk({ status: "draft" }, "taslağa al")}>Taslağa al</button>
           <button className="btn" onClick={() => runBulk({ status: "archived" }, "arşivle")}>Arşivle</button>
-          <button className="btn primary" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin)) setSel(new Set()); }}><Icon name="store" size={16} />Trendyol'a gönder</button>
+          <button className="btn primary" onClick={async () => { if (await sendToMarketplaces(api, notify, [...sel], isAdmin)) setSel(new Set()); }}><Icon name="store" size={16} />Trendyol + Hepsiburada'ya gönder</button>
+          <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin)) setSel(new Set()); }}><Icon name="store" size={16} />Trendyol'a gönder</button>
           <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin, "amazon")) setSel(new Set()); }}><Icon name="store" size={16} />Amazon'a gönder</button>
           <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [...sel], isAdmin, "hepsiburada")) setSel(new Set()); }}><Icon name="store" size={16} />Hepsiburada'ya gönder</button>
           <button className="btn" onClick={() => setBulk({ kind: "brand", value: opts.defaultBrand })}>Marka değiştir</button>
@@ -304,7 +326,12 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   const [matchKey, setMatchKey] = useState(0);
   const [colors, setColors] = useState<string[]>([]);
   const [sizes, setSizes] = useState<string[]>([]);
+  const [sizeGroup, setSizeGroup] = useState(/ayakkab|terlik|bot\b|çizme|sandalet|babet/i.test(`${initial.category} ${initial.title}`) ? "Ayakkabı" : "Giyim");
+  const [extra, setExtra] = useState({ size: "", color: "" });
   const [hasVariants, setHasVariants] = useState(initial.variants.length > 1);
+  // Kaydedilmemiş değişiklik var mı (gönderimden önce kaydetmek için)
+  const [savedF, setSavedF] = useState<Form>(initial);
+  const dirty = JSON.stringify(f) !== JSON.stringify(savedF);
   const fileRef = useRef<HTMLInputElement>(null);
   const canEdit = role !== "viewer";
   const isNew = !f.id;
@@ -322,7 +349,12 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
     variants: f.variants.map((v) => ({ barcode: v.barcode || "2000000000000", stock: Number(v.stock || 0), cost_price: n(v.cost_price) })),
   }, cat?.markets ?? []), [f, cat]);
 
-  async function save(then?: "new" | "close") {
+  // "send": kaydet (değişiklik varsa) ve tek tıkla Trendyol + Hepsiburada gönderim kuyruğuna al
+  async function save(then?: "new" | "close" | "send") {
+    if (then === "send" && !isNew && !dirty) {
+      if (await sendToMarketplaces(api, notify, [f.id!], role === "admin")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {});
+      return;
+    }
     const filled = autofill(f);
     const payload = toPayload(filled);
     const r = productSchema.safeParse(payload);
@@ -333,7 +365,9 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
       notify("good", `${isNew ? "Ürün oluşturuldu" : "Ürün kaydedildi"}: ${saved.title} (SKU ${saved.sku})`);
       if (then === "new") return onNew();
       if (then === "close") return onClose();
-      setF(fromProduct(saved));
+      setF(fromProduct(saved)); setSavedF(fromProduct(saved));
+      if (then === "send") await sendToMarketplaces(api, notify, [saved.id], role === "admin");
+      api(`/api/products/${saved.id}?listings=1`).then(setListings).catch(() => {});
       api(`/api/products/${saved.id}?audit=1`).then(setAudit).catch(() => {});
     } catch (e: any) { notify("err", e.message); }
     finally { setBusy(false); }
@@ -391,6 +425,14 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
     setF((p) => ({ ...p, variants: combos.map((attrs) => p.variants.find((v) => v.attrs === attrs) ?? { ...emptyVariant(), attrs, stock: p.variants[0]?.stock ?? "" }) }));
   }
   const toggle = (list: string[], v: string, setter: (x: string[]) => void) => setter(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  // Listede olmayan beden/numara/renk: virgülle birden çok ("42.5, 47" / "Haki, Ekru")
+  const addExtra = (k: "size" | "color") => {
+    const vals = extra[k].split(",").map((x) => x.trim().replace(/[:,|]/g, "")).filter(Boolean);
+    if (!vals.length) return;
+    const [list, setter] = k === "size" ? [sizes, setSizes] : [colors, setColors];
+    setter([...list, ...vals.filter((x) => !list.includes(x))]);
+    setExtra((e) => ({ ...e, [k]: "" }));
+  };
   const chip = (on: boolean) => ({ padding: "4px 10px", borderRadius: 14, border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent)" : "var(--panel)", color: on ? "var(--accent-ink)" : "var(--ink)", cursor: "pointer", font: "inherit", fontSize: 13 });
 
   const input = (k: keyof Form, label: string, hint?: string, mode: "text" | "decimal" | "numeric" = "text", list?: string, ph?: string) => (
@@ -489,10 +531,20 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
         }} />Bu ürünün farklı renk veya bedenleri var</label>
         {hasVariants && <>
           <div style={{ marginTop: 12 }}><small className="muted">Renk</small>
-            <div className="row" style={{ marginTop: 4 }}>{COLORS.map((c) => <button key={c} style={chip(colors.includes(c))} onClick={() => toggle(colors, c, setColors)}>{c}</button>)}</div>
+            <div className="row" style={{ marginTop: 4 }}>{[...COLORS, ...colors.filter((c) => !COLORS.includes(c))].map((c) => <button key={c} style={chip(colors.includes(c))} onClick={() => toggle(colors, c, setColors)}>{c}</button>)}</div>
+            <div className="row" style={{ marginTop: 6 }}>
+              <input type="text" value={extra.color} placeholder="Listede yoksa yaz (Haki, Ekru...)" onChange={(e) => setExtra((x) => ({ ...x, color: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") addExtra("color"); }} style={{ flex: "1 1 200px" }} />
+              <button className="btn" disabled={!extra.color.trim()} onClick={() => addExtra("color")}>Renk ekle</button>
+            </div>
           </div>
-          <div style={{ marginTop: 10 }}><small className="muted">Beden</small>
-            <div className="row" style={{ marginTop: 4 }}>{SIZES.map((z) => <button key={z} style={chip(sizes.includes(z))} onClick={() => toggle(sizes, z, setSizes)}>{z}</button>)}</div>
+          <div style={{ marginTop: 10 }}><small className="muted">Beden / numara</small>
+            <div className="row" style={{ marginTop: 4, gap: 4 }}>{Object.keys(SIZE_GROUPS).map((g) => <button key={g} className={`btn ${sizeGroup === g ? "primary" : "ghost"}`} style={{ minHeight: 30, padding: "2px 10px" }} onClick={() => setSizeGroup(g)}>{g}</button>)}</div>
+            <div className="row" style={{ marginTop: 6 }}>{[...SIZE_GROUPS[sizeGroup], ...sizes.filter((z) => !SIZE_GROUPS[sizeGroup].includes(z))].map((z) => <button key={z} style={chip(sizes.includes(z))} onClick={() => toggle(sizes, z, setSizes)}>{z}</button>)}</div>
+            <div className="row" style={{ marginTop: 6 }}>
+              <input type="text" value={extra.size} placeholder="Listede yoksa yaz (42.5, 47, 4XL...)" onChange={(e) => setExtra((x) => ({ ...x, size: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") addExtra("size"); }} style={{ flex: "1 1 200px" }} />
+              <button className="btn" disabled={!extra.size.trim()} onClick={() => addExtra("size")}>Beden ekle</button>
+            </div>
+            <small className="muted">Ayakkabıda numara: Trendyol ve Hepsiburada'daki "Numara/Beden" özelliğine kendiliğinden yazılır.</small>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
             <button className="btn primary" onClick={buildVariants}>Seçeneklerden satırları oluştur</button>
@@ -583,6 +635,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
         {canEdit && <>
           <button className="btn primary" disabled={busy || uploading > 0} onClick={() => save(isNew ? "close" : undefined)}>{busy ? "Kaydediliyor..." : isNew ? "Kaydet" : "Değişiklikleri kaydet"}</button>
           {isNew && <button className="btn" disabled={busy || uploading > 0} onClick={() => save("new")}>Kaydet ve yeni ekle</button>}
+          {f.status === "active" && <button className="btn primary" disabled={busy || uploading > 0} onClick={() => save("send")}><Icon name="store" size={16} />{isNew || dirty ? "Kaydet ve " : ""}Trendyol + Hepsiburada'ya gönder</button>}
           {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Trendyol'a gönder</button>}
           {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin", "amazon")) { api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); setMatchKey((k) => k + 1); } }}><Icon name="store" size={16} />Amazon'a gönder</button>}
           {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin", "hepsiburada")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Hepsiburada'ya gönder</button>}

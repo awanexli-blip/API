@@ -1,6 +1,6 @@
 // Zorunlu özelliği metinden çıkarma: Trendyol'un gerçek değer listeleriyle (22.10 kategori uç noktası)
 // node --experimental-strip-types worker/test/attr-infer.test.ts
-import { inferAttribute, type AttrValue } from "../core/attr-infer.ts";
+import { defaultFor, inferAttribute, type AttrValue } from "../core/attr-infer.ts";
 import { acceptValues } from "../core/ai-attrs.ts";
 let fails = 0;
 const check = (n: string, got: AttrValue | null, want: string | null) => { const ok = (got?.name ?? null) === want; console.log(`${ok ? "OK  " : "HATA"} ${n}${ok ? "" : `  beklenen ${want}, gelen ${got?.name ?? null}`}`); if (!ok) fails++; };
@@ -51,6 +51,13 @@ const ask = [{ name: "Malzeme", opt: { values: ["Peluş", "Plastik"], custom: fa
 const acc = acceptValues(ask, { values: [{ name: "malzeme", value: "PELUŞ", basis: "baslik" }, { name: "Renk", value: "Pembe", basis: "baslik" }, { name: "Yaş", value: "Yetişkin", basis: "cikarim" }] });
 const okAcc = acc.Malzeme === "Peluş" && acc.Renk === "Pembe" && !("Yaş" in acc);
 console.log(`${okAcc ? "OK  " : "HATA"} yapay zekâ değeri listeyle doğrulanır`); if (!okAcc) fails++;
+
+// Varyant değeri eş anlamlı özellik adına (panelde "Beden: 42" -> Trendyol/HB "Numara")
+const dv = { Beden: "42", Renk: "Siyah", "Menşei": "TR" };
+for (const [name, want] of [["Numara", "42"], ["Ayakkabı Numarası", "42"], ["numara_variant_property", "42"], ["Web Color", "Siyah"], ["Menşei", "TR"], ["Materyal", undefined]] as const) {
+  const got = defaultFor(dv, name);
+  console.log(`${got === want ? "OK  " : "HATA"} eş anlamlı özellik: ${name} -> ${got}`); if (got !== want) fails++;
+}
 
 if (fails) { console.log(`\n${fails} özellik çıkarma testi başarısız`); process.exit(1); }
 console.log("\nÖzellik çıkarma testleri geçti");

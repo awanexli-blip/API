@@ -4,7 +4,7 @@
 // test (SIT) ortamında doğrulanmalı. Varsayılan ortam SIT'tir; canlı için HB_ENV=prod.
 import { readFileSync } from "node:fs";
 import { env, sleep, chunk, san } from "../core/util.ts";
-import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { defaultFor, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { hbCommissionMatcher } from "./hepsiburada-commission.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
@@ -110,7 +110,10 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
       if (url) out[a.id] = url; else if (a.mandatory) missing.push(a.name);
       continue;
     }
-    if (!a.mandatory || BASE_KEYS.has(lo(a.id)) || out[a.id] != null) continue;
+    // Ürün/varyant kaydındaki değer (adıyla ya da eş anlamlısıyla: "Beden: 42" -> Numara / numara_variant_property)
+    const def = defaultFor(defaults, a.name, a.id);
+    // Zorunlu olmayan özellik (varyant numarası/rengi) yalnızca kayıtta değeri varsa yazılır
+    if ((!a.mandatory && !def) || BASE_KEYS.has(lo(a.id)) || out[a.id] != null) continue;
     if (/garanti/i.test(a.name) && /süre|ay/i.test(a.name) && warranty != null) { out[a.id] = String(warranty); continue; }
     // Garantisiz üründe garanti tipi: listede "garantisiz / yok" varsa o (tedarikçi varsayılanı "İthalatçı Garantili" yazılmasın)
     if (/garanti/i.test(a.name) && warranty === 0) {
@@ -122,9 +125,10 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
     let vals: string[] = [];
     try { vals = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin olabilir */ }
     // Ürün kaydındaki değer: "A|B|C" seçeneklerinden listede olan ilk değer, liste yoksa sonuncusu
-    const def = Object.entries(defaults).find(([k]) => lo(k) === lo(a.name) || lo(k) === lo(a.id))?.[1];
     const opts = String(def ?? "").split("|").map((x) => x.trim()).filter(Boolean);
-    const fromDef = vals.length ? opts.map((o) => vals.find((v) => lo(v) === lo(o))).find(Boolean) : opts[opts.length - 1];
+    const sq = (s: string) => lo(s).replace(/[\s,]+/g, "").replace(/numara$/, "");
+    const fromDef = vals.length ? opts.map((o) => vals.find((v) => lo(v) === lo(o)) ?? vals.find((v) => sq(v) === sq(o))).find(Boolean) : opts[opts.length - 1];
+    if (!a.mandatory) { if (fromDef) out[a.id] = fromDef; continue; }
     const inferred = fromDef ? undefined : vals.length ? inferAttribute(a.name, vals.map((v, i) => ({ id: i, name: v })), title, description)?.name : inferCustom(a.name, title, description) ?? undefined;
     const t = " " + lo(title).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
     const hit = vals.filter((v) => v && t.includes(" " + lo(v) + " ")).sort((x, y) => y.length - x.length)[0];

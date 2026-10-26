@@ -10,6 +10,19 @@ const norm = (s: string) => " " + lo(s).replace(/(\d),(\d)/g, "$1.$2").replace(/
 const has = (text: string, phrase: string) => text.includes(norm(phrase).trimEnd()); // sonu açık: Türkçe ekler (bebek -> bebekler)
 const pick = (vals: AttrValue[], names: string[]) => names.map((n) => vals.find((v) => lo(v.name).trim() === lo(n))).find(Boolean) ?? null;
 
+// Ürün/varyant kaydındaki özellik değeri (defaults) pazaryeri özellik adıyla: önce birebir ad, sonra eş anlamlı grup
+// (panelde "Beden: 42" girilen ayakkabı Trendyol/HB'de "Numara"/"Ayakkabı Numarası"/"numara_variant_property" olabilir; renk de "Web Color" vb.)
+const ATTR_GROUPS: [string, RegExp][] = [["beden", /beden|numara|size|ölçü|olcu/], ["renk", /renk|colou?r/]];
+const groupOf = (name: string) => ATTR_GROUPS.find(([, re]) => re.test(lo(name)))?.[0] ?? null;
+export function defaultFor(defaults: Record<string, string> | undefined, ...names: (string | number | undefined)[]): string | undefined {
+  const entries = Object.entries(defaults ?? {}).filter(([, v]) => v != null && String(v).trim() !== "");
+  const keys = names.filter((n) => n != null).map((n) => lo(String(n)));
+  const exact = entries.find(([k]) => keys.includes(lo(k)));
+  if (exact) return exact[1];
+  const g = keys.map(groupOf).find(Boolean);
+  return g ? entries.find(([k]) => groupOf(k) === g)?.[1] : undefined;
+}
+
 // Var/Yok, Evet/Hayır özellikleri: hangi kelimeler "var" demek
 const YESNO: [RegExp, string[]][] = [
   [/mikrofon/, ["mikrofon", "mikrofonlu", "mic"]],

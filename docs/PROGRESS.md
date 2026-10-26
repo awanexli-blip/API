@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-26 (35) — İlan bağı, ayakkabı/varyant, tek tık iki pazaryeri
+- Yeni veritabanında ilanlar ürünlere bağlı değildi (gönderimde yazılan variant_id kayboldu): stok/fiyat hiç gitmiyordu. Barkodla bağlandı (TY 23.775, HB 14.011); `listings_link` artık her senkronda barkodla da bağlar (migration 054). Sonraki çalışma: TY 21.776 ilan güncellendi, hata 0; HB ilk turda 2.500 (23 paket hız sınırı, sonraki turlarda tamamlanır).
+- GitHub zamanlanmış çalışmaları atlıyor (15 dk yerine 40 dk–2,5 saat). VPS'e taşınınca zamanlı işler orada çalışacak (K: şimdilik bekliyor).
+- Ürün formu: beden grupları (Giyim / Ayakkabı 35–46 / Çocuk ayakkabı 20–35), listede olmayan beden/numara ve renk serbest girilir.
+- Varyant değeri pazaryeri özelliğine eş anlamlıyla yazılır (`defaultFor`: Beden = Numara = Ayakkabı Numarası = numara_variant_property; Renk = Web Color); zorunlu olmayan varyant özellikleri de (değer varsa) gönderilir; Trendyol'da renk artık önce varyanttan (başlıktan değil). Trendyol varyantları aynı productMainId (tek ürün sayfası).
+- Elle girilen ürünün markası: marka listesi indirilmediği için hep mağaza markasına düşüyordu; artık ürünün markası gönderilir, Trendyol'da birebir ad yoksa ilan hatası (benzer adlı markaya düşmez).
+- Tek tık: ürün detayında "(Kaydet ve) Trendyol + Hepsiburada'ya gönder", ürün listesinde toplu aynı düğme. Testler: eş anlamlı özellik (6).
+
 ## 2026-10-25 (34) — Veritabanı çöktü, yeni Supabase projesi
 - Eski proje (`xovqsjiddoituaayyhae`, ücretsiz 0,5 GB) 1 GB'ı aştı; `vacuum full audit_log` disk dolu hatası verdi, Postgres kurtarma döngüsünde kaldı (pg_wal yazılamıyor). Restart işe yaramadı; destek talebi SU-524672 (ücretsiz plan, garanti yok).
 - K kararı: ödeme yok, sıfırdan. Yeni ücretsiz proje **trentakip-v2** (`utuwjqfcaiqlqdzzagmm`, eu-central-1). Şema: `supabase/full_schema.sql` (schema.sql + tüm migration'lar; K SQL Editor'de çalıştırdı, 37 tablo).

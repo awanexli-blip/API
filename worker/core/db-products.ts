@@ -104,7 +104,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
   const norm = (s: string) => s.toLocaleLowerCase("tr").replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u").replace(/\s+/g, " ").trim();
   const knownBrand = new Map<string, boolean>();
   async function brandOk(b: string) {
-    if (!b || !brandListLoaded) return false;
+    if (!b) return false;
+    // Marka listesi indirilmiyor (25.10, veritabanı hafifletme): marka pazaryerinde gönderimde doğrulanır (Trendyol by-name; bulunamazsa ilan hatası)
+    if (!brandListLoaded) return true;
     if (!knownBrand.has(b)) { const r = await ctx.db.from("marketplace_brands").select("brand_id").eq("marketplace", ctx.marketplaceId).eq("name_norm", norm(b)).limit(1); knownBrand.set(b, !!r.data?.length); }
     return knownBrand.get(b)!;
   }

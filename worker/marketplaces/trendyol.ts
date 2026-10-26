@@ -1,7 +1,7 @@
 // Trendyol adaptörü — Product V2 servisleri (V1 15.10.2026'da kapandı).
 // Uç listesi: https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint.md
 import { readFileSync } from "node:fs";
-import { inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { defaultFor, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
@@ -95,7 +95,8 @@ export function createTrendyol(): Marketplace {
       const r = await tg(`/product/brands/by-name?name=${encodeURIComponent(name)}`);
       const list: any[] = Array.isArray(r) ? r : r?.brands ?? [];
       const exact = list.find((b) => String(b.name).toLocaleLowerCase("tr") === name.toLocaleLowerCase("tr"));
-      id = (exact ?? list[0])?.id ?? null;
+      // Yalnızca birebir aynı ad (benzer adlı başka markayla ilan açmak marka ihlali olur)
+      id = exact?.id ?? null;
     } catch { /* marka yok */ }
     brandCache.set(name, id);
     await sleep(300);
@@ -144,11 +145,24 @@ export function createTrendyol(): Marketplace {
     const missing: string[] = [];
     const learned: Record<string, string> = {};
     for (const ca of await categoryAttributes(cid)) {
-      if (!ca.required) continue;
       const id = Number(ca.attribute?.id), name = String(ca.attribute?.name ?? id);
+      // Ürün/varyant kaydındaki değer (tedarikçi varsayılanı, panelde girilen "Beden: 42" / "Renk: Siyah"; eş anlamlı adlarla)
+      const def = defaultFor(p.defaults, name);
+      // Zorunlu olmayan özellik yalnızca kayıtta değeri varsa gönderilir (varyant numarası/rengi: grup içinde ayırt edici)
+      if (!ca.required && !def) continue;
       if (out.has(id)) continue;
       let val: Attr | undefined;
-      if (isColor(name)) {
+      // Birden çok seçenek "|" ile: "Garanti Yok|0 Ay|0" -> listedeki ilk eşleşen, yoksa (serbest metne izin varsa) sonuncusu
+      if (def) {
+        const vals = await attributeValues(cid, id);
+        const opts = def.split("|").map((x) => x.trim()).filter(Boolean);
+        const sq = (s: string) => lo(s).replace(/[\s,]+/g, "").replace(/numara$/, "");
+        const hit = opts.map((o) => vals.find((v) => lo(v.name) === lo(o)) ?? vals.find((v) => sq(v.name) === sq(o))).find(Boolean);
+        if (hit) val = { attributeId: id, attributeValueId: hit.id };
+        else if (ca.allowCustom && opts.length) val = { attributeId: id, customAttributeValue: opts[opts.length - 1] };
+      }
+      if (!val && !ca.required) continue;
+      if (!val && isColor(name)) {
         const vals = await attributeValues(cid, id);
         const title = " " + lo(p.name).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
         const hit = vals.filter((v) => v.name && title.includes(" " + lo(v.name) + " ")).sort((a, b) => b.name.length - a.name.length)[0];
@@ -158,16 +172,6 @@ export function createTrendyol(): Marketplace {
           if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
           else if (ca.allowCustom) val = { attributeId: id, customAttributeValue: "Çok Renkli" };
         }
-      }
-      // Tedarikçi varsayılanı (ör. Menşei -> Çin): değer listesinde adıyla aranır, yoksa serbest metin kabul ediliyorsa yazılır
-      const def = Object.entries(p.defaults ?? {}).find(([k]) => lo(k) === lo(name))?.[1];
-      // Birden çok seçenek "|" ile: "Garanti Yok|0 Ay|0" -> listedeki ilk eşleşen, yoksa (serbest metne izin varsa) sonuncusu
-      if (!val && def) {
-        const vals = await attributeValues(cid, id);
-        const opts = def.split("|").map((x) => x.trim()).filter(Boolean);
-        const hit = opts.map((o) => vals.find((v) => lo(v.name) === lo(o))).find(Boolean);
-        if (hit) val = { attributeId: id, attributeValueId: hit.id };
-        else if (ca.allowCustom && opts.length) val = { attributeId: id, customAttributeValue: opts[opts.length - 1] };
       }
       // Ürünün kendi başlık/açıklamasından (Şarjlı, 44 mm, 10000 mAh, Mikrofon var/yok, 50 Hz...); benzer ilanın değerinden önce gelir
       if (!val) {
@@ -350,7 +354,8 @@ export function createTrendyol(): Marketplace {
         if (missing.length) { no(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
         p.learned = learned;
         payloads.push({
-          barcode: p.id, title: p.name.slice(0, 100), productMainId: p.id, brandId: bId,
+          // Varyantlı ürün (numara/renk): aynı productMainId ile Trendyol'da tek ürün sayfasında seçenek olarak görünür
+          barcode: p.id, title: p.name.slice(0, 100), productMainId: (p.groupId ?? p.id).slice(0, 40), brandId: bId,
           categoryId: Number(p.cat.category_id), quantity: Math.min(Math.floor(p.qty), 20000), stockCode: p.id,
           dimensionalWeight: p.desi, description: p.detail.slice(0, 30000),
           listPrice: p.price, salePrice: p.price, vatRate: Number(p.cat.vat_rate ?? ctx.vatRate),
