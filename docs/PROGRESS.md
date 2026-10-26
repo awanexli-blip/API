@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-26 (36) — Ürün formu: pazaryeri kategorisi + zorunlu özellikler, satış fiyatı, Toptancım kod kopyaları
+- K: "her pazaryerinin zorunlu özellikleri formda zorunlu alan olsun". Formda Trendyol ve Hepsiburada kategorisi aranır/başlıktan önerilir; seçilen kategorinin özellikleri pazaryerinin kendi API'sinden gelir (zorunlu / varyant / değer listesi), birleşik tek alan; diğer pazaryerinin listesinde olmayan değer için o pazaryerine özel seçim ("Ad@hepsiburada"). Eksik zorunlu varsa gönderim yapılmaz (eksik olan pazaryeri atlanır, onayla). "Boşları akıllı doldur": başlıkta geçen değer / Belirtilmemiş. `lib/mp-catalog.ts`, `app/api/mp-catalog`, `MarketplaceFields.tsx`, migration 055 (önbellek). Trendyol uçları herkese açık; HB için Vercel'e HB_MERCHANT_ID / HB_USERNAME / HB_PASSWORD / HB_ENV=prod gerekir.
+- Worker: formda seçilen kategori ("Trendyol kategori" / "Hepsiburada kategori") doğrudan kullanılır; "@pazaryeri" değerleri o pazaryerinde ezer.
+- K: isteğe bağlı satış fiyatı ("Satış fiyatı" özelliği; boşsa formül). Hem ilk gönderimde hem stok/fiyat güncellemesinde olduğu gibi gider; zarar ettiriyorsa uygulanmaz (`worker/core/sale-price.ts`).
+- K: Toptancım aynı ürünü kod sonuna -1, -2... ekleyip farklı başlıkla tekrar yayınlıyor (1.452 grup, 7.264 ürün). Tedarikçi ayarı "kod kopyaları" (migration 056, Toptancım'da açık): yeni gönderimde gövde başına yalnızca stokta olan en ucuzu. Satışta olan kopyalar (TY 5.965 ilan / 1.384 grup, HB 3.408 / 1.081) için karar K'da.
+- Testler: satış fiyatı ayrıştırma (5), kod kopyası seçimi (4).
+
 ## 2026-10-26 (35) — İlan bağı, ayakkabı/varyant, tek tık iki pazaryeri
 - Yeni veritabanında ilanlar ürünlere bağlı değildi (gönderimde yazılan variant_id kayboldu): stok/fiyat hiç gitmiyordu. Barkodla bağlandı (TY 23.775, HB 14.011); `listings_link` artık her senkronda barkodla da bağlar (migration 054). Sonraki çalışma: TY 21.776 ilan güncellendi, hata 0; HB ilk turda 2.500 (23 paket hız sınırı, sonraki turlarda tamamlanır).
 - GitHub zamanlanmış çalışmaları atlıyor (15 dk yerine 40 dk–2,5 saat). VPS'e taşınınca zamanlı işler orada çalışacak (K: şimdilik bekliyor).

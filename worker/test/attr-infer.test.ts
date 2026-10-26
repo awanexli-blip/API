@@ -66,5 +66,16 @@ for (const [a, mp, want] of [[{ "Satış fiyatı": "1.299,90" }, "trendyol", 129
   console.log(`${got === want ? "OK  " : "HATA"} satış fiyatı ${JSON.stringify(a)} ${mp} -> ${got}`); if (got !== want) fails++;
 }
 
+// Tedarikçi kod kopyaları: gövde ve seçim (stokta en ucuz; eşitse ana kod)
+{
+  const { codeStem, pickCodeWinner } = await import("../core/db-products.ts");
+  const c = (n: string, w: any) => { console.log(`${n ? "OK  " : "HATA"} kod kopyası: ${w}`); if (!n) fails++; };
+  c(codeStem("TCX-UCZZZQ8AKSYONKAMERA-4") === "TCX-UCZZZQ8AKSYONKAMERA" && codeStem("TCX-ABC") === "TCX-ABC" && codeStem("TCX-ABC-123") === "TCX-ABC-123", "gövde");
+  const l = [{ id: "a", sku: "X", cost: 100, stock: 0 }, { id: "b", sku: "X-1", cost: 90, stock: 0 }, { id: "c", sku: "X-2", cost: 95, stock: 5 }, { id: "d", sku: "X-3", cost: 95, stock: 9 }];
+  c(pickCodeWinner(l, 3)?.id === "c", "stokta en ucuz (stoksuz daha ucuz olan atlanır)");
+  c(pickCodeWinner([{ id: "a", sku: "X", cost: 50, stock: 5 }, { id: "b", sku: "X-1", cost: 50, stock: 5 }])?.id === "a", "eşit fiyatta ana kod");
+  c(pickCodeWinner([{ id: "a", sku: "X", cost: 50, stock: 0 }, { id: "b", sku: "X-1", cost: 40, stock: 0 }])?.id === "b", "hiç stok yoksa en ucuz");
+}
+
 if (fails) { console.log(`\n${fails} özellik çıkarma testi başarısız`); process.exit(1); }
 console.log("\nÖzellik çıkarma testleri geçti");

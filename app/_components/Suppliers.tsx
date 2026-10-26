@@ -12,9 +12,9 @@ type FeedDraft = { id?: string; label: string; url: string; url_masked?: string;
 type Draft = {
   feeds: FeedDraft[];
   id?: string; code: string; name: string; xml_url: string; url_masked?: string; url_from_env?: string | null; active: boolean; nightly: boolean;
-  item_path: string; mapping: Record<string, Field>; sku_prefix: string; sku_ascii: boolean; price_includes_vat: boolean; default_vat: number; default_brand: string; currency: string; marketplace_brand: string; default_attributes: string;
+  item_path: string; mapping: Record<string, Field>; sku_prefix: string; sku_ascii: boolean; price_includes_vat: boolean; default_vat: number; default_brand: string; currency: string; marketplace_brand: string; default_attributes: string; dedupe_code_suffix: boolean;
 };
-const empty = (): Draft => ({ feeds: [], code: "", name: "", xml_url: "", active: true, nightly: true, item_path: "", mapping: {}, sku_prefix: "", sku_ascii: true, price_includes_vat: true, default_vat: 20, default_brand: "", currency: "TRY", marketplace_brand: "", default_attributes: "" });
+const empty = (): Draft => ({ feeds: [], code: "", name: "", xml_url: "", active: true, nightly: true, item_path: "", mapping: {}, sku_prefix: "", sku_ascii: true, price_includes_vat: true, default_vat: 20, default_brand: "", currency: "TRY", marketplace_brand: "", default_attributes: "", dedupe_code_suffix: false });
 
 export default function Suppliers({ api, notify }: { api: Api; notify: Notify }) {
   const [list, setList] = useState<Row[]>([]);
@@ -216,6 +216,7 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
         </div>
         <div className="row" style={{ marginTop: 12, gap: 16 }}>
           <label className="check"><input type="checkbox" checked={d.sku_ascii} onChange={(e) => set("sku_ascii", e.target.checked)} />SKU'dan Türkçe/özel karakterleri at</label>
+          <label className="check" title="Ör. Toptancım: aynı ürün ABC, ABC-1, ABC-2... kodlarıyla farklı başlıkla tekrar yayınlanıyor"><input type="checkbox" checked={!!d.dedupe_code_suffix} onChange={(e) => set("dedupe_code_suffix", e.target.checked)} />Kod sonu -1, -2... olan kopyalardan pazaryerine yalnızca stokta olan en ucuzunu gönder</label>
           <label className="check"><input type="checkbox" checked={d.nightly} onChange={(e) => set("nightly", e.target.checked)} />Saatte bir otomatik içe aktar</label>
         </div>
       </div>}

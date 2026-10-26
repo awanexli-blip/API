@@ -45,6 +45,14 @@ const productAttrs = (a: any, mp?: string): Record<string, string> => {
   return out;
 };
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
+// Kod gövdesi: sondaki "-1".."-99" atılır (migration 056 product_code_siblings ile aynı kural)
+export const codeStem = (sku: string) => String(sku ?? "").replace(/-\d{1,2}$/, "");
+// Kopyalardan gönderilecek: stokta (en az minStock) olanların en ucuzu; eşitse en kısa/küçük kod (ana kod önce). Stokta yoksa en ucuzu.
+export function pickCodeWinner(list: { id: string; sku: string; cost: any; stock: any }[], minStock = 1) {
+  const sorted = [...list].filter((x) => Number(x.cost) > 0).sort((a, b) => Number(a.cost) - Number(b.cost) || a.sku.length - b.sku.length || a.sku.localeCompare(b.sku));
+  const w = sorted.find((x) => Number(x.stock) >= Math.max(1, minStock)) ?? sorted[0];
+  return w ? { id: w.id, sku: w.sku } : null;
+}
 const supplierOf = (source: string) => String(source ?? "").replace(/^xml:/, "");
 // Pazaryerindeki anahtar: BayilikXML ürünleri mağaza kuralıyla "OS13-" + SKU, diğerleri varyant barkodu
 export const listingKeyOf = (source: string, variant: { sku: string; barcode: string | null }) =>
@@ -133,10 +141,12 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
   // Boşsa tedarikçi ürünü gönderilmez (mağaza markasıyla açmak istenmiyor; XML markası başkasına kayıtlı olabilir)
   const supBrand = new Map<string, string>();
   const supDefaults = new Map<string, Record<string, string>>(); // tedarikçi varsayılan özellikleri (ör. Menşei)
+  const dedupeSources = new Set<string>(); // kod sonu -N kopyalarından yalnızca en ucuzu (migration 056)
   {
-    let r = await ctx.db.from("suppliers").select("code, marketplace_brand, default_attributes");
-    if (r.error) r = await ctx.db.from("suppliers").select("code, marketplace_brand"); // migration 026 öncesi
+    let r: any = await ctx.db.from("suppliers").select("code, marketplace_brand, default_attributes, dedupe_code_suffix");
+    if (r.error) r = await ctx.db.from("suppliers").select("code, marketplace_brand"); // migration 026/056 öncesi
     for (const x of r.data ?? []) {
+      if (x.dedupe_code_suffix) dedupeSources.add(`xml:${x.code}`);
       if (x.marketplace_brand) supBrand.set(`xml:${x.code}`, String(x.marketplace_brand));
       if (x.default_attributes && typeof x.default_attributes === "object" && !Array.isArray(x.default_attributes)) supDefaults.set(`xml:${x.code}`, x.default_attributes);
     }
@@ -171,8 +181,21 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           for (const x of r.data ?? []) { const k = normTitle(x.title); sameTitle.set(k, [...(sameTitle.get(k) ?? []), x]); }
         }
       }
+      // Tedarikçinin kod kopyaları (ABC, ABC-1, ABC-2...: aynı ürün, farklı başlık): kod gövdesi başına stokta olan en ucuzu gönderilir
+      const codeWinner = new Map<string, { id: string; sku: string }>(); // gövde -> seçilen ürün
+      for (const src of dedupeSources) {
+        const stems = [...new Set((products ?? []).filter((p: any) => p.source === src).map((p: any) => codeStem(p.sku)))];
+        for (let i = 0; i < stems.length; i += 200) {
+          const r = await ctx.db.rpc("product_code_siblings", { p_source: src, p_stems: stems.slice(i, i + 200) });
+          if (r.error) { console.error("kod kopyaları okunamadı:", r.error.message); continue; }
+          const by = new Map<string, any[]>();
+          for (const x of r.data ?? []) by.set(x.stem, [...(by.get(x.stem) ?? []), x]);
+          for (const [stem, list] of by) { const w = pickCodeWinner(list, ctx.minStock); if (w) codeWinner.set(`${src}|${stem}`, w); }
+        }
+      }
       for (const p of products ?? []) {
         const images = [...(p.product_images ?? [])].sort((a: any, b: any) => a.position - b.position).map((i: any) => i.url);
+        const win = dedupeSources.has(p.source) ? codeWinner.get(`${p.source}|${codeStem(p.sku)}`) : undefined;
         const sib = (sameTitle.get(normTitle(p.title)) ?? []).filter((x: any) => x.id !== p.id);
         const myImg = imageBase(images[0]);
         const cheaper = sib.find((x: any) => imageBase(firstImage(x)) === myImg && myImg && (Number(x.cost_price) < Number(p.cost_price) || (Number(x.cost_price) === Number(p.cost_price) && x.id < p.id)));
@@ -205,6 +228,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (ctx.existing.has(key)) { rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: ctx.lsBy.get(key)?.status === "pending" ? "pending_approval" : "live", updated_at: now }); continue; }
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
           if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
+          if (win && win.id !== p.id) { fail(key, p, v, `Tedarikçide aynı ürünün kopyası (kod ${win.sku}): stokta en ucuz olan o, yalnızca o gönderilir`); continue; }
           if (!titleClaimed && ctx.lsTitles.has(normFull(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
           if (!images.length) { fail(key, p, v, "Görsel yok"); continue; }
           const risky = brandRisk?.(p.title, p.description ?? "");

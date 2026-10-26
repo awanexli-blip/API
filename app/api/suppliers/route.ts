@@ -44,7 +44,7 @@ export async function PUT(req: NextRequest) {
     try { const u = new URL(String(b.xml_url).trim()); if (!/^https?:$/.test(u.protocol)) throw 0; row.xml_url = u.toString(); row.url_from_env = null; }
     catch { return NextResponse.json({ error: "XML adresi http(s) ile başlamalı" }, { status: 400 }); }
   }
-  for (const k of ["active", "nightly", "sku_ascii", "price_includes_vat"]) if (k in b) row[k] = !!b[k];
+  for (const k of ["active", "nightly", "sku_ascii", "price_includes_vat", "dedupe_code_suffix"]) if (k in b) row[k] = !!b[k];
   if ("item_path" in b) row.item_path = String(b.item_path ?? "").trim().slice(0, 200) || null;
   if ("sku_prefix" in b) {
     row.sku_prefix = String(b.sku_prefix ?? "").trim();
