@@ -2,6 +2,7 @@
 // node --experimental-strip-types worker/test/attr-infer.test.ts
 import { defaultFor, inferAttribute, type AttrValue } from "../core/attr-infer.ts";
 import { acceptValues } from "../core/ai-attrs.ts";
+import { salePriceOf } from "../core/sale-price.ts";
 let fails = 0;
 const check = (n: string, got: AttrValue | null, want: string | null) => { const ok = (got?.name ?? null) === want; console.log(`${ok ? "OK  " : "HATA"} ${n}${ok ? "" : `  beklenen ${want}, gelen ${got?.name ?? null}`}`); if (!ok) fails++; };
 const V = (...names: string[]) => names.map((name, id) => ({ id, name }));
@@ -57,6 +58,12 @@ const dv = { Beden: "42", Renk: "Siyah", "Menşei": "TR" };
 for (const [name, want] of [["Numara", "42"], ["Ayakkabı Numarası", "42"], ["numara_variant_property", "42"], ["Web Color", "Siyah"], ["Menşei", "TR"], ["Materyal", undefined]] as const) {
   const got = defaultFor(dv, name);
   console.log(`${got === want ? "OK  " : "HATA"} eş anlamlı özellik: ${name} -> ${got}`); if (got !== want) fails++;
+}
+
+// Formda girilen satış fiyatı (TR biçimi; pazaryerine özel değer önce)
+for (const [a, mp, want] of [[{ "Satış fiyatı": "1.299,90" }, "trendyol", 1299.9], [{ "Satış fiyatı": "849.5" }, "trendyol", 849.5], [{ "Satış fiyatı": "500", "Satış fiyatı@hepsiburada": "529,90" }, "hepsiburada", 529.9], [{}, "trendyol", 0], [{ "Satış fiyatı": "abc" }, "trendyol", 0]] as [Record<string, string>, string, number][]) {
+  const got = salePriceOf(a, mp);
+  console.log(`${got === want ? "OK  " : "HATA"} satış fiyatı ${JSON.stringify(a)} ${mp} -> ${got}`); if (got !== want) fails++;
 }
 
 if (fails) { console.log(`\n${fails} özellik çıkarma testi başarısız`); process.exit(1); }

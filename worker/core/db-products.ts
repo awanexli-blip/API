@@ -6,6 +6,7 @@ import { breakdown, calcPrice, existingPriceSafe, type PricingConfig } from "../
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle, normFull } from "./util.ts";
+import { salePriceOf } from "./sale-price.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher } from "./brand-risk.ts";
 
@@ -34,7 +35,15 @@ function withModel(title: string, ref: string, barcode?: string | null) {
   return `${title.slice(0, 100 - code.length - 1).trim()} ${code}`;
 }
 // Ürüne elle girilen özellikler (panel: Gönderilemeyenler) tedarikçi varsayılanını ezer; kategori anahtarı özellik değildir
-const productAttrs = (a: any): Record<string, string> => Object.fromEntries(Object.entries(a && typeof a === "object" && !Array.isArray(a) ? a : {}).filter(([k, v]) => !k.startsWith("Trendyol kategori") && typeof v === "string" && v.trim()).map(([k, v]) => [k, String(v)]));
+// Ürün kaydındaki özellikler -> pazaryerine giden değerler. "Ad@pazaryeri" (formda o pazaryerinin listesinden ayrıca seçilen değer) o pazaryerinde
+// "Ad"ı ezer, diğerinde yok sayılır. Pazaryeri kategori anahtarları ("Trendyol kategori", "Hepsiburada kategori adı") özellik değildir.
+const CAT_KEY = /^((trendyol|hepsiburada|amazon) kategori|satış fiyatı(@|$))/i;
+const productAttrs = (a: any, mp?: string): Record<string, string> => {
+  const src = Object.entries(a && typeof a === "object" && !Array.isArray(a) ? a : {}).filter(([k, v]) => !CAT_KEY.test(k) && typeof v === "string" && v.trim()) as [string, string][];
+  const out: Record<string, string> = Object.fromEntries(src.filter(([k]) => !k.includes("@")));
+  for (const [k, v] of src) { const i = k.lastIndexOf("@"); if (i > 0 && mp && k.slice(i + 1).toLowerCase() === mp) out[k.slice(0, i)] = v; }
+  return out;
+};
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
 const supplierOf = (source: string) => String(source ?? "").replace(/^xml:/, "");
 // Pazaryerindeki anahtar: BayilikXML ürünleri mağaza kuralıyla "OS13-" + SKU, diğerleri varyant barkodu
@@ -51,6 +60,12 @@ function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number,
   const comm = ctx.mp.commission(key, p.category ?? "", panelRate != null ? Number(panelRate) : null, ctx.cfg.commissionRate, { category: hintCat, title: p.title }).rate;
   const base: PricingConfig = { ...ctx.cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(ctx.shipFor ? { shippingCost: ctx.shipFor(p.desi != null ? Number(p.desi) : null) } : {}) };
   const pcfg = ctx.rules.length ? applyRules(base, ctx.rules, { cost, supplier: supplierOf(p.source), category: p.category, brand: p.brand, stock }).cfg : base;
+  // Ürün formunda girilen satış fiyatı (KDV dahil; "Satış fiyatı@hepsiburada" o pazaryerinde ezer): boşsa formül. Zarar ettiriyorsa uygulanmaz.
+  const fixed = salePriceOf(p.attributes, ctx.marketplaceId);
+  if (fixed > 0) {
+    if (breakdown(fixed, cost, pcfg, comm).net > 0) return { ok: true as const, price: Math.round(fixed * 100) / 100, cost, comm, pcfg, fixed: true };
+    ctx.skip(`girilen satış fiyatı zarar ettiriyor (${fixed} TL): formül fiyatı kullanıldı`);
+  }
   const r = calcPrice(cost, pcfg, comm);
   return r.ok ? { ok: true as const, price: r.price, cost, comm, pcfg } : { ok: false as const, reason: r.reason ?? "fiyat hesaplanamadı", cost, comm, pcfg };
 }
@@ -81,7 +96,8 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       const ovPrice = ov?.price_override ? Number(ov.price_override) : null;
       const ovOk = ovPrice != null && ovPrice > 0 && breakdown(ovPrice, pr.cost, pr.pcfg, pr.comm).net > 0;
       if (ovPrice != null && !ovOk) { stats.overrideLoss = (stats.overrideLoss ?? 0) + 1; ctx.skip("elle fiyat zarar ettiriyor: formül fiyatı kullanıldı"); }
-      const sendPrice = ovOk ? ovPrice : existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
+      // Formda girilen satış fiyatı olduğu gibi gider (smart politikanın kademeli düşüşü uygulanmaz)
+      const sendPrice = ovOk ? ovPrice : "fixed" in pr && pr.fixed ? pr.price : existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
       ctx.econ?.set(key, { cost: pr.cost, comm: pr.comm, pcfg: pr.pcfg, price: sendPrice ?? Number(ls.price) });
       const qty = p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
       items.push({ id: key, price: sendPrice, quantity: qty });
@@ -163,7 +179,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const title = sib.some((x: any) => imageBase(firstImage(x)) !== myImg) ? withModel(p.title, p.source_ref ?? p.sku, p.product_variants?.[0]?.barcode) : p.title;
         const pred = ctx.predict ? ctx.predict(p.title, p.category ?? "") : null;
         // Panelde (Gönderilemeyenler) ürüne elle girilen kategori numarası önce gelir
-        const manualCat = /^\d+$/.test(String(p.attributes?.["Trendyol kategori"] ?? "")) ? String(p.attributes["Trendyol kategori"]) : null;
+        // Ürün formunda (ya da Gönderilemeyenler'de) bu pazaryeri için seçilen kategori: "Trendyol kategori" / "Hepsiburada kategori"
+        const mc = String(p.attributes?.[`${ctx.mp.label} kategori`] ?? "").trim();
+        const manualCat = /^[\w-]{1,40}$/.test(mc) && /\d/.test(mc) ? mc : null;
         // Sıra (K kararı 22.10: ürünlerin çoğu gitsin, Trendyol gibi ada bakılsın): elle > kategori eşlemesi > tahmin (yüksek/orta) > ağaç eşleşmesi (güçlü)
         // > tahmin (düşük, %50+) > ağaç eşleşmesi (zayıf). Yanlış kategori Trendyol'dan revize olarak döner (Reddedilenler).
         const tyName = ctx.marketplaceId !== "trendyol" ? String(p.attributes?.["Trendyol kategori adı"] ?? "") : "";
@@ -173,7 +191,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const strongPath = path && path.score >= 12 ? path : null;
         const pick = manualCat || ctx.catMap.get(p.category)?.category_id ? null
           : (pred && pred.level !== "dusuk" ? pred : null) ?? strongPath ?? (leaf && leaf.score >= 10 ? leaf : null) ?? (pred && pred.confidence >= 0.5 ? pred : null) ?? path ?? leaf ?? null;
-        const catName = pick?.categoryName ?? null;
+        // Elle seçilen kategorinin adı (formda saklanır): komisyon ipucu (HB EK.4) ve kayıt
+        const manualName = manualCat ? String(p.attributes?.[`${ctx.mp.label} kategori adı`] ?? "").split(" > ").pop() || null : null;
+        const catName = manualName ?? pick?.categoryName ?? null;
         const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id ?? pick?.categoryId ?? null;
         // Çok varyantlı ürün (beden/renk): varyantlar pazaryerinde tek ürün grubu; "aynı başlık" koruması yalnızca ilk varyantta bakılır
         const vlist = [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position);
@@ -206,14 +226,14 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           }
           if (String(p.source ?? "").startsWith("xml:") && !supBrand.has(p.source)) { fail(key, p, v, `Tedarikçinin pazaryeri markası ayarlanmadı (Ürünler → Tedarikçiler → "${String(p.source).slice(4)}" → Pazaryeri markası)`); continue; }
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
-          const pr = priceFor(ctx, p, v, null, avail, pick && pick !== pred && String(pick.categoryId) === String(categoryId) ? pick.categoryName : null);
+          const pr = priceFor(ctx, p, v, null, avail, manualName ?? (pick && pick !== pred && String(pick.categoryId) === String(categoryId) ? pick.categoryName : null));
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
             pid: p.id, known: p.attributes ?? {}, catName, xmlCategory: p.category ?? "",
-            refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes), ...productAttrs(v.attributes) }, groupId: multi ? p.sku : undefined, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
+            refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes, ctx.marketplaceId), ...productAttrs(v.attributes, ctx.marketplaceId) }, groupId: multi ? p.sku : undefined, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,
           };
           // Tedarikçi ürünü: tedarikçi ayarındaki pazaryeri markası; elle girilen ürün: kendi markası (pazaryerinde kayıtlıysa) yoksa mağaza markası
           const fromSupplier = String(p.source ?? "").startsWith("xml:");

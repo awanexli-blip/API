@@ -7,6 +7,7 @@ import { tl, when, type Api, type Notify, type Row } from "./shared";
 import BrandInput from "./BrandInput";
 import Icon from "./Icon";
 import PricePreview from "./PricePreview";
+import MarketplaceFields, { attrGroup, type MpStatus } from "./MarketplaceFields";
 import { calcPrice } from "@/worker/pricing";
 import { applyRules, rulesFor, type PricingRule } from "@/worker/pricing-rules";
 import { cfgFromSettings } from "./pricing-config";
@@ -27,7 +28,7 @@ const DESI = ["1", "2", "3", "4", "5", "8", "10", "15", "20"];
 
 // "Renk: Kırmızı, Beden: M" <-> { Renk: "Kırmızı", Beden: "M" }
 const toText = (o: Record<string, string> | undefined, sep = ", ") => Object.entries(o ?? {}).map(([k, v]) => `${k}: ${v}`).join(sep);
-const toMap = (s: string) => Object.fromEntries(s.split(/[,\n]/).map((x) => x.split(":")).filter((p) => p.length >= 2 && p[0].trim()).map(([k, ...v]) => [k.trim(), v.join(":").trim()]));
+const toMap = (s: string, sep: RegExp = /[,\n]/) => Object.fromEntries(s.split(sep).map((x) => x.split(":")).filter((p) => p.length >= 2 && p[0].trim()).map(([k, ...v]) => [k.trim(), v.join(":").trim()]));
 const slug = (s: string) => s.toLocaleUpperCase("tr").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/İ/g, "I").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U").replace(/[^A-Z0-9]+/g, "").slice(0, 8);
 
 type VariantForm = { id?: string; sku: string; barcode: string; attrs: string; stock: string; cost_price: string; reserved?: number };
@@ -70,7 +71,7 @@ function toPayload(f: Form) {
   return {
     sku: f.sku, title: f.title, description: f.description, brand: f.brand, category: f.category,
     vat_rate: f.vat_rate, desi: f.desi, cost_price: f.cost_price, currency: f.currency, status: f.status,
-    attributes: toMap(f.attrs), images: f.images,
+    attributes: toMap(f.attrs, /\n/), images: f.images, // ürün özellikleri satır satır (değerde virgül olabilir)
     variants: f.variants.map((v) => ({ id: v.id, sku: v.sku, barcode: v.barcode, attributes: toMap(v.attrs), stock: v.stock, cost_price: v.cost_price })),
   };
 }
@@ -113,11 +114,12 @@ async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmi
 }
 
 // Tek tık: Trendyol + Hepsiburada. Tek onay; ikisi ayrı kuyruk işi (biri hata verirse diğeri yine gönderilir)
-async function sendToMarketplaces(api: Api, notify: Notify, ids: string[], isAdmin: boolean) {
-  const now = isAdmin && confirm(`${ids.length} ürün Trendyol ve Hepsiburada'ya gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
+type MpTarget = "trendyol" | "hepsiburada";
+async function sendToMarketplaces(api: Api, notify: Notify, ids: string[], isAdmin: boolean, targets: MpTarget[] = ["trendyol", "hepsiburada"]) {
+  const now = isAdmin && confirm(`${ids.length} ürün ${targets.map((m) => (m === "trendyol" ? "Trendyol" : "Hepsiburada")).join(" ve ")}'a gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
   const out: string[] = [];
   let ok = false;
-  for (const [mp, label] of [["trendyol", "Trendyol"], ["hepsiburada", "Hepsiburada"]] as const) {
+  for (const [mp, label] of ([["trendyol", "Trendyol"], ["hepsiburada", "Hepsiburada"]] as const).filter(([m]) => targets.includes(m))) {
     try {
       const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace: mp, now }) });
       ok = true;
@@ -332,6 +334,19 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   // Kaydedilmemiş değişiklik var mı (gönderimden önce kaydetmek için)
   const [savedF, setSavedF] = useState<Form>(initial);
   const dirty = JSON.stringify(f) !== JSON.stringify(savedF);
+  // Ürün özellikleri (pazaryeri kategorisi, zorunlu özellikler, satış fiyatı): f.attrs metni "Ad: değer" satırları
+  const pAttrs = useMemo(() => toMap(f.attrs, /\n/), [f.attrs]);
+  const setAttr = useCallback((k: string, v: string | null) => setF((p) => {
+    const m = toMap(p.attrs, /\n/);
+    if (v == null || v === "") delete m[k]; else m[k] = v.replace(/\n/g, " ");
+    return { ...p, attrs: toText(m, "\n") };
+  }), []);
+  // Tüm varyantlarda girilmiş varyant grupları (beden/renk): pazaryerinin varyant özelliği bunlardan dolar
+  const variantGroups = useMemo(() => {
+    const per = f.variants.map((v) => new Set(Object.keys(toMap(v.attrs)).map(attrGroup).filter(Boolean) as string[]));
+    return new Set([...(per[0] ?? [])].filter((g) => per.every((x) => x.has(g))));
+  }, [f.variants]);
+  const [mpStatus, setMpStatus] = useState<MpStatus | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const canEdit = role !== "viewer";
   const isNew = !f.id;
@@ -350,9 +365,24 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   }, cat?.markets ?? []), [f, cat]);
 
   // "send": kaydet (değişiklik varsa) ve tek tıkla Trendyol + Hepsiburada gönderim kuyruğuna al
+  // Gönderilecek pazaryerleri: zorunlu alanları tam olanlar (eksik olan atlanır, nedeni söylenir)
+  function sendTargets(): MpTarget[] | null {
+    const all: MpTarget[] = ["trendyol", "hepsiburada"];
+    if (!mpStatus) return all;
+    if (mpStatus.loading) { notify("err", "Pazaryeri özellikleri yükleniyor, birkaç saniye sonra tekrar dene."); return null; }
+    const name = (m: MpTarget) => (m === "trendyol" ? "Trendyol" : "Hepsiburada");
+    const ok = all.filter((m) => mpStatus.ready[m]);
+    const bad = all.filter((m) => !mpStatus.ready[m]).map((m) => `${name(m)}: ${mpStatus.missing[m].join(", ")}`);
+    if (!ok.length) { notify("err", `Eksik zorunlu alanlar var. ${bad.join(" · ")}`); return null; }
+    if (bad.length && !confirm(`Eksik alanlar: ${bad.join(" · ")}\n\nYalnızca ${ok.map(name).join(", ")}'a gönderilsin mi?`)) return null;
+    return ok;
+  }
+
   async function save(then?: "new" | "close" | "send") {
+    const targets = then === "send" ? sendTargets() : null;
+    if (then === "send" && !targets) return;
     if (then === "send" && !isNew && !dirty) {
-      if (await sendToMarketplaces(api, notify, [f.id!], role === "admin")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {});
+      if (await sendToMarketplaces(api, notify, [f.id!], role === "admin", targets!)) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {});
       return;
     }
     const filled = autofill(f);
@@ -366,7 +396,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
       if (then === "new") return onNew();
       if (then === "close") return onClose();
       setF(fromProduct(saved)); setSavedF(fromProduct(saved));
-      if (then === "send") await sendToMarketplaces(api, notify, [saved.id], role === "admin");
+      if (then === "send") await sendToMarketplaces(api, notify, [saved.id], role === "admin", targets!);
       api(`/api/products/${saved.id}?listings=1`).then(setListings).catch(() => {});
       api(`/api/products/${saved.id}?audit=1`).then(setAudit).catch(() => {});
     } catch (e: any) { notify("err", e.message); }
@@ -473,7 +503,11 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
               ? <span style={{ color: "var(--ok)" }}>✓ {cat.markets.map((m) => `${m}${cat.names[m] ? ` (${cat.names[m]})` : ""}`).join(", ")}</span>
               : "Bu kategori henüz hiçbir pazaryerine eşleşmemiş"}</small>}
           </label>
-          {input("cost_price", "Alış fiyatı (KDV dahil, TL)", "Satış fiyatı her pazaryerinde formülle hesaplanır", "decimal", undefined, "0,00")}
+          {input("cost_price", "Alış fiyatı (KDV dahil, TL)", "Kâr hesabı ve zarar kontrolü için gerekli", "decimal", undefined, "0,00")}
+          <label className="f">Satış fiyatı (isteğe bağlı, KDV dahil)
+            <input type="text" inputMode="decimal" value={pAttrs["Satış fiyatı"] ?? ""} placeholder="Boş: formülle hesaplanır" onChange={(e) => setAttr("Satış fiyatı", e.target.value.replace(/[^0-9.,]/g, ""))} />
+            <small>Yazarsan Trendyol ve Hepsiburada'ya bu fiyat gider; zarar ettiriyorsa uygulanmaz, formül fiyatı kullanılır.</small>
+          </label>
           {single && <label className="f">Stok
             <input type="text" inputMode="numeric" value={f.variants[0].stock} placeholder="0" onChange={(e) => setV(0, "stock", e.target.value)} />
             {err("variants.0.stock")}
@@ -487,6 +521,8 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
           <textarea value={f.description} placeholder="Ürünün özellikleri, ölçüleri, malzemesi, kutu içeriği..." onChange={(e) => set("description", e.target.value)} style={{ minHeight: 100, fontFamily: "inherit" }} />{err("description")}
         </label>
       </div>
+
+      <MarketplaceFields api={api} title={f.title} attrs={pAttrs} setAttr={setAttr} variantGroups={variantGroups} hasVariants={f.variants.length > 1 || hasVariants} onStatus={setMpStatus} />
 
       <div className="card"
         onDragOver={(e) => e.preventDefault()}
