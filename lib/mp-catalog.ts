@@ -7,6 +7,7 @@ export type MpAttr = { id: string; name: string; required: boolean; variant: boo
 export type MpCategory = { id: string; name: string; path: string };
 
 const TTL_MS = 7 * 24 * 3600 * 1000;
+export const OPEN_LIST = 5000; // bu kadar ya da daha çok değerli liste serbest metin sayılır (worker/marketplaces/hepsiburada.ts ile aynı)
 const TY = "https://apigw.trendyol.com/integration/product";
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
 // Arama biçimi: küçük harf, Türkçe harfler sadeleştirilmiş, noktalama boşluk
@@ -112,6 +113,8 @@ async function fetchAttrs(mp: string, cid: string): Promise<MpAttr[]> {
             }
             values = [...new Set(values)];
           } catch { /* serbest metin */ }
+          // Satıcıların girdiği binlerce değer (HB renk: "0-Siyah", "1 Siyah"...): pratikte serbest metin, liste tutulmaz
+          if (values.length >= OPEN_LIST) values = [];
         }
         return { id: a.id, name: a.name, required: a.mandatory, variant: a.g === "variant", slicer: false, custom: values.length === 0, values };
       })));

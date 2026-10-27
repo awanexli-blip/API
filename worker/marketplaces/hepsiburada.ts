@@ -130,6 +130,8 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
     }
     let vals: string[] = [];
     try { vals = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin olabilir */ }
+    // Binlerce satıcı değerli liste (renk: "0-Siyah", "1 Siyah"...) serbest metin sayılır: kayıttaki değer olduğu gibi (lib/mp-catalog.ts OPEN_LIST)
+    if (vals.length >= 5000) vals = [];
     // Ürün kaydındaki değer: "A|B|C" seçeneklerinden listede olan ilk değer, liste yoksa sonuncusu
     const opts = String(def ?? "").split("|").map((x) => x.trim()).filter(Boolean);
     const sq = (s: string) => lo(s).replace(/[\s,]+/g, "").replace(/numara$/, "");
