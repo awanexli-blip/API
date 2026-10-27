@@ -2178,3 +2178,25 @@ begin
   end if;
   return new;
 end $$;
+
+-- ===== migrations/059_zero_unlinked.sql =====
+-- Ürüne bağlı olmayan satıştaki ilanlara stok 0 (K, 27.10: "Royal'in ürünleri şu an satışta yok"): HB'de 846 Royal + 27 eski Toptancım
+-- ilanı ~1000'er stokla duruyordu, stok güncellenemediği için satılırsa karşılanamazdı. worker/sync.ts; pazaryeri satırında boş = ortak.
+alter table public.settings add column if not exists zero_unlinked boolean not null default false;
+alter table public.marketplace_settings add column if not exists zero_unlinked boolean;
+update public.marketplace_settings set zero_unlinked = true where marketplace = 'hepsiburada';
+
+-- ===== migrations/060_notifications.sql =====
+-- Telegram bildirimleri (K, 27.10: "önemli her şeyi Telegram'dan göndersin, olabildiğince hızlı"): aynı olay bir kez gönderilir.
+-- Anahtar örnekleri: claim:trendyol:123, cancel:<sipariş>, ship:<sipariş>:late, sync:hepsiburada:2026-10-27T18, db:2026-10-27, daily:2026-10-27
+create table if not exists public.notifications (
+  key text primary key,
+  sent_at timestamptz not null default now()
+);
+alter table public.notifications enable row level security;
+
+-- Veritabanı boyutu (ücretsiz plan 500 MB; 400 MB'da uyarı)
+create or replace function public.db_size_bytes() returns bigint language sql stable security invoker set search_path = public as $$
+  select pg_database_size(current_database())
+$$;
+revoke execute on function public.db_size_bytes() from public, anon, authenticated;

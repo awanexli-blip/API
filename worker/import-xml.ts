@@ -11,6 +11,8 @@ import { createHash } from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
 import { env, chunk, arg, SUPPLIER_ARG } from "./core/util.ts";
 import { safeFetch } from "./core/safe-fetch.ts";
+import { notifyOnce } from "./core/notify.ts";
+import { esc } from "./core/telegram.ts";
 import { feedSupplier, findItems, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
 
 const stable = (v: any): string => Array.isArray(v) ? `[${v.map(stable).join(",")}]`
@@ -136,6 +138,11 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
   } catch (e: any) {
     if (dry) throw e;
     await finish({ status: "error", failed: (count.error ?? 0) + errors.length, message: String(e.message).slice(0, 500) });
+    // Telegram: içe aktarma durdu (tedarikçi linki inmedi vb.); stoklar güncellenmiyor demektir. Aynı tedarikçi için 3 saatte bir
+    const now = new Date();
+    await notifyOnce(db, `import:${sup.code}:${now.toISOString().slice(0, 10)}T${Math.floor(now.getUTCHours() / 3)}`, `📦 <b>${esc(sup.name ?? sup.code)} içe aktarma durdu</b>
+${esc(String(e.message).slice(0, 300))}
+Stoklar güncellenmiyor; sorun sürerse Claude'a bildir.`).catch(() => false);
     throw e;
   }
 }

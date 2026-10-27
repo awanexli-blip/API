@@ -35,6 +35,8 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}   # içe aktarma durursa uyarı
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           XML_URL: ${{ secrets.XML_URL }}   # BayilikXML (url_from_env); diğer tedarikçilerin adresi veritabanında
           ACTOR: ${{ github.event.inputs.actor || 'zamanlı' }}
           SUPPLIER: ${{ github.event.inputs.supplier || 'nightly' }}

@@ -16,6 +16,7 @@ import { cleanForMarketplace, planFix, type FixRow } from "./core/rejections.ts"
 import { recordBatches, applyStates, refreshBatches } from "./core/mp-status.ts";
 import { syncOrders, syncClaims, syncSettlements, pushTracking, loadReservations } from "./core/orders.ts";
 import { syncInbox, notifyOrders } from "./core/inbox.ts";
+import { runAlerts } from "./core/notify.ts";
 import { fixImages } from "./core/image-fix.ts";
 import { flushAttrOptions } from "./core/attr-options.ts";
 import { aiFillAttributes } from "./core/ai-attrs.ts";
@@ -449,6 +450,15 @@ async function main() {
         summary.zeroMissingSkipped = `${mp.label} ilanlarının yarısından azı XML ile eşleşti, güvenlik için çalıştırılmadı`;
       }
     }
+    // Hiçbir ürüne bağlı olmayan satıştaki ilanlar (ör. yeniden eklenmemiş Royal ürünleri HB'de ~1000'er stokla): stokları güncellenemez,
+    // satılırsa karşılanamaz -> stok 0 (migration 059 zero_unlinked; ürün geri eklenip bağlanınca stok kendiliğinden döner).
+    // Güvenlik: veritabanı ilanları okunamadıysa ya da ilanların %20'sinden fazlası bağsız görünüyorsa çalışmaz.
+    if (s.zero_unlinked) {
+      const loose = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && Number(l.quantity) > 0).map((l) => l.id);
+      const dbOk = !(dbInv.stats as any).error && Number((dbInv.stats as any).listings ?? 0) > 0;
+      if (!dbOk || loose.length > listings.length * 0.2) summary.unlinkedZeroSkipped = `${loose.length} bağsız ilan; güvenlik için stok sıfırlanmadı`;
+      else if (loose.length) { const z = await mp.zeroStock(loose); summary.unlinkedZeroed = z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds); }
+    }
   }
 
   const weakMatch = existing.size > 1000 && matched / existing.size < 0.5;
@@ -510,6 +520,8 @@ async function main() {
   try {
     const summary: any = await main();
     const status = summary.skippedRun ? "skipped" : summary.failedBatches > 0 || summary.batchCheck?.failedItems > 0 ? "partial" : "ok";
+    // Telegram uyarıları (iade, iptal, kargo süresi, senkron sorunu, veritabanı boyutu, günlük özet); önizlemede gönderilmez
+    if (mode !== "preview" && !summary.skippedRun && marketplaceId !== "amazon") summary.alerts = await runAlerts(db, { id: marketplaceId, label: marketplaceId === "trendyol" ? "Trendyol" : "Hepsiburada" }, summary, status).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     await db.from("sync_runs").update({ status, finished_at: new Date().toISOString(), summary }).eq("id", id);
     console.log(JSON.stringify(summary, null, 1));
   } catch (e: any) {
