@@ -28,7 +28,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
           SUPPLIER: ${{ github.event.inputs.supplier || 'toptancim' }}
         run: node --experimental-strip-types worker/import-xml.ts "$SUPPLIER" --dry | head -c 3000
-      # Alan yolları, doluluk, ortalama uzunluk (annotation olarak; adres yazılmaz). 28.10: açıklama/kategori eşlemesi doğrulaması
+      # Alan yolları, doluluk, ortalama uzunluk (annotation olarak; adres yazılmaz). 28.10: açıklama/kategori eşlemesi doğrulaması (2)
       - name: XML alanları
         if: always()
         env:

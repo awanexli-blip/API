@@ -36,8 +36,8 @@ for (const f of feeds) {
       st.set(k, s);
     }
   }
+  // GitHub adım başına 10 annotation gösterir: link başına iki satır (alan listesi + metin/kategori alanlarının özeti)
   console.log(`::notice title=${name} (${path}, ${items.length} ürün)::${[...st.keys()].join(", ").slice(0, 900)}`);
-  // Uzun metin alanları ve kategori alanları ayrıntılı (doluluk, ort. uzunluk, başlıkla aynı oranı, örnek)
-  for (const [k, s] of [...st].filter(([k, s]) => s.len / s.n > 25 || /categ|kategori|desc|detail|aciklama|açıklama/i.test(k)).slice(0, 25))
-    console.log(`::notice title=${name} · ${k}::doluluk %${Math.round((s.n / part.length) * 100)} · ort. ${Math.round(s.len / s.n)} krk · başlıkla aynı %${Math.round((s.same / s.n) * 100)} · örnek: ${s.ex}`);
+  const pick = [...st].filter(([k]) => /categ|kategori|desc|detail|aciklama|açıklama|ozellik|özellik|spec/i.test(k)).slice(0, 12);
+  console.log(`::notice title=${name} metin alanları::${pick.map(([k, s]) => `${k}: %${Math.round((s.n / part.length) * 100)} dolu, ort ${Math.round(s.len / s.n)} krk, başlıkla aynı %${Math.round((s.same / s.n) * 100)}, örnek «${s.ex.slice(0, 50)}»`).join(" ¦ ").slice(0, 3500)}`);
 }
