@@ -39,7 +39,7 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 ```
 
 - **GitHub Actions** (`.github/workflows/sync.yml`): 15 dakikada bir (UTC :07/:22/:37/:52) `auto` modunda, tüm pazaryerleri ayrı job (matris) çalışır, elle de tetiklenebilir (`workflow_dispatch`, mod: `preview | update | create | auto`). Artifact olarak `preview.csv` ve `xml_dump.csv` yükler (7 gün saklanır). Vercel fonksiyonları 48 MB XML ve 25 bin ürün için uygun olmadığından işi Actions yapar.
-- **Supabase** (proje `xovqsjiddoituaayyhae`, Claude MCP ile erişebilir): `settings`, `marketplace_settings`, `category_map`, `product_overrides`, `unmapped_categories`, `sync_runs`, `create_failures` tabloları. Şema: `supabase/schema.sql`. RLS açık, erişim sadece sunucu tarafında `service_role` ile.
+- **Supabase** (proje `utuwjqfcaiqlqdzzagmm` trentakip-v2, 25.10'dan beri; eski `xovqsjiddoituaayyhae` çöktü. Claude MCP ile erişebilir. Güncel durum: `docs/PROGRESS.md` en üst devir notu): `settings`, `marketplace_settings`, `category_map`, `product_overrides`, `unmapped_categories`, `sync_runs`, `create_failures` tabloları. Şema: `supabase/schema.sql`. RLS açık, erişim sadece sunucu tarafında `service_role` ile.
 - **Vercel + Next.js 16 paneli** (`app/`, React 19, panel v2: sol menü/alt menü, gece/gündüz, hash ile gezinme): sadece `ADMIN_EMAIL` ile giriş yapan kullanıcı. Sekmeler: Özet (otomatik modu duraklat, Önizleme / Stok ve fiyatı güncelle / Yeni ürünleri aç düğmeleri, son çalıştırmalar), Fiyat ve stok ayarları (simülasyon dahil), Kategoriler, Ürün istisnaları. Düğmeler GitHub API ile `sync.yml` workflow'unu tetikler (`GH_TOKEN` gerekir).
 
 ### Dosya haritası
