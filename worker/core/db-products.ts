@@ -84,7 +84,7 @@ function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number,
     const m = marginFor(ctx.dyn.cfg, { competition: key != null ? ctx.dyn.comp.get(key) : undefined, price: r.price });
     const dcfg = { ...pcfg, netMarginMin: m };
     const r2 = calcPrice(cost, dcfg, comm);
-    if (r2.ok && ctx.dyn.active) return { ok: true as const, price: r2.price, cost, comm, pcfg: dcfg, margin: m };
+    if (r2.ok && ctx.dyn.active) return { ok: true as const, price: r2.price, cost, comm, pcfg: dcfg, margin: m, floor: r.price };
     if (r2.ok) return { ok: true as const, price: r.price, cost, comm, pcfg, alt: r2.price, margin: m };
   }
   return { ok: true as const, price: r.price, cost, comm, pcfg };
@@ -93,13 +93,16 @@ function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number,
 export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[]; stats: Record<string, number> }> {
   const items: InventoryItem[] = [];
   const stats: Record<string, number> = { listings: 0, updated: 0, zeroed: 0, notLive: 0 };
+  // Kademeli zam: Türkiye günü; gün başı fiyatı ilk görüldüğünde yazılır
+  const rampDay = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const rampRows: { k: string; p: number }[] = [];
   // Tedarikçi kod kopyaları (migration 057): grupta stokta en ucuz ilan dışındakilere stok 0 (fiyat yine güncellenir)
   const dupLosers = new Set<string>();
   { const r = await ctx.db.rpc("dup_listing_losers", { p_mp: ctx.marketplaceId, p_min_stock: ctx.minStock }); if (!r.error) for (const x of r.data ?? []) dupLosers.add(x.listing_key); else console.error("kopya ilanlar okunamadı:", r.error.message); }
   // Anahtar sıralı sayfalama (OFFSET sırasız ve derin sayfada yavaştı: ilan atlanabilir/çift gelebilirdi)
   for (let last = ""; ; ) {
     const { data, error } = await ctx.db.from("marketplace_listings")
-      .select("listing_key, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
+      .select("listing_key, price_day, price_day_base, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
       .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
     if (error || !data?.length) break; // tablo yoksa (migration 013 öncesi) sessizce geç
     last = (data as any[])[data.length - 1].listing_key;
@@ -133,7 +136,14 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       const ovOk = ovPrice != null && ovPrice > 0 && breakdown(ovPrice, pr.cost, pr.pcfg, pr.comm).net > 0;
       if (ovPrice != null && !ovOk) { stats.overrideLoss = (stats.overrideLoss ?? 0) + 1; ctx.skip("elle fiyat zarar ettiriyor: formül fiyatı kullanıldı"); }
       // Formda girilen satış fiyatı olduğu gibi gider (smart politikanın kademeli düşüşü uygulanmaz)
-      const sendPrice = ovOk ? ovPrice : "fixed" in pr && pr.fixed ? pr.price : existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
+      let sendPrice = ovOk ? ovPrice : "fixed" in pr && pr.fixed ? pr.price : existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
+      // Kademeli zam (migration 064): duruma göre marjdan gelen artış gün başı fiyatının en fazla ramp (%5) üstüne; eski kural (en az 40 TL / %10) altına inilmez
+      if (!ovOk && !("fixed" in pr && pr.fixed) && "floor" in pr && pr.floor != null && ctx.dyn?.cfg.ramp && sendPrice != null && Number(ls.price) > 0) {
+        const base = r.price_day === rampDay && Number(r.price_day_base) > 0 ? Number(r.price_day_base) : Number(ls.price);
+        if (r.price_day !== rampDay) rampRows.push({ k: key, p: Number(ls.price) });
+        const cap = Math.max(pr.floor, Math.floor(base * (1 + ctx.dyn.cfg.ramp) * 100) / 100);
+        if (sendPrice > cap) { sendPrice = cap; stats.rampCapped = (stats.rampCapped ?? 0) + 1; }
+      }
       ctx.econ?.set(key, { cost: pr.cost, comm: pr.comm, pcfg: pr.pcfg, price: sendPrice ?? Number(ls.price) });
       const dup = dupLosers.has(key);
       if (dup) stats.duplicateClosed = (stats.duplicateClosed ?? 0) + 1;
@@ -145,6 +155,11 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
     }
     if (data.length < 1000) break;
   }
+  for (let i = 0; i < rampRows.length; i += 2000) {
+    const { error } = await ctx.db.rpc("set_price_day_base", { p_mp: ctx.marketplaceId, p_day: rampDay, p_rows: rampRows.slice(i, i + 2000) });
+    if (error) { console.error("gün başı fiyatı:", error.message); break; }
+  }
+  if (rampRows.length) stats.rampBaseSet = rampRows.length;
   return { items, stats };
 }
 

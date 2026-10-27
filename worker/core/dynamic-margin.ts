@@ -3,7 +3,7 @@
 //  - Verisi olmayan ilan (yeni ürün, Hepsiburada): satış fiyatına göre basamak (500 TL altı %20, 500-1.500 %15, üstü %10)
 // Ayar: settings / marketplace_settings.dynamic_margin (jsonb), dynamic_margin_active. Kapalıyken yalnızca önizlemede karşılaştırma yapılır.
 // Saf fonksiyonlar, test edilir (attr-infer.test.ts).
-export type DynMargin = { competition: number; alone: number; bands: [number | null, number][] };
+export type DynMargin = { competition: number; alone: number; bands: [number | null, number][]; ramp?: number | null };
 export const DEFAULT_DYN: DynMargin = { competition: 0.1, alone: 0.2, bands: [[500, 0.2], [1500, 0.15], [null, 0.1]] };
 
 const rate = (x: unknown) => { const n = Number(x); return Number.isFinite(n) && n >= 0 && n <= 0.5 ? n : null; };
@@ -15,7 +15,9 @@ export function parseDyn(v: unknown): DynMargin | null {
   const bands = Array.isArray(o.bands) ? o.bands.map((b: any) => [b?.[0] == null ? null : Number(b[0]), rate(b?.[1])] as [number | null, number | null]).filter((b: any) => b[1] != null && (b[0] == null || b[0] > 0)) as [number | null, number][] : [];
   if (competition == null || alone == null || !bands.length) return null;
   bands.sort((a, b) => (a[0] ?? Infinity) - (b[0] ?? Infinity));
-  return { competition, alone, bands };
+  // Kademeli zam: günde en fazla bu oran artış (0.05 = %5); boş = sınırsız
+  const ramp = o.ramp == null ? null : rate(o.ramp);
+  return { competition, alone, bands, ramp };
 }
 
 // competition: true = başka satıcı var, false = tek satıcı biz, null/undefined = veri yok (fiyat basamağı)
