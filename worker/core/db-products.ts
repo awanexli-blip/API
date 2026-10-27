@@ -262,7 +262,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
           if (win && win.id !== p.id) { fail(key, p, v, `Tedarikçide aynı ürünün kopyası (kod ${win.sku}): stokta en ucuz olan o, yalnızca o gönderilir`); continue; }
           if (!titleClaimed && ctx.lsTitles.has(normFull(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
-          if (!images.length) { fail(key, p, v, "Görsel yok"); continue; }
+          // Varyantın (rengin) kendi görselleri varsa onlar, yoksa ürünün görselleri (migration 063)
+          const vImages: string[] = Array.isArray(v.images) && v.images.length ? v.images : images;
+          if (!vImages.length) { fail(key, p, v, "Görsel yok"); continue; }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           // Tahmin güveni düşükse otomatik seçilmez; en iyi tahmin "öneri" olarak yazılır (panel → Gönderilemeyenler tek tıkla seçer)
@@ -286,7 +288,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
-            id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images,
+            id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images: vImages,
             cat: { ...(ctx.catMap.get(p.category) ?? {}), category_id: categoryId, vat_rate: Number(p.vat_rate ?? 20) },
             pid: p.id, known: p.attributes ?? {}, catName, xmlCategory: p.category ?? "",
             refs: pred?.refs, defaults: { ...(supDefaults.get(p.source) ?? {}), ...productAttrs(p.attributes, ctx.marketplaceId), ...productAttrs(v.attributes, ctx.marketplaceId) }, groupId: multi ? p.sku : undefined, price: pr.price, qty: avail < ctx.minStock ? 0 : Math.min(avail, 20000), asin,

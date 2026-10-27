@@ -1,3 +1,4 @@
+import { saveVariantImages } from "@/lib/variant-images";
 import { NextRequest, NextResponse } from "next/server";
 import { admin } from "@/lib/server";
 import { authorize, dbError } from "@/lib/products";
@@ -64,6 +65,8 @@ export async function POST(req: NextRequest) {
   const db = admin();
   const { data: id, error } = await db.rpc("product_save", { payload: parsed.data, actor: a.email });
   if (error) return dbError(error);
+  const ve = await saveVariantImages(db, id, parsed.data.variants);
+  if (ve) return dbError(ve);
   const { data } = await db.rpc("product_snapshot", { pid: id });
   return NextResponse.json(data, { status: 201 });
 }

@@ -31,13 +31,15 @@ const toText = (o: Record<string, string> | undefined, sep = ", ") => Object.ent
 const toMap = (s: string, sep: RegExp = /[,\n]/) => Object.fromEntries(s.split(sep).map((x) => x.split(":")).filter((p) => p.length >= 2 && p[0].trim()).map(([k, ...v]) => [k.trim(), v.join(":").trim()]));
 const slug = (s: string) => s.toLocaleUpperCase("tr").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/İ/g, "I").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U").replace(/[^A-Z0-9]+/g, "").slice(0, 8);
 
-type VariantForm = { id?: string; sku: string; barcode: string; attrs: string; stock: string; cost_price: string; reserved?: number };
+type VariantForm = { id?: string; sku: string; barcode: string; attrs: string; stock: string; cost_price: string; reserved?: number; images?: string[] };
 type Form = {
   id?: string; sku: string; title: string; description: string; brand: string; category: string;
   vat_rate: string; desi: string; cost_price: string; currency: string; status: string; attrs: string; images: string[]; variants: VariantForm[]; source?: string;
 };
 type Options = { brands: string[]; defaultBrand: string; sources?: { id: string; label: string }[]; categories: { name: string; markets: string[]; names: Record<string, string> }[] };
-const emptyVariant = (): VariantForm => ({ sku: "", barcode: "", attrs: "", stock: "", cost_price: "" });
+const emptyVariant = (): VariantForm => ({ sku: "", barcode: "", attrs: "", stock: "", cost_price: "", images: [] });
+// Varyantın rengi ("Renk: Siyah, Beden: 42" -> "Siyah"); renk görselleri bu değere göre gruplanır
+const colorOf = (attrs: string) => Object.entries(toMap(attrs)).find(([k]) => /renk|colou?r/i.test(k))?.[1] ?? "";
 const emptyForm = (brand = ""): Form => ({ sku: "", title: "", description: "", brand, category: "", vat_rate: "20", desi: "1", cost_price: "", currency: "TRY", status: "active", attrs: "", images: [], variants: [emptyVariant()] });
 const s = (v: unknown) => (v == null ? "" : String(v));
 const n = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
@@ -47,7 +49,7 @@ function fromProduct(p: Row): Form {
     id: p.id, sku: p.sku, title: p.title, description: p.description ?? "", brand: p.brand ?? "", category: p.category ?? "",
     vat_rate: s(p.vat_rate), desi: s(p.desi), cost_price: s(p.cost_price), currency: p.currency ?? "TRY", status: p.status,
     attrs: toText(p.attributes, "\n"), images: p.images ?? [], source: p.source,
-    variants: (p.variants ?? []).map((v: Row) => ({ id: v.id, sku: v.sku, barcode: v.barcode ?? "", attrs: toText(v.attributes), stock: s(v.stock), cost_price: s(v.cost_price), reserved: v.reserved })),
+    variants: (p.variants ?? []).map((v: Row) => ({ id: v.id, sku: v.sku, barcode: v.barcode ?? "", attrs: toText(v.attributes), stock: s(v.stock), cost_price: s(v.cost_price), reserved: v.reserved, images: Array.isArray(v.images) ? v.images : [] })),
   };
 }
 // Boş SKU ve barkodları doldur: kullanıcı yalnızca başlık, fiyat, stok girer
@@ -72,7 +74,7 @@ function toPayload(f: Form) {
     sku: f.sku, title: f.title, description: f.description, brand: f.brand, category: f.category,
     vat_rate: f.vat_rate, desi: f.desi, cost_price: f.cost_price, currency: f.currency, status: f.status,
     attributes: toMap(f.attrs, /\n/), images: f.images, // ürün özellikleri satır satır (değerde virgül olabilir)
-    variants: f.variants.map((v) => ({ id: v.id, sku: v.sku, barcode: v.barcode, attributes: toMap(v.attrs), stock: v.stock, cost_price: v.cost_price })),
+    variants: f.variants.map((v) => ({ id: v.id, sku: v.sku, barcode: v.barcode, attributes: toMap(v.attrs), stock: v.stock, cost_price: v.cost_price, images: v.images ?? [] })),
   };
 }
 
@@ -425,7 +427,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
 
   // Görseller: dosya yükle / sürükle bırak / panodan yapıştır / link
   const addImages = (urls: string[]) => setF((p) => ({ ...p, images: [...p.images, ...urls.filter((u) => !p.images.includes(u))].slice(0, 20) }));
-  async function upload(files: File[]) {
+  async function upload(files: File[], to: (urls: string[]) => void = addImages) {
     const imgs = files.filter((x) => x.type.startsWith("image/"));
     if (!imgs.length) return;
     setUploading((u) => u + imgs.length);
@@ -433,11 +435,18 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
       try {
         const fd = new FormData(); fd.append("file", file);
         const r = await api("/api/products/images", { method: "POST", body: fd });
-        addImages(r.urls);
+        to(r.urls);
       } catch (e: any) { notify("err", `${file.name}: ${e.message}`); }
       finally { setUploading((u) => u - 1); }
     }
   }
+  // Renk görselleri: o renkteki tüm varyantlara (numaralara) aynı liste
+  const setColorImages = (color: string, fn: (imgs: string[]) => string[]) => setF((p) => {
+    const cur = p.variants.find((v) => colorOf(v.attrs) === color)?.images ?? [];
+    const next = fn(cur).slice(0, 8);
+    return { ...p, variants: p.variants.map((v) => (colorOf(v.attrs) === color ? { ...v, images: next } : v)) };
+  });
+  const variantColors = useMemo(() => [...new Set(f.variants.map((v) => colorOf(v.attrs)).filter(Boolean))], [f.variants]);
   async function addLink(copyToStore: boolean) {
     const urls = link.split(/\s+/).filter(Boolean);
     if (!urls.length) return;
@@ -462,7 +471,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
     const ss = sizes.length ? sizes : [""];
     const combos = cs.flatMap((c) => ss.map((z) => [c && `Renk: ${c}`, z && `Beden: ${z}`].filter(Boolean).join(", "))).filter(Boolean);
     if (!combos.length) return notify("err", "En az bir renk veya beden seç.");
-    setF((p) => ({ ...p, variants: combos.map((attrs) => p.variants.find((v) => v.attrs === attrs) ?? { ...emptyVariant(), attrs, stock: p.variants[0]?.stock ?? "" }) }));
+    setF((p) => ({ ...p, variants: combos.map((attrs) => p.variants.find((v) => v.attrs === attrs) ?? { ...emptyVariant(), attrs, stock: p.variants[0]?.stock ?? "", images: p.variants.find((v) => colorOf(v.attrs) && colorOf(v.attrs) === colorOf(attrs))?.images ?? [] }) }));
   }
   const toggle = (list: string[], v: string, setter: (x: string[]) => void) => setter(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   // Listede olmayan beden/numara/renk: virgülle birden çok ("42.5, 47" / "Haki, Ekru")
@@ -607,6 +616,35 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
               </tr>
             ))}</tbody>
           </table></div>
+          {variantColors.length > 0 && <div style={{ marginTop: 16 }}>
+            <h3 style={{ margin: "0 0 4px" }}>Renk görselleri</h3>
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Her rengin kendi fotoğrafları; o rengin tüm numaraları bu görsellerle gider (Trendyol ve Hepsiburada'da renk seçince doğru fotoğraf çıkar). Boş bırakılan renk ürünün ana görsellerini kullanır. İlk görsel o rengin ana görselidir; en çok 8.</p>
+            {variantColors.map((c) => {
+              const imgs = f.variants.find((v) => colorOf(v.attrs) === c)?.images ?? [];
+              return (
+                <div key={c} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginTop: 8 }}
+                  onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (canEdit) upload([...e.dataTransfer.files], (u) => setColorImages(c, (x) => [...x, ...u.filter((y) => !x.includes(y))])); }}>
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <b>{c} <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>({imgs.length ? `${imgs.length} görsel` : "ana görseller kullanılır"})</span></b>
+                    <label className="btn" style={{ cursor: "pointer" }}>Görsel ekle
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { upload([...(e.target.files ?? [])], (u) => setColorImages(c, (x) => [...x, ...u.filter((y) => !x.includes(y))])); e.target.value = ""; }} />
+                    </label>
+                  </div>
+                  {imgs.length > 0 && <div className="row" style={{ marginTop: 8, alignItems: "flex-start" }}>
+                    {imgs.map((u, i) => (
+                      <div key={u} style={{ position: "relative", width: 72 }}>
+                        <img src={u} alt="" width={72} height={72} style={{ objectFit: "cover", borderRadius: 4, border: `2px solid ${i === 0 ? "var(--accent)" : "var(--line)"}`, display: "block" }} />
+                        {canEdit && <div className="row" style={{ gap: 2, marginTop: 2, justifyContent: "space-between" }}>
+                          {i > 0 ? <button className="btn" style={{ padding: "0 6px", minHeight: 24 }} title="Ana görsel yap" onClick={() => setColorImages(c, (x) => [u, ...x.filter((y) => y !== u)])}>★</button> : <span />}
+                          <button className="btn danger" style={{ padding: "0 6px", minHeight: 24 }} title="Kaldır" onClick={() => setColorImages(c, (x) => x.filter((y) => y !== u))}>×</button>
+                        </div>}
+                      </div>
+                    ))}
+                  </div>}
+                </div>
+              );
+            })}
+          </div>}
         </>}
       </div>
 

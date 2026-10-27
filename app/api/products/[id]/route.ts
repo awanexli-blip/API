@@ -1,3 +1,4 @@
+import { saveVariantImages } from "@/lib/variant-images";
 import { NextRequest, NextResponse } from "next/server";
 import { admin } from "@/lib/server";
 import { authorize, dbError } from "@/lib/products";
@@ -43,6 +44,8 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
   const db = admin();
   const { error } = await db.rpc("product_save", { payload: parsed.data, actor: a.email });
   if (error) return dbError(error);
+  const ve = await saveVariantImages(db, params.id, parsed.data.variants);
+  if (ve) return dbError(ve);
   const { data } = await db.rpc("product_snapshot", { pid: params.id });
   return NextResponse.json(data);
 }

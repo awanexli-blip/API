@@ -57,7 +57,7 @@ export type FixPlan =
 const MAX_AUTO = 2;
 const RETRY_HOURS = 6;
 
-export function planFix(l: Listing, row: FixRow | undefined, ctx: { banned: string[]; xmlTitle?: string; xmlDetail?: string; now?: number }): FixPlan {
+export function planFix(l: Listing, row: FixRow | undefined, ctx: { banned: string[]; xmlTitle?: string; xmlDetail?: string; images?: string[]; now?: number }): FixPlan {
   const r = l.reject!;
   const types = r.types.map(lower).join(" | ");
   const details = r.details.join(" | ");
@@ -74,6 +74,11 @@ export function planFix(l: Listing, row: FixRow | undefined, ctx: { banned: stri
   if (/kategori/.test(types)) return { action: "needs_user", banned: newBanned, note: "Kategori yanlış: doğru kategoriyi seç" };
   if ((row?.attempts ?? 0) >= MAX_AUTO) return { action: "needs_user", banned: newBanned, note: `${MAX_AUTO} otomatik düzeltmeden sonra yine reddedildi: başlık/açıklama/görseli kontrol et` };
   const isBrand = /marka/.test(types);
+  // Görsel linki açılmadı (dönüştürücü/kaynak geçici erişilemedi; 27.10: 580 ilan): görseller yeniden gönderilir
+  if (!isBrand && /görsel|gorsel|resim|image|link/i.test(`${types} ${details}`) && !/marka|logo|filigran|watermark/i.test(details)) {
+    if (!ctx.images?.length) return { action: "needs_user", banned: newBanned, note: "Görsel reddedildi ve üründe görsel yok: görsel ekle" };
+    return { action: "resubmit", fromUser: false, banned: newBanned, note: "görsel linki yenilendi (geçici erişim sorunu)", update: { id: l.id, images: ctx.images } };
+  }
   const isBanned = newBanned.length > 0;
   if (!isBrand && !isBanned) return { action: "needs_user", banned: [], note: `Otomatik düzeltilemeyen ret: ${r.types.join(", ") || "neden belirtilmemiş"}` };
 

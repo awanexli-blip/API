@@ -357,9 +357,21 @@ async function main() {
     }
   }
 
-  // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında; sistemin açtığı OS13- ürünler)
+  // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında): BayilikXML (OS13-) ve veritabanı ürünleri (Toptancım vb.;
+  // 27.10'a kadar yalnızca OS13- bakılıyordu, Toptancım retleri hiç ele alınmıyordu)
   if ((doUpdate || mode === "create") && mp.updateRejected) {
-    const rejected = listings.filter((l) => l.reject && l.id.startsWith("OS13-"));
+    const rejected = listings.filter((l) => l.reject);
+    // Veritabanı ürünlerinin başlık/açıklama/görselleri (görsel retinde yeniden gönderilir)
+    const dbBy = new Map<string, { title: string; description: string; images: string[] }>();
+    const dbKeys = rejected.filter((l) => !l.id.startsWith("OS13-")).map((l) => l.id);
+    for (let i = 0; i < dbKeys.length; i += 200) {
+      const { data } = await db.from("marketplace_listings").select("listing_key, products(title, description, product_images(url, position)), product_variants(images)").eq("marketplace", marketplaceId).in("listing_key", dbKeys.slice(i, i + 200));
+      for (const r of (data ?? []) as any[]) if (r.products) {
+        const pimg = [...(r.products.product_images ?? [])].sort((a: any, b: any) => a.position - b.position).map((x: any) => x.url);
+        const vimg = Array.isArray(r.product_variants?.images) ? r.product_variants.images : [];
+        dbBy.set(r.listing_key, { title: r.products.title ?? "", description: r.products.description ?? "", images: vimg.length ? vimg : pimg });
+      }
+    }
     if (rejected.length) {
       const fx2 = await db.from("listing_fixes").select("*").eq("marketplace", marketplaceId).in("listing_key", rejected.map((l) => l.id));
       const rows = new Map<string, FixRow>((fx2.error ? [] : fx2.data ?? []).map((r: any) => [r.listing_key, r]));
@@ -369,8 +381,8 @@ async function main() {
       const nowIso = new Date().toISOString();
       for (const l of rejected) {
         const row = rows.get(l.id);
-        const x = xmlBy.get(l.id);
-        const plan = planFix(l, row, { banned, xmlTitle: x ? String(x.name ?? "") : undefined, xmlDetail: x ? String(x.detail ?? "") : undefined });
+        const x = xmlBy.get(l.id), dp = dbBy.get(l.id);
+        const plan = planFix(l, row, { banned, xmlTitle: x ? String(x.name ?? "") : dp?.title, xmlDetail: x ? String(x.detail ?? "") : dp?.description, images: dp?.images });
         stat[plan.action] = (stat[plan.action] ?? 0) + 1;
         if ("banned" in plan) for (const w of plan.banned) newWords.add(w);
         const base = { marketplace: marketplaceId, listing_key: l.id, types: l.reject!.types, details: l.reject!.details.join(" | ").slice(0, 2000), updated_at: nowIso };

@@ -66,6 +66,8 @@ export const variantSchema = z.object({
   attributes: textMap,
   stock: z.preprocess((v) => (v === "" || v == null ? 0 : Number(v)), z.number({ error: "Stok sayı olmalı" }).int("Stok tam sayı olmalı").min(0, "Stok negatif olamaz")),
   cost_price: optNumber,
+  // Varyant (renk) görselleri; boşsa ürün görselleri (migration 063). Kaydı panel API'si yapar (lib/variant-images.ts)
+  images: z.array(z.string().trim().url("Geçerli bir adres değil").startsWith("https://", "Görsel adresi https:// ile başlamalı")).max(8, "Varyant başına en çok 8 görsel").optional().default([]),
 });
 
 export const productSchema = z.object({
