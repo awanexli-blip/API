@@ -9,7 +9,7 @@ on:
     inputs:
       supplier:
         description: "Tedarikçi kodu"
-        default: "royal"
+        default: "toptancim"
 
 jobs:
   probe:
@@ -26,5 +26,13 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
-          SUPPLIER: ${{ github.event.inputs.supplier || 'royal' }}
+          SUPPLIER: ${{ github.event.inputs.supplier || 'toptancim' }}
         run: node --experimental-strip-types worker/import-xml.ts "$SUPPLIER" --dry | head -c 3000
+      # Alan yolları, doluluk, ortalama uzunluk (annotation olarak; adres yazılmaz). 28.10: açıklama/kategori eşlemesi doğrulaması
+      - name: XML alanları
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
+          SUPPLIER: ${{ github.event.inputs.supplier || 'toptancim' }}
+        run: node --experimental-strip-types worker/xml-fields.ts "$SUPPLIER"
