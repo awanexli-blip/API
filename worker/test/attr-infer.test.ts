@@ -77,5 +77,16 @@ for (const [a, mp, want] of [[{ "Satış fiyatı": "1.299,90" }, "trendyol", 129
   c(pickCodeWinner([{ id: "a", sku: "X", cost: 50, stock: 0 }, { id: "b", sku: "X-1", cost: 40, stock: 0 }])?.id === "b", "hiç stok yoksa en ucuz");
 }
 
+// Duruma göre marj: rekabet > tek satıcı > fiyat basamağı; hatalı ayar kapalı sayılır
+{
+  const { parseDyn, marginFor, DEFAULT_DYN } = await import("../core/dynamic-margin.ts");
+  const c = (ok: boolean, w: string) => { console.log(`${ok ? "OK  " : "HATA"} marj: ${w}`); if (!ok) fails++; };
+  const dm = parseDyn(DEFAULT_DYN)!;
+  c(marginFor(dm, { competition: true, price: 300 }) === 0.1, "rakip varsa %10");
+  c(marginFor(dm, { competition: false, price: 3000 }) === 0.2, "tek satıcı %20");
+  c(marginFor(dm, { price: 499 }) === 0.2 && marginFor(dm, { price: 800 }) === 0.15 && marginFor(dm, { price: 1500 }) === 0.1, "fiyat basamakları");
+  c(parseDyn({ competition: 0.1 }) === null && parseDyn(null) === null && parseDyn({ competition: 2, alone: 0.2, bands: [[null, 0.1]] }) === null, "hatalı ayar kapalı");
+}
+
 if (fails) { console.log(`\n${fails} özellik çıkarma testi başarısız`); process.exit(1); }
 console.log("\nÖzellik çıkarma testleri geçti");

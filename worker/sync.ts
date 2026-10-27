@@ -17,6 +17,7 @@ import { recordBatches, applyStates, refreshBatches } from "./core/mp-status.ts"
 import { syncOrders, syncClaims, syncSettlements, pushTracking, loadReservations } from "./core/orders.ts";
 import { syncInbox, notifyOrders } from "./core/inbox.ts";
 import { runAlerts } from "./core/notify.ts";
+import { parseDyn } from "./core/dynamic-margin.ts";
 import { fixImages } from "./core/image-fix.ts";
 import { flushAttrOptions } from "./core/attr-options.ts";
 import { aiFillAttributes } from "./core/ai-attrs.ts";
@@ -339,6 +340,22 @@ async function main() {
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
   const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, pathMatch, overrides: ovMap, econ: new Map(), skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
     shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null };
+  // Duruma göre marj (dynamic-margin.ts): ayar varsa; rekabet bilgisi listing_buybox'tan (başka satıcı var mı)
+  {
+    const dm = parseDyn(s.dynamic_margin);
+    if (dm) {
+      const comp = new Map<string, boolean>();
+      for (let last = ""; ; ) {
+        const { data, error } = await db.from("listing_buybox").select("listing_key, multiple").eq("marketplace", marketplaceId).gt("listing_key", last).order("listing_key").limit(1000);
+        if (error || !data?.length) break;
+        for (const b of data as any[]) if (b.multiple != null) comp.set(b.listing_key, !!b.multiple);
+        last = data[data.length - 1].listing_key;
+        if (data.length < 1000) break;
+      }
+      dbCtx.dyn = { cfg: dm, active: s.dynamic_margin_active === true, comp };
+      summary.dynamicMargin = { active: dbCtx.dyn.active, withCompetitionData: comp.size };
+    }
+  }
 
   // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında; sistemin açtığı OS13- ürünler)
   if ((doUpdate || mode === "create") && mp.updateRejected) {

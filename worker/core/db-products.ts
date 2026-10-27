@@ -7,6 +7,7 @@ import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle, normFull } from "./util.ts";
 import { salePriceOf } from "./sale-price.ts";
+import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher } from "./brand-risk.ts";
 
@@ -20,6 +21,8 @@ export type DbCtx = {
   shipFor?: ((desi: number | null) => number) | null; // desi tarifesi (Hepsiburada): ürünün desisine göre kargo, yoksa cfg.shippingCost
   overrides?: Map<string, any>; // product_overrides (ilan anahtarı -> elle fiyat / gizle)
   econ?: Map<string, { cost: number; comm: number; pcfg: PricingConfig; price: number }>; // ilan başına maliyet/komisyon (buybox kâr hesabı)
+  // Duruma göre marj: ayar + ilan -> başka satıcı var mı (listing_buybox.multiple); active=false ise yalnızca karşılaştırma (stats.marginSim)
+  dyn?: { cfg: DynMargin; active: boolean; comp: Map<string, boolean> } | null;
 };
 
 // Görsel adının kök kısmı (tedarikçi CDN'i: "...-model-1-12345-sw1024sh1024.webp" -> "...-model")
@@ -75,7 +78,16 @@ function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number,
     ctx.skip(`girilen satış fiyatı zarar ettiriyor (${fixed} TL): formül fiyatı kullanıldı`);
   }
   const r = calcPrice(cost, pcfg, comm);
-  return r.ok ? { ok: true as const, price: r.price, cost, comm, pcfg } : { ok: false as const, reason: r.reason ?? "fiyat hesaplanamadı", cost, comm, pcfg };
+  if (!r.ok) return { ok: false as const, reason: r.reason ?? "fiyat hesaplanamadı", cost, comm, pcfg };
+  // Duruma göre marj (dynamic-margin.ts): açıksa fiyat bununla; kapalıyken "alt" yalnızca önizleme karşılaştırması içindir
+  if (ctx.dyn) {
+    const m = marginFor(ctx.dyn.cfg, { competition: key != null ? ctx.dyn.comp.get(key) : undefined, price: r.price });
+    const dcfg = { ...pcfg, netMarginMin: m };
+    const r2 = calcPrice(cost, dcfg, comm);
+    if (r2.ok && ctx.dyn.active) return { ok: true as const, price: r2.price, cost, comm, pcfg: dcfg, margin: m };
+    if (r2.ok) return { ok: true as const, price: r.price, cost, comm, pcfg, alt: r2.price, margin: m };
+  }
+  return { ok: true as const, price: r.price, cost, comm, pcfg };
 }
 
 export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[]; stats: Record<string, number> }> {
@@ -103,6 +115,19 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       if (ov?.hidden) { items.push({ id: key, price: null, quantity: 0 }); stats.zeroed++; continue; } // panelde gizlenen ilan
       const pr = priceFor(ctx, p, v, key, avail);
       if (!pr.ok) { items.push({ id: key, price: null, quantity: 0 }); stats.zeroed++; ctx.skip(`veritabanı ürünü: ${pr.reason} (stok 0)`); continue; }
+      // Duruma göre marj karşılaştırması (kapalıyken): ilandaki bugünkü fiyat -> yeni kuralın hedef fiyatı
+      if ("alt" in pr && pr.alt != null && Number(ls.price) > 0) {
+        const cur = Number(ls.price), d = (pr.alt - cur) / cur;
+        stats.simN = (stats.simN ?? 0) + 1;
+        if (Math.abs(d) < 0.005) stats.simSame = (stats.simSame ?? 0) + 1;
+        else if (d > 0) { stats.simUp = (stats.simUp ?? 0) + 1; stats.simUpPct = (stats.simUpPct ?? 0) + d; if (d > 0.1) stats.simUp10 = (stats.simUp10 ?? 0) + 1; }
+        else { stats.simDown = (stats.simDown ?? 0) + 1; stats.simDownPct = (stats.simDownPct ?? 0) - d; if (d < -0.1) stats.simDown10 = (stats.simDown10 ?? 0) + 1; }
+        const c = key != null ? ctx.dyn?.comp.get(key) : undefined;
+        const g = c === true ? "simComp" : c === false ? "simAlone" : "simBand";
+        stats[g] = (stats[g] ?? 0) + 1;
+        // Bugünkü kuralın hedefi (40 TL / %10) ile yeni kuralın hedefi arasındaki fark (toplam satış fiyatı)
+        stats.simSumCur = (stats.simSumCur ?? 0) + pr.price; stats.simSumAlt = (stats.simSumAlt ?? 0) + pr.alt; stats.simSumLive = (stats.simSumLive ?? 0) + cur;
+      }
       // Elle fiyat (panel: Rekabet / Ürün istisnaları): zarar ettiriyorsa uygulanmaz
       const ovPrice = ov?.price_override ? Number(ov.price_override) : null;
       const ovOk = ovPrice != null && ovPrice > 0 && breakdown(ovPrice, pr.cost, pr.pcfg, pr.comm).net > 0;
