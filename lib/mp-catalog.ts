@@ -103,7 +103,15 @@ async function fetchAttrs(mp: string, cid: string): Promise<MpAttr[]> {
       out.push(...await Promise.all(list.slice(i, i + 4).map(async (a) => {
         let values: string[] = [];
         if (!/string|text|number|integer|decimal/i.test(a.type) || /enum/i.test(a.type)) {
-          try { values = firstArray(await hbGet(`/product/api/categories/${encodeURIComponent(cid)}/attribute/${encodeURIComponent(a.id)}/values?version=4&page=0&size=1000`)).map((v: any) => String(v.value ?? v.name ?? v)); } catch { /* serbest metin */ }
+          // Sayfalı (renk listesi binlerce değer): 1000'erli, en çok 10 sayfa
+          try {
+            for (let page = 0; page < 10; page++) {
+              const list = firstArray(await hbGet(`/product/api/categories/${encodeURIComponent(cid)}/attribute/${encodeURIComponent(a.id)}/values?version=4&page=${page}&size=1000`));
+              values.push(...list.map((v: any) => String(v.value ?? v.name ?? v)));
+              if (list.length < 1000) break;
+            }
+            values = [...new Set(values)];
+          } catch { /* serbest metin */ }
         }
         return { id: a.id, name: a.name, required: a.mandatory, variant: a.g === "variant", slicer: false, custom: values.length === 0, values };
       })));

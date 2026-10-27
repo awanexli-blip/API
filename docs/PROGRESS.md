@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-27 (37) — Ürün formu: tüm zorunlular (HB dahil), Gönderime hazırlık, belge
+- K: "HB ayakkabıda cinsiyet istiyor ama formda yok; her pazaryerinin zorunlusu bizde de zorunlu olsun, eksiksiz panel". Neden: HB özellikleri panele hiç gelmiyordu (HB anahtarı yalnızca GitHub'da). Çözüm: "Pazaryeri kataloğu" iş akışı (`.github/workflows/catalog.yml`, `worker/catalog.ts`): kategori ağaçları (TY 3.361, HB 4.785 yaprak) günlük; panelin istediği kategori özellikleri iş kuyruğundan (`mp_attrs:<pazaryeri>`), panel iş akışını kendisi başlatır ve bekleme gösterir (~1-2 dk, sonra önbellekten anında). Vercel'de HB anahtarı varsa doğrudan.
+- Doğrulandı (canlı): HB Erkek Sneakers (204249) zorunlu: Cinsiyet, Ayakkabı Numarası (varyant), Renk (varyant); TY Sneaker (975) zorunlu 7. HB değer listeleri sayfalı (renk 1000+; önce ilk 1000'de kalıyordu, panel ve gönderim).
+- "Gönderime hazırlık" = temel alanlar (TY başlık ≤100, HB ≤200; görsel TY ≤8 / HB ≤5 gider; açıklama ≥30; barkod geçerli ve tekil; desi; KDV; alış fiyatı) + kategorinin zorunlu özellikleri + varyant numarası/rengi pazaryeri listesinde mi. Eksik pazaryerine gönderim yok. Hazırlık listesinden N11/ÇiçekSepeti/Amazon çıkarıldı (gönderim yok). İç kategori alanı yalnızca düzen için.
+- Belge: `docs/PAZARYERI_ZORUNLU_ALANLAR.md`. Testler: hazırlık (TY/HB başlık sınırı, kategori, aynı barkod).
+
 ## 2026-10-26 (36) — Ürün formu: pazaryeri kategorisi + zorunlu özellikler, satış fiyatı, Toptancım kod kopyaları
 - K: "her pazaryerinin zorunlu özellikleri formda zorunlu alan olsun". Formda Trendyol ve Hepsiburada kategorisi aranır/başlıktan önerilir; seçilen kategorinin özellikleri pazaryerinin kendi API'sinden gelir (zorunlu / varyant / değer listesi), birleşik tek alan; diğer pazaryerinin listesinde olmayan değer için o pazaryerine özel seçim ("Ad@hepsiburada"). Eksik zorunlu varsa gönderim yapılmaz (eksik olan pazaryeri atlanır, onayla). "Boşları akıllı doldur": başlıkta geçen değer / Belirtilmemiş. `lib/mp-catalog.ts`, `app/api/mp-catalog`, `MarketplaceFields.tsx`, migration 055 (önbellek). Trendyol uçları herkese açık; HB için Vercel'e HB_MERCHANT_ID / HB_USERNAME / HB_PASSWORD / HB_ENV=prod gerekir.
 - Worker: formda seçilen kategori ("Trendyol kategori" / "Hepsiburada kategori") doğrudan kullanılır; "@pazaryeri" değerleri o pazaryerinde ezer.

@@ -84,8 +84,14 @@ export async function hbAttributeValues(c: ReturnType<typeof hbClient>, category
   return vals;
 }
 async function fetchAttributeValues(c: ReturnType<typeof hbClient>, categoryId: string | number, attrId: string) {
-  const r = await c.hb(`${c.MPOP}/product/api/categories/${categoryId}/attribute/${encodeURIComponent(attrId)}/values?version=4&page=0&size=1000`);
-  return firstArray(r).map((v: any) => String(v.value ?? v.name ?? v));
+  // Sayfalı: renk gibi listeler 1000 değeri aşıyor ("Siyah" sonraki sayfada kalıyordu); en çok 10 sayfa
+  const out: string[] = [];
+  for (let page = 0; page < 10; page++) {
+    const list = firstArray(await c.hb(`${c.MPOP}/product/api/categories/${categoryId}/attribute/${encodeURIComponent(attrId)}/values?version=4&page=${page}&size=1000`));
+    out.push(...list.map((v: any) => String(v.value ?? v.name ?? v)));
+    if (list.length < 1000) break;
+  }
+  return [...new Set(out)];
 }
 
 // Zorunlu kategori özelliklerini doldur (base alanları: merchantSku, UrunAdi vb. ayrıca doldurulur)
