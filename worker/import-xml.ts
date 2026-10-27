@@ -63,12 +63,14 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     const seen = new Set<string>(), seenSku = new Set<string>();
     const perFeed: string[] = [];
     let total = 0;
+    const feedHash = createHash("sha1");
     for (const [fi, feed] of feeds.entries()) {
       const name = feed.label || `Link ${fi + 1}`;
       if (!feed.url) throw new Error(`${name}: XML adresi yok`);
       // İç ağ adresi, sonsuz yönlendirme ve 300 MB üstü gövde reddedilir (denetim S2.1)
       const res = await safeFetch(feed.url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
       if (!res.ok) throw new Error(`${name}: XML indirilemedi (HTTP ${res.status})`);
+      feedHash.update(res.body);
       const built = buildItems(parseXml(res.text()), feedSupplier(sup, feed), seen, seenSku);
       if (!built.total) throw new Error(`${name}: XML'de ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
       // Satır numaraları link başına ayrı aralıkta (hata listesinde hangi linkten geldiği anlaşılsın)
@@ -80,6 +82,13 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
       console.log(`${sup.name} / ${name}: ${built.total} ürün (${built.path}), ${built.items.length} geçerli, ${built.errors.length} hatalı`);
     }
     if (dry) { console.log(JSON.stringify({ sample: items.slice(0, 2), errors: errors.slice(0, 20) }, null, 1)); return; }
+    // XML'ler bir önceki başarılı içe aktarmayla birebir aynıysa (ve 6 saatten yeni) hiçbir şey yazılmaz: tedarikçi bir şey değiştirmemiş
+    const fh = feedHash.digest("hex");
+    if (!process.env.FORCE_IMPORT && sup.last_feed_hash === fh && sup.last_feed_at && Date.now() - new Date(sup.last_feed_at).getTime() < 6 * 3600 * 1000) {
+      await finish({ status: "ok", total, unchanged: items.length, message: `${perFeed.length > 1 ? perFeed.join(", ") + " · " : ""}XML değişmemiş, işlem yapılmadı` });
+      console.log(`${sup.code}: XML değişmemiş, atlandı`);
+      return;
+    }
     rows.push(...errors.map((e) => ({ job_id: job.id, row_no: e.row, sku: e.sku, status: "error", errors: { _: e.error } })));
     await db.from("import_jobs").update({ total }).eq("id", job.id);
     // 50'lik parçalar; sorgu süre sınırına takılırsa parça bölünerek yeniden denenir (yeni tedarikçide ilk kayıt ağır: varyant + görsel)
@@ -93,13 +102,32 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
       }
       throw new Error("Toplu kayıt hatası: veritabanı zaman aşımı (tekrar denendi)");
     };
-    for (const [n, part] of chunk(items, 50).entries()) {
+    // Yalnızca değişen ürünler gönderilir (önceden her turda 26 bin ürünün tamamı ~80 MB gidiyordu): veritabanındaki özet (içerik özeti + varyant stokları)
+    // ile aynı olan atlanır; yalnızca stoğu değişen ürün için tek satırlık stok bilgisi gider (product_import aynı özette yalnızca stok yazar).
+    const known = new Map<string, { hash: string | null; stocks: Map<string, number> }>();
+    for (let last = ""; ; ) {
+      const { data, error } = await db.from("products").select("sku, source_hash, product_variants(sku, stock)").eq("source", source).gt("sku", last).order("sku").limit(1000);
+      if (error) throw new Error(`Mevcut ürünler okunamadı: ${error.message}`);
+      for (const p of data ?? []) known.set(p.sku, { hash: p.source_hash, stocks: new Map((p.product_variants ?? []).map((v: any) => [v.sku, Number(v.stock)])) });
+      if (!data || data.length < 1000) break;
+      last = data[data.length - 1].sku;
+    }
+    const toSave: typeof items = [];
+    for (const it of items) {
+      const k = known.get(it.payload.sku);
+      if (!k || k.hash !== it.hash) { toSave.push(it); continue; }
+      const vs: any[] = it.payload.variants ?? [];
+      if (vs.length === k.stocks.size && vs.every((v) => k.stocks.get(v.sku) === Number(v.stock ?? 0))) { count.unchanged = (count.unchanged ?? 0) + 1; continue; }
+      toSave.push({ row: it.row, hash: it.hash, payload: { sku: it.payload.sku, variants: vs.map((v) => ({ sku: v.sku, stock: v.stock })) } });
+    }
+    console.log(`${sup.code}: ${items.length} ürün, ${toSave.length} değişmiş (${count.unchanged ?? 0} aynı, gönderilmedi)`);
+    for (const [n, part] of chunk(toSave, 50).entries()) {
       const data = await saveBatch(part);
       for (const r of data) {
         count[r.action] = (count[r.action] ?? 0) + 1;
         if (r.action === "error" || r.action === "skipped") rows.push({ job_id: job.id, row_no: r.row, sku: r.sku, status: r.action, errors: { _: r.error } });
       }
-      if (n % 80 === 0) console.log(`${sup.code}: ${Math.min((n + 1) * 50, items.length)} / ${items.length}`, count);
+      if (n % 80 === 0) console.log(`${sup.code}: ${Math.min((n + 1) * 50, toSave.length)} / ${toSave.length}`, count);
     }
     // XML'den kalkan ürünler: stok 0 (rezerve stok korunur)
     const inXml = new Set(items.map((i) => i.payload.sku));
@@ -124,6 +152,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
       message: (feeds.length > 1 ? `${perFeed.join(", ")} · ` : "") + (safe ? `XML'den kalkan ${gone.length} ürün (${zeroed} varyantın stoğu 0 yapıldı)` : `XML'den kalkan ${gone.length} ürün çok fazla, güvenlik için stokları sıfırlanmadı (XML eksik inmiş olabilir)`),
     });
     console.log(`${sup.code} bitti`, count, { xmlErrors: errors.length, gone: gone.length, zeroed });
+    await db.from("suppliers").update({ last_feed_hash: fh, last_feed_at: new Date().toISOString() }).eq("code", sup.code);
     // Satış hızı için tedarikçi stok düşüşü (ürün seçimi / fırsat puanı, migration 051)
     const snap = await db.rpc("snap_supplier_stock", { p_source: source });
     if (snap.error) console.error("stok kaydı:", snap.error.message);
