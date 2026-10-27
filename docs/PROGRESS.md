@@ -2,6 +2,15 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-27 (39) — Telegram uyarıları, duruma göre marj açıldı, rekabet önerileri, renk görselleri
+- Telegram (K: "önemli her şey"): iade talebi, müşteri iptali, kargo süresi yaklaşan/geçen, senkron sorunu, içe aktarma durdu, veritabanı 400 MB, günlük özet, günlük rekabet önerileri (worker/core/notify.ts, her olay bir kez; migration 060).
+- Hatalı uyarı düzeltildi (K: "iptal dedi ama teslim edilmiş"): ilk sürüm "son 2 günde güncellenen iptalleri" bildiriyordu; veritabanı yeniden kurulunca eski iptaller yeni sanıldı (8 bildirim) ve Trendyol'un böldüğü/yeniden oluşturduğu paketler iptal sayıldı. Artık yalnızca gerçek durum değişikliği (order_events: iptal olmayan -> iptal) ve aynı siparişin başka açık paketi yoksa. Kargo uyarısı yalnızca son 6 saatte pazaryerinden okunan siparişlerde. Mevcut veriyle doğrulandı (0 yanlış iptal; 4 kargo uyarısı gerçek).
+- Duruma göre marj AÇILDI (K: kupon/kampanya uyguluyor): rakip varsa %10, tek satıcı %20, veri yoksa 500 altı %20 / 500-1500 %15 / üstü %10; en az 40 TL. Önizleme: TY 14.249 ilan artar (ort. +%15), 7.497 aynı; HB 10.297 artar (ort. +%9). Geri almak: settings.dynamic_margin_active = false.
+- Rekabet (K: 7): öneriler (in / artır / formüle dön) her kontrolde güncel veriyle; panelde karşılaştır-seç-onayla, onay anında güncellik kontrolü (migration 062).
+- Reddedilenler (K: 8): 726 TY retten 580'i geçici görsel linki hatası; ret düzeltici artık veritabanı ilanlarını da kapsıyor, görseller yeniden gönderilir. 114 kopya (yeni kuralla gönderilmiyor), 27 marka riski, 5 marka Trendyol'da yok.
+- Renk görselleri (migration 063): formda renk başına fotoğraf, o rengin tüm numaraları onunla gider.
+- HB'de bağsız 873 ilana stok 0 (Royal satışta değil; migration 059 zero_unlinked).
+
 ## 2026-10-27 (38) — Kopyalar kapatıldı, HB stok takılması, değişiklik geçmişi büyümesi
 - K onayı: satıştaki Toptancım kod kopyaları kapatılır (migration 057 `dup_listing_losers`): grupta stokta en ucuz ilan açık, diğerlerine her senkronda stok 0 (TY 4.576, HB 2.356 ilan). Silme yok; en ucuzun stoğu biterse sıradaki açılır.
 - HB: her turda 14 bin ilanın tamamı gönderiliyordu, 5 paketten sonra hata (muhtemelen hız sınırı): ~11 bin ilanın stoğu güncellenmiyordu. Artık yalnızca değişen ilanlar (`pushOnlyChanged`), 429/5xx'te bekleyip 3 deneme, ilk hata mesajları özete (`pushErrors`).

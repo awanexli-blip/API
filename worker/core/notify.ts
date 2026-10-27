@@ -34,17 +34,27 @@ export async function runAlerts(db: any, mp: { id: string; label: string }, summ
       if (await notifyOnce(db, `claim:${mp.id}:${c.claim_id}`, `↩️ <b>İade talebi</b> (${esc(mp.label)}) ${esc(c.order_no ?? "")}\n${items}\n<b>Tutar:</b> ${tl(c.amount)}${c.reason ? `\n<b>Neden:</b> ${esc(c.reason)}` : ""}\nPanelde: Siparişler`)) add("iade");
     }
   }
-  // 2) Müşteri iptalleri (son 2 gün)
+  // 2) Müşteri iptalleri: yalnızca GERÇEK durum değişikliği (son 2 günde iptal olmayan bir paketin iptale dönmesi; order_events "status").
+  //    Sisteme ilk kez iptal olarak gelen (geçmiş siparişlerin yeniden çekilmesi, 26.10 veritabanı yeniden kurulumu) bildirilmez.
+  //    Aynı siparişin iptal olmayan başka paketi varsa (Trendyol paketi böldü / yeniden oluşturdu, sipariş sürüyor) bildirilmez (27.10 hatalı uyarı).
   {
-    const { data } = await db.from("orders").select("id, order_no, total, order_lines(title, qty)").eq("marketplace", mp.id).eq("status", "cancelled").gte("updated_at", new Date(now.getTime() - 2 * 86400000).toISOString()).limit(30);
-    for (const o of data ?? []) {
-      const items = (o.order_lines ?? []).map((l: any) => `${l.qty} × ${esc(l.title)}`).join("\n");
-      if (await notifyOnce(db, `cancel:${o.id}`, `❌ <b>Sipariş iptal edildi</b> (${esc(mp.label)}) ${esc(o.order_no ?? "")}\n${items}\n<b>Tutar:</b> ${tl(o.total)}\nTedarikçiye verildiyse iptal et.`)) add("iptal");
+    const { data: ev } = await db.from("order_events").select("order_id, detail, at").eq("kind", "status").gte("at", new Date(now.getTime() - 2 * 86400000).toISOString()).limit(500);
+    const ids = [...new Set((ev ?? []).filter((e: any) => e.detail?.status === "cancelled" && e.detail?.from && !/cancel/i.test(String(e.detail.from))).map((e: any) => e.order_id))];
+    if (ids.length) {
+      const { data } = await db.from("orders").select("id, order_no, total, status, order_lines(title, qty)").eq("marketplace", mp.id).eq("status", "cancelled").in("id", ids.slice(0, 50));
+      for (const o of data ?? []) {
+        if (o.order_no) {
+          const { data: sib } = await db.from("orders").select("id, status").eq("marketplace", mp.id).eq("order_no", o.order_no).neq("id", o.id);
+          if ((sib ?? []).some((x: any) => x.status !== "cancelled")) continue; // paket bölündü/yenilendi: sipariş iptal değil
+        }
+        const items = (o.order_lines ?? []).map((l: any) => `${l.qty} × ${esc(l.title)}`).join("\n");
+        if (await notifyOnce(db, `cancel:${o.id}`, `❌ <b>Sipariş iptal edildi</b> (${esc(mp.label)}) ${esc(o.order_no ?? "")}\n${items}\n<b>Tutar:</b> ${tl(o.total)}\nTedarikçiye verildiyse iptal et.`)) add("iptal");
+      }
     }
   }
   // 3) Kargo süresi: 6 saatten az kalan ve geçmiş, henüz kargolanmamış siparişler
   {
-    const { data } = await db.from("orders").select("id, order_no, ship_deadline, status, order_lines(title, qty)").eq("marketplace", mp.id).in("status", ["new", "ready", "sent_to_supplier"]).not("ship_deadline", "is", null).lte("ship_deadline", new Date(now.getTime() + 6 * 3600000).toISOString()).limit(30);
+    const { data } = await db.from("orders").select("id, order_no, ship_deadline, status, order_lines(title, qty)").eq("marketplace", mp.id).in("status", ["new", "ready", "sent_to_supplier"]).gte("last_seen_at", new Date(now.getTime() - 6 * 3600000).toISOString()).not("ship_deadline", "is", null).lte("ship_deadline", new Date(now.getTime() + 6 * 3600000).toISOString()).limit(30);
     for (const o of data ?? []) {
       const late = new Date(o.ship_deadline).getTime() < now.getTime();
       const items = (o.order_lines ?? []).map((l: any) => `${l.qty} × ${esc(l.title)}`).join("\n");
