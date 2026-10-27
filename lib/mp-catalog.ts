@@ -1,5 +1,6 @@
-// Pazaryeri kategori ağacı ve kategori özellikleri (ürün formu: kategori seçimi + zorunlu özellikler). Yalnızca sunucuda.
-// Trendyol: herkese açık uçlar. Hepsiburada: Vercel'de HB_MERCHANT_ID / HB_USERNAME / HB_PASSWORD (HB_ENV=prod) gerekir.
+// Pazaryeri kategori ağacı ve kategori özellikleri (ürün formu: kategori seçimi + zorunlu özellikler). Yalnızca sunucuda; içe aktarma yok
+// (panel API ve worker/catalog.ts birlikte kullanır). Trendyol: herkese açık uçlar. Hepsiburada: HB_* ortam değişkenleri (GitHub Secrets'ta var;
+// Vercel'de yoksa panel isteği iş kuyruğuna yazar, worker/catalog.ts GitHub Actions'ta çeker).
 // Sonuçlar Supabase'de önbellekte (mp_categories, mp_category_attrs; migration 055), 7 günde bir yenilenir.
 
 export type MpAttr = { id: string; name: string; required: boolean; variant: boolean; slicer: boolean; custom: boolean; values: string[] };
@@ -12,7 +13,7 @@ const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowe
 export const normPath = (s: string) => lo(s).replace(/[çğıöşü]/g, (c) => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" })[c]!).replace(/[^a-z0-9]+/g, " ").trim();
 
 async function getJson(url: string, headers: Record<string, string> = {}, timeout = 30000) {
-  const r = await fetch(url, { headers: { "User-Agent": "urun-paneli", Accept: "application/json", ...headers }, signal: AbortSignal.timeout(timeout), cache: "no-store" });
+  const r = await fetch(url, { headers: { "User-Agent": "urun-paneli", Accept: "application/json", ...headers }, signal: AbortSignal.timeout(timeout) });
   const text = await r.text();
   if (!r.ok) throw new Error(`${r.status} ${url.replace(/^https:\/\/[^/]+/, "").slice(0, 80)}: ${text.slice(0, 200)}`);
   return text ? JSON.parse(text) : {};
@@ -112,10 +113,20 @@ async function fetchAttrs(mp: string, cid: string): Promise<MpAttr[]> {
   throw new Error("Bu pazaryeri için özellik listesi yok");
 }
 
+// Önbellekteki özellikler (yoksa null); stale = 7 günden eski
+export async function cachedAttrs(db: any, mp: string, cid: string): Promise<{ attrs: MpAttr[]; stale: boolean } | null> {
+  const { data } = await db.from("mp_category_attrs").select("attrs, fetched_at").eq("marketplace", mp).eq("category_id", cid).maybeSingle();
+  return data ? { attrs: data.attrs as MpAttr[], stale: Date.now() - new Date(data.fetched_at).getTime() >= TTL_MS } : null;
+}
+export async function hasCategories(db: any, mp: string) {
+  const { count } = await db.from("mp_categories").select("id", { count: "exact", head: true }).eq("marketplace", mp);
+  return (count ?? 0) > 0;
+}
+
 export async function getAttrs(db: any, mp: string, cid: string, refresh = false): Promise<MpAttr[]> {
   if (!refresh) {
-    const { data } = await db.from("mp_category_attrs").select("attrs, fetched_at").eq("marketplace", mp).eq("category_id", cid).maybeSingle();
-    if (data && Date.now() - new Date(data.fetched_at).getTime() < TTL_MS) return data.attrs as MpAttr[];
+    const c = await cachedAttrs(db, mp, cid);
+    if (c && !c.stale) return c.attrs;
   }
   const attrs = await fetchAttrs(mp, cid);
   await db.from("mp_category_attrs").upsert({ marketplace: mp, category_id: cid, attrs, fetched_at: new Date().toISOString() }, { onConflict: "marketplace,category_id" });

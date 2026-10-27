@@ -357,22 +357,32 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   useEffect(() => { if (f.id) api(`/api/products/${f.id}?audit=1`).then(setAudit).catch(() => setAudit([])); }, [api, f.id]);
   useEffect(() => { if (f.id) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => setListings([])); }, [api, f.id]);
 
-  const cat = opts.categories.find((c) => c.name === f.category);
   const ready = useMemo(() => readiness({
-    title: f.title, description: f.description, brand: f.brand, category: f.category, desi: n(f.desi), cost_price: n(f.cost_price), images: f.images,
+    title: f.title, description: f.description, brand: f.brand, desi: n(f.desi), cost_price: n(f.cost_price), vat: n(f.vat_rate), images: f.images,
     // barkod kaydederken otomatik üretilir: boşsa hazır say
-    variants: f.variants.map((v) => ({ barcode: v.barcode || "2000000000000", stock: Number(v.stock || 0), cost_price: n(v.cost_price) })),
-  }, cat?.markets ?? []), [f, cat]);
+    variants: f.variants.map((v, i) => ({ barcode: v.barcode || `2000000000${String(i).padStart(3, "0")}`, stock: Number(v.stock || 0), cost_price: n(v.cost_price) })),
+    categories: (["trendyol", "hepsiburada"] as const).filter((m) => !!pAttrs[`${m === "trendyol" ? "Trendyol" : "Hepsiburada"} kategori`]),
+  }), [f, pAttrs]);
+  // Varyant değerleri (numara/renk): pazaryerinin değer listesinde var mı denetimi için
+  const variantValues = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const v of f.variants) for (const [k, val] of Object.entries(toMap(v.attrs))) { const g = attrGroup(k); if (g && val) out[g] = [...new Set([...(out[g] ?? []), val])]; }
+    return out;
+  }, [f.variants]);
 
   // "send": kaydet (değişiklik varsa) ve tek tıkla Trendyol + Hepsiburada gönderim kuyruğuna al
   // Gönderilecek pazaryerleri: zorunlu alanları tam olanlar (eksik olan atlanır, nedeni söylenir)
+  // Eksikler: temel alanlar (readiness) + kategorinin zorunlu özellikleri (MarketplaceFields)
+  const missingFor = (m: MpTarget) => [
+    ...(ready.find((r) => r.id === m)?.checks.filter((c) => !c.ok && !c.warn).map((c) => c.text) ?? []),
+    ...(mpStatus?.missing[m] ?? []).filter((x) => x !== "kategori"),
+  ];
   function sendTargets(): MpTarget[] | null {
     const all: MpTarget[] = ["trendyol", "hepsiburada"];
-    if (!mpStatus) return all;
-    if (mpStatus.loading) { notify("err", "Pazaryeri özellikleri yükleniyor, birkaç saniye sonra tekrar dene."); return null; }
+    if (mpStatus?.loading) { notify("err", "Pazaryeri özellikleri yükleniyor, birkaç saniye sonra tekrar dene."); return null; }
     const name = (m: MpTarget) => (m === "trendyol" ? "Trendyol" : "Hepsiburada");
-    const ok = all.filter((m) => mpStatus.ready[m]);
-    const bad = all.filter((m) => !mpStatus.ready[m]).map((m) => `${name(m)}: ${mpStatus.missing[m].join(", ")}`);
+    const ok = all.filter((m) => !missingFor(m).length);
+    const bad = all.filter((m) => missingFor(m).length).map((m) => `${name(m)}: ${missingFor(m).join(", ")}`);
     if (!ok.length) { notify("err", `Eksik zorunlu alanlar var. ${bad.join(" · ")}`); return null; }
     if (bad.length && !confirm(`Eksik alanlar: ${bad.join(" · ")}\n\nYalnızca ${ok.map(name).join(", ")}'a gönderilsin mi?`)) return null;
     return ok;
@@ -497,11 +507,9 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
             <BrandInput api={api} value={f.brand} onChange={(v) => set("brand", v)} local={opts.brands} placeholder={opts.defaultBrand} />
             {err("brand") ?? <small>Yazdıkça pazaryerlerindeki markalar listelenir</small>}
           </label>
-          <label className="f">Kategori
-            <input type="text" list="cats" value={f.category} placeholder="Yazmaya başla, listeden seç" onChange={(e) => set("category", e.target.value)} />
-            {err("category") ?? <small>{!f.category ? "Kategoriler sekmesindeki eşleşmelerden seç" : cat?.markets.length
-              ? <span style={{ color: "var(--ok)" }}>✓ {cat.markets.map((m) => `${m}${cat.names[m] ? ` (${cat.names[m]})` : ""}`).join(", ")}</span>
-              : "Bu kategori henüz hiçbir pazaryerine eşleşmemiş"}</small>}
+          <label className="f">İç kategori (kendi düzenin için)
+            <input type="text" list="cats" value={f.category} placeholder="Örn. Ayakkabı > Erkek > Spor" onChange={(e) => set("category", e.target.value)} />
+            {err("category") ?? <small>Pazaryeri kategorileri aşağıda ayrıca seçilir</small>}
           </label>
           {input("cost_price", "Alış fiyatı (KDV dahil, TL)", "Kâr hesabı ve zarar kontrolü için gerekli", "decimal", undefined, "0,00")}
           <label className="f">Satış fiyatı (isteğe bağlı, KDV dahil)
@@ -522,7 +530,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
         </label>
       </div>
 
-      <MarketplaceFields api={api} title={f.title} attrs={pAttrs} setAttr={setAttr} variantGroups={variantGroups} hasVariants={f.variants.length > 1 || hasVariants} onStatus={setMpStatus} />
+      <MarketplaceFields api={api} title={f.title} attrs={pAttrs} setAttr={setAttr} variantGroups={variantGroups} variantValues={variantValues} hasVariants={f.variants.length > 1 || hasVariants} onStatus={setMpStatus} />
 
       <div className="card"
         onDragOver={(e) => e.preventDefault()}
@@ -625,17 +633,21 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
       {role === "admin" && <PricePreview api={api} cost={n(f.cost_price) ?? n(f.variants[0]?.cost_price ?? "")} currency={f.currency} vat={Number(f.vat_rate) || 20} category={f.category} brand={f.brand} source={f.source ?? "manual"} stock={f.variants.reduce((t, v) => t + (Number(v.stock) || 0), 0)} />}
 
       <div className="card">
-        <h2>Pazaryerine hazır mı?</h2>
-        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Gönderim düğmeleri pazaryeri bağlantıları kurulunca (Faz 4-5) burada açılacak. Eksikleri şimdiden tamamlarsan ürün sorunsuz gider.</p>
+        <h2>Gönderime hazırlık</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Her pazaryerinin istediği her şey: temel alanlar + seçilen kategorinin zorunlu özellikleri. Eksik olan pazaryerine gönderim yapılmaz.</p>
         <div className="grid">{ready.map((m) => {
+          const attrMiss = (mpStatus?.missing[m.id] ?? []).filter((x) => x !== "kategori");
           const miss = m.checks.filter((c) => !c.ok);
+          const n = miss.filter((c) => !c.warn).length + attrMiss.length;
           return (
-            <details key={m.id} style={{ border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px" }}>
+            <details key={m.id} open={n > 0} style={{ border: "1px solid var(--line)", borderRadius: 6, padding: "8px 10px" }}>
               <summary style={{ color: "var(--ink)", fontSize: 14 }}>
-                <b>{m.label}</b> <span className={`pill ${m.ready ? "ok" : "partial"}`}>{m.ready ? (miss.length ? "hazır (uyarı var)" : "hazır") : `${miss.filter((c) => !c.warn).length} eksik`}</span>
+                <b>{m.label}</b> <span className={`pill ${n ? "partial" : "ok"}`}>{n ? `${n} eksik` : miss.length ? "hazır (uyarı var)" : "hazır"}</span>
               </summary>
               <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13 }}>
                 {m.checks.map((c) => <li key={c.text} style={{ color: c.ok ? "var(--ok)" : c.warn ? "var(--warn)" : "var(--bad)" }}>{c.ok ? "✓" : c.warn ? "!" : "✗"} {c.text}</li>)}
+                {attrMiss.map((x) => <li key={x} style={{ color: "var(--bad)" }}>✗ Zorunlu özellik: {x}</li>)}
+                {!attrMiss.length && m.checks[0].ok && <li style={{ color: mpStatus?.loading ? "var(--muted)" : "var(--ok)" }}>{mpStatus?.loading ? "… kategori özellikleri yükleniyor" : "✓ Kategorinin zorunlu özellikleri dolu"}</li>}
               </ul>
             </details>
           );

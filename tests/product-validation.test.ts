@@ -88,11 +88,14 @@ test("otomatik barkod ve SKU geçerli", () => {
   assert.equal(SKU_RE.test(generateSku("Çiçekli Şık Ürün")), true);
 });
 
-test("pazaryeri hazırlık: eksikler ve Amazon GTIN", () => {
-  const p = { title: "Bambu Kesme Tahtası Seti", description: "x".repeat(40), brand: "Eco Lounge", category: "Mutfak", desi: 2, cost_price: 100, images: ["https://a/b.jpg"], variants: [{ barcode: generateEan13(), stock: 5, cost_price: null }] };
-  const r = readiness(p, ["trendyol"]);
+test("pazaryeri hazırlık: kategori, başlık sınırı, görsel, barkod", () => {
+  const p = { title: "Bambu Kesme Tahtası Seti", description: "x".repeat(40), brand: "Eco Lounge", desi: 2, cost_price: 100, vat: 20, images: ["https://a/b.jpg"], variants: [{ barcode: generateEan13(), stock: 5, cost_price: null }], categories: ["trendyol"] };
+  const r = readiness(p);
   assert.equal(r.find((m) => m.id === "trendyol")!.ready, true);
-  assert.equal(r.find((m) => m.id === "hepsiburada")!.ready, false); // kategori eşleşmemiş
-  assert.equal(r.find((m) => m.id === "amazon")!.checks.some((c) => !c.ok && /GTIN/.test(c.text)), true);
-  assert.equal(readiness({ ...p, images: [] }, ["trendyol"])[0].ready, false);
+  assert.equal(r.find((m) => m.id === "hepsiburada")!.ready, false); // HB kategorisi seçilmemiş
+  assert.equal(readiness({ ...p, images: [] })[0].ready, false);
+  const long = readiness({ ...p, title: "a".repeat(150), categories: ["trendyol", "hepsiburada"] });
+  assert.equal(long[0].ready, false); // Trendyol en fazla 100
+  assert.equal(long[1].ready, true); // Hepsiburada 200
+  assert.equal(readiness({ ...p, variants: [{ barcode: "X1", stock: 1, cost_price: null }, { barcode: "X1", stock: 1, cost_price: null }] })[0].ready, false); // aynı barkod
 });
