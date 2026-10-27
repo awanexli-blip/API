@@ -6,7 +6,7 @@ import type { Api } from "./shared";
 const LABEL: Record<string, string> = { trendyol: "Trendyol" };
 type Hit = { name: string; markets: Record<string, number> };
 
-// Marka kutusu: yazdıkça pazaryeri marka listesinden öneri; yazılan marka pazaryerinde var mı gösterir.
+// Marka kutusu: yazdıkça pazaryeri markalarından öneri (liste indirilmediyse canlı Trendyol araması); yazılan marka pazaryerinde var mı gösterir.
 // Hepsiburada / N11 / Amazon marka listesi bağlanınca LABEL'a eklenir.
 export default function BrandInput({ api, value, onChange, placeholder, local = [] }: {
   api: Api; value: string; onChange: (v: string) => void; placeholder?: string; local?: string[];
@@ -60,7 +60,7 @@ export default function BrandInput({ api, value, onChange, placeholder, local = 
         <small style={{ display: "block", marginTop: 4 }}>
           {status.map(([m, ok]) => (
             <span key={m} style={{ marginRight: 10, color: ok == null ? "var(--muted)" : ok ? "var(--ok)" : "var(--bad)" }}>
-              {ok == null ? `${LABEL[m] ?? m}: liste çekilmedi` : ok ? `✓ ${LABEL[m] ?? m}'da var` : `✗ ${LABEL[m] ?? m}'da bu isimde marka yok`}
+              {ok == null ? `${LABEL[m] ?? m}: şu an kontrol edilemedi (gönderimde doğrulanır)` : ok ? `✓ ${LABEL[m] ?? m}'da var` : `✗ ${LABEL[m] ?? m}'da bu isimde marka yok`}
             </span>
           ))}
         </small>

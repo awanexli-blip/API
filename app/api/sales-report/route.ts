@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin, requireRole, forbidden, bad, MARKETPLACES } from "@/lib/server";
+import { readAll } from "@/worker/core/util";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +49,14 @@ export async function GET(req: NextRequest) {
 
   if (sp.get("format") === "csv") {
     const f = new Date(Date.parse(from) - 3 * 3600 * 1000).toISOString(), t = new Date(Date.parse(to) + DAY - 3 * 3600 * 1000).toISOString();
-    let q = db.from("orders").select("marketplace, order_no, ordered_at, status, marketplace_status, total, units, fin, act_commission, return_reason, cargo_provider, city")
-      .gte("ordered_at", f).lt("ordered_at", t).order("ordered_at").limit(20000);
-    if (mp) q = q.eq("marketplace", mp);
-    const { data, error } = await q;
+    // Sayfalı: .limit(20000) Supabase'in 1000 satır sınırında kalıyordu (dosya sessizce eksik çıkardı); en fazla 20.000 sipariş
+    const { data, error } = await readAll((a, b) => {
+      if (a >= 20000) return Promise.resolve({ data: [], error: null });
+      let q = db.from("orders").select("id, marketplace, order_no, ordered_at, status, marketplace_status, total, units, fin, act_commission, return_reason, cargo_provider, city")
+        .gte("ordered_at", f).lt("ordered_at", t).order("ordered_at").order("id");
+      if (mp) q = q.eq("marketplace", mp);
+      return q.range(a, b);
+    });
     if (error) return bad(error.message);
     const head = ["Pazaryeri", "Sipariş no", "Tarih", "Durum", "Pazaryeri durumu", "Adet", "Müşterinin ödediği", "Satıcı geliri", "Komisyon (tahmini)", "Komisyon (gerçek)", "Kargo", "Sabit gider", "Ürün maliyeti", "Ödenecek KDV", "İade masrafı", "Stopaj (%1)", "Net kâr", "İade nedeni", "Kargo firması", "İl"];
     const rows = (data ?? []).map((o: any) => [o.marketplace, o.order_no, new Date(o.ordered_at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" }), o.status, o.marketplace_status, o.units,

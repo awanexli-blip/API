@@ -110,9 +110,10 @@ function run(mode, env = {}, marketplace = "trendyol") {
   const stock = calls.hbWrites.filter((w) => w.path.endsWith("/stock-uploads")).flatMap((w) => w.body);
   const price = calls.hbWrites.filter((w) => w.path.endsWith("/price-uploads")).flatMap((w) => w.body);
   const imp = calls.hbWrites.filter((w) => w.path.endsWith("/products/import")).flatMap((w) => w.body);
-  check("hb: tüm listing'ler sayfalı yüklendi", s.listingTotals?.loaded === 1504, JSON.stringify(s.listingTotals));
+  check("hb: tüm listing'ler sayfalı yüklendi", s.listingTotals?.loaded === 1505, JSON.stringify(s.listingTotals));
   check("hb: OS13- ve ÖS13- eşleşti", stock.some((x) => x.merchantSku === "OS13-AAA") && stock.some((x) => x.merchantSku === "ÖS13-G0et_94794"), stock.length);
   check("hb: kapalı ürün gönderilmedi", !stock.some((x) => x.merchantSku === "OS13-KILITLI"));
+  check("hb: stoğu bitmiş (satılamaz) ilana stok yeniden gider", stock.some((x) => x.merchantSku === "OS13-SIFIR" && x.availableStock >= 5), JSON.stringify(stock.filter((x) => x.merchantSku === "OS13-SIFIR")));
   check("hb: min stok 5 altı stok gönderilmez (0 veya ≥5)", stock.every((x) => x.availableStock === 0 || x.availableStock >= 5));
   check("hb: fiyat ayrı uçtan", price.length > 0 && price.every((x) => x.price > 0));
   check("hb: komisyon +KDV ve desi kargo fiyata yansıdı", Number(line("OS13-YEN-1").split(";")[4]) > 200, line("OS13-YEN-1"));
@@ -271,7 +272,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 }
 
 // 10) birim testleri
-for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts"]) {
+for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
 }

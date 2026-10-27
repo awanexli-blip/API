@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin, guard, unauthorized, bad } from "@/lib/server";
+import { readAll } from "@/worker/core/util";
 
 export const dynamic = "force-dynamic";
 
 // Gönderilmeyen markalar (tüm pazaryerleri): başlığında/açıklamasında geçen ürün gönderilmez. GET liste · POST { word } · DELETE ?word=
 export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
-  const { data, error } = await admin().from("brand_blocklist").select("word, source, created_at").order("word");
+  const { data, error } = await readAll((a, b) => admin().from("brand_blocklist").select("word, source, created_at").order("word").range(a, b));
   if (error) return bad(error.message.includes("brand_blocklist") ? "Supabase migration 023 çalıştırılmamış" : error.message);
   return NextResponse.json({ words: data ?? [] });
 }

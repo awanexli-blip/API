@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveRole, type Role } from "./auth-rules.ts";
+import { readAll } from "@/worker/core/util";
 
 // Tek service_role istemcisi (modül düzeyinde, her çağrıda yeniden kurulmaz)
 const make = () => createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -49,12 +50,21 @@ export const mpOf = (req: NextRequest) => {
   return MARKETPLACES.includes(m) ? m : null;
 };
 
-// Pazaryerine ait tablo satırları. Migration 002 çalıştırılmadıysa Trendyol filtresiz okur.
+// Pazaryerine ait tablo satırları (tamamı, sayfalı: Supabase tek istekte en fazla 1000 satır verir; 1.505 eşleşmeyen kategorinin
+// 505'i görünmüyordu). Sıra kolonu tekil değilse ikinci anahtar xml_category/barcode ile kararlı. Migration 002 yoksa Trendyol filtresiz okur.
 export async function mpSelect(table: string, mp: string, order: string, ascending = true) {
   const db = admin();
-  const r = await db.from(table).select("*").eq("marketplace", mp).order(order, { ascending });
-  if (!r.error) return { data: r.data ?? [], migrated: true as const };
+  const tie = table === "product_overrides" ? "barcode" : "xml_category";
+  // Her sayfa yeni sorgu (sorgu nesnesi .order/.range ile kendini değiştirir, paylaşılmaz)
+  const page = (byMp: boolean) => (a: number, b: number) => {
+    let q: any = db.from(table).select("*");
+    if (byMp) q = q.eq("marketplace", mp);
+    q = q.order(order, { ascending });
+    return (order === tie ? q : q.order(tie)).range(a, b);
+  };
+  const r = await readAll(page(true));
+  if (!r.error) return { data: r.data, migrated: true as const };
   if (mp !== "trendyol") return { error: `Supabase migration 002 çalıştırılmamış (${r.error.message})` };
-  const r2 = await db.from(table).select("*").order(order, { ascending });
-  return r2.error ? { error: r2.error.message } : { data: r2.data ?? [], migrated: false as const };
+  const r2 = await readAll(page(false));
+  return r2.error ? { error: r2.error.message } : { data: r2.data, migrated: false as const };
 }

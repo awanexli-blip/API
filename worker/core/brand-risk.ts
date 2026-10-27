@@ -1,5 +1,6 @@
 // Marka riski: başlığında / açıklamasında korunan bir marka ya da lisanslı karakter geçen ürün pazaryerine gönderilmez
 // (Trendyol "Marka hakkı ihlali" / "Hatalı marka" uyarıları birikirse mağazayı kapatabilir). Liste: `brand_blocklist` (panel → Markalar).
+import { readAll } from "./util.ts";
 
 export const norm = (s: string) => ` ${String(s ?? "").replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr").replace(/[^a-z0-9çğıöşü]+/g, " ").trim()} `;
 
@@ -14,7 +15,7 @@ export function brandMatcher(words: string[]) {
 }
 
 export async function loadBrandMatcher(db: any) {
-  const { data, error } = await db.from("brand_blocklist").select("word");
+  const { data, error } = await readAll((a: number, b: number) => db.from("brand_blocklist").select("word").order("word").range(a, b));
   // Tablo yoksa ya da boşsa ilk liste: filtresiz gönderim hiç yapılmaz
   const words = error ? [] : (data ?? []).map((r: any) => r.word).filter(Boolean);
   return brandMatcher(words.length ? words : DEFAULT_BLOCKLIST);

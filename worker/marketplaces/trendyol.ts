@@ -35,12 +35,29 @@ export function createTrendyol(): Marketplace {
   const commByBarcode = loadJson("../commissions_by_barcode.json");
   const commByCategory = loadJson("../commissions_by_category.json");
 
+  // Geçici hata: okuma (GET) ağ hatası / 5xx / 429'da 3 kez beklenip tekrarlanır (27.10: tek "fetch failed" 230 sayfalık listelemeyi
+  // ve bütün senkronu düşürdü). Yazma isteği yalnızca 429'da (istek işlenmeden reddedildi) tekrarlanır: ağ hatasında çift yazma riski var.
   async function tg(path: string, init?: RequestInit) {
-    const res = await fetch(`${BASE}${path}`, { ...init, headers: HEADERS });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`Trendyol ${res.status} ${path}: ${text.slice(0, 400)}`);
-    return text ? JSON.parse(text) : {};
+    const read = !init?.method || init.method === "GET";
+    for (let t = 0; ; t++) {
+      let res: Response;
+      try { res = await fetch(`${BASE}${path}`, { ...init, headers: HEADERS, signal: AbortSignal.timeout(120_000) }); }
+      catch (e: any) {
+        if (read && t < 3) { await sleep(Number(process.env.TRENDYOL_RETRY_MS ?? 3000) * (t + 1)); continue; }
+        throw new Error(`Trendyol ağ hatası ${path}: ${String(e?.cause?.code ?? e?.message ?? e).slice(0, 200)}`);
+      }
+      if (t < 3 && (res.status === 429 || (read && res.status >= 500))) { await sleep(Number(process.env.TRENDYOL_RETRY_MS ?? 3000) * (t + 1)); continue; }
+      const text = await res.text();
+      if (!res.ok) throw new Error(`Trendyol ${res.status} ${path}: ${text.slice(0, 400)}`);
+      return text ? JSON.parse(text) : {};
+    }
   }
+  // Başarısız toplu istek: sayılır ve ilk 5 hata özete yazılır (pushErrors; önceden yalnızca günlükteydi, "partial" nedeni görünmüyordu)
+  const failBatch = (res: BatchResult, e: any) => {
+    const m = String(e?.message ?? e).slice(0, 300);
+    res.failed++; if ((res.errors ??= []).length < 5) res.errors.push(m);
+    console.error(m);
+  };
 
   // Sayfalı liste: page*size 10.000'i geçemez, sonrası nextPageToken ile.
   async function fetchAll(path: string, size: number, onItem: (x: any) => void) {
@@ -291,7 +308,7 @@ export function createTrendyol(): Marketplace {
             : { barcode: p.id, quantity: p.quantity });
           const r = await tg(`/inventory/sellers/${SELLER_ID}/products/price-and-inventory`, { method: "POST", body: JSON.stringify({ items: body }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
-        } catch (e: any) { res.failed++; console.error(e.message); }
+        } catch (e: any) { failBatch(res, e); }
         await sleep(300);
       }
       return res;
@@ -303,7 +320,7 @@ export function createTrendyol(): Marketplace {
         try {
           const r = await tg(`/inventory/sellers/${SELLER_ID}/products/price-and-inventory`, { method: "POST", body: JSON.stringify({ items: batch.map((barcode) => ({ barcode, quantity: 0 })) }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
-        } catch (e: any) { res.failed++; console.error(e.message); }
+        } catch (e: any) { failBatch(res, e); }
         await sleep(300);
       }
       return res;
@@ -315,7 +332,7 @@ export function createTrendyol(): Marketplace {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products/archive-state`, { method: "PUT", body: JSON.stringify({ items: batch.map((barcode) => ({ barcode, archived })) }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
-        } catch (e: any) { res.failed++; (res.failedItems ??= []).push(...batch.map((id) => ({ id, reason: String(e.message).slice(0, 300) }))); console.error(e.message); }
+        } catch (e: any) { failBatch(res, e); (res.failedItems ??= []).push(...batch.map((id) => ({ id, reason: String(e.message).slice(0, 300) }))); }
         await sleep(500);
       }
       return res;
@@ -327,7 +344,7 @@ export function createTrendyol(): Marketplace {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products`, { method: "DELETE", body: JSON.stringify({ items: batch.map((barcode) => ({ barcode })) }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
-        } catch (e: any) { res.failed++; (res.failedItems ??= []).push(...batch.map((id) => ({ id, reason: String(e.message).slice(0, 300) }))); console.error(e.message); }
+        } catch (e: any) { failBatch(res, e); (res.failedItems ??= []).push(...batch.map((id) => ({ id, reason: String(e.message).slice(0, 300) }))); }
         await sleep(500);
       }
       return res;
@@ -368,7 +385,7 @@ export function createTrendyol(): Marketplace {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/v2/products`, { method: "POST", body: JSON.stringify({ items: batch }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
-        } catch (e: any) { res.failed++; console.error(e.message); }
+        } catch (e: any) { failBatch(res, e); }
         await sleep(500);
       }
       return res;
@@ -598,7 +615,7 @@ export function createTrendyol(): Marketplace {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products/unapproved-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
-        } catch (e: any) { res.failed++; console.error(e.message); }
+        } catch (e: any) { failBatch(res, e); }
         await sleep(500);
       }
       return res;
@@ -613,7 +630,7 @@ export function createTrendyol(): Marketplace {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products/content-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
           res.ok += batch.length; res.batchIds.push(r.batchRequestId);
-        } catch (e: any) { res.failed++; console.error(String(e.message).slice(0, 300)); }
+        } catch (e: any) { failBatch(res, e); }
         await sleep(500);
       }
       return res;

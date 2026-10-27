@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin, MARKETPLACES } from "@/lib/server";
 import { authorize } from "@/lib/products";
+import { readAll } from "@/worker/core/util";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
     db.from("settings").select("auto_sync, auto_create, existing_price_policy, zero_missing").eq("id", 1).maybeSingle(),
     db.from("sync_runs").select("id, marketplace, mode, status, started_at, finished_at, summary").order("id", { ascending: false }).limit(40),
     db.from("suppliers").select("code, name, active, nightly, last_run_at, last_status").order("created_at"),
-    db.from("unmapped_categories").select("product_count").eq("marketplace", "trendyol"),
+    readAll((a, b) => db.from("unmapped_categories").select("product_count").eq("marketplace", "trendyol").order("xml_category").range(a, b)),
     count(db.from("pricing_rules").select("id", { count: "exact", head: true }).eq("enabled", true)),
   ]);
   const s = settings.data;

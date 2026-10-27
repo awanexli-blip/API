@@ -1,6 +1,7 @@
 // Google Gemini API (ücretsiz kota: AI Studio anahtarı, GEMINI_API_KEY). ANTHROPIC_API_KEY yoksa yapay zekâ işleri bunu kullanır.
 // Ücretsiz katmanda model başına dakikada ~10, günde ~1.000-1.500 istek (Google değiştirebilir): istekler arası bekleme.
-// Model sırası: GEMINI_MODEL (varsa) > 2.5 Flash > 2.5 Flash-Lite. Kota (429) / yoğunluk (503) / model yok (404) -> sıradaki model;
+// Model sırası: GEMINI_MODEL (varsa) > 2.5 Flash > 2.5 Flash-Lite > (hepsi 404 ise) model listesinden en yeni kararlı Flash.
+// Kota (429) / yoğunluk (503) / model yok (404) -> sıradaki model;
 // hepsi kotadaysa o çalışmada durulur. (25.10: "gemini-flash-latest" takma adı ücretsiz kotası olmayan modele gidiyordu.)
 const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 export const geminiEnabled = () => !!process.env.GEMINI_API_KEY;
@@ -10,11 +11,41 @@ let last = 0;
 const GAP = Number(process.env.GEMINI_GAP_MS ?? 6500);
 const exhausted = new Set<string>(); // bu çalışmada kotası dolan modeller
 
+const missing = new Set<string>(); // 404 dönen (kapatılmış) modeller
+let discovered: string[] | null = null;
+
+// Sabit adlar kapatılınca (27.10: 2.5 Flash ve Flash-Lite 404, soru taslağı ve özellik doldurma durdu) hesabın erişebildiği modeller
+// listeden seçilir: generateContent destekleyen kararlı "flash" modelleri, yeni sürüm önce, Flash Lite'tan önce. Önizleme/deneysel,
+// "-latest" takma adı (ücretsiz kotası olmayan modele gidebiliyor), görsel/ses/canlı modeller alınmaz.
+export function pickFlashModels(list: { name: string; supportedGenerationMethods?: string[] }[]): string[] {
+  const ver = (n: string) => Number(n.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0);
+  return list
+    .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
+    .map((m) => m.name.replace(/^models\//, ""))
+    .filter((n) => /^gemini-\d+(\.\d+)?-flash(-lite)?(-\d{3})?$/.test(n))
+    .sort((a, b) => ver(b) - ver(a) || Number(a.includes("-lite")) - Number(b.includes("-lite")) || a.length - b.length)
+    .slice(0, 4);
+}
+
+async function discoverModels(key: string): Promise<string[]> {
+  if (discovered) return discovered;
+  try {
+    const r = await fetch(`${BASE}?pageSize=200`, { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(30000) });
+    const j: any = await r.json().catch(() => null);
+    discovered = r.ok ? pickFlashModels(j?.models ?? []) : [];
+    if (!r.ok) console.error(`Gemini model listesi ${r.status}: ${String(j?.error?.message ?? "").slice(0, 200)}`);
+  } catch (e: any) { discovered = []; console.error("Gemini model listesi okunamadı:", String(e?.message ?? e).slice(0, 200)); }
+  return discovered;
+}
+
 // JSON şemalı tek istek (responseSchema: OpenAPI alt kümesi). Dönen metin JSON olarak ayrıştırılır.
 export async function geminiJson<T>(system: string, user: string, schema: Record<string, unknown>): Promise<T | null> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  const models = [...new Set([process.env.GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.5-flash-lite"].filter(Boolean) as string[])].filter((m) => !exhausted.has(m));
+  const fixed = [process.env.GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.5-flash-lite"].filter(Boolean) as string[];
+  // Sabit adların hepsi bu çalışmada 404 verdiyse listeden bulunanlar denenir
+  const extra = fixed.every((m) => missing.has(m)) ? await discoverModels(key) : [];
+  const models = [...new Set([...fixed, ...extra])].filter((m) => !exhausted.has(m) && !missing.has(m));
   let lastQuota = "", lastErr = "";
   for (const model of models) {
     const wait = last + GAP - Date.now();
@@ -32,7 +63,12 @@ export async function geminiJson<T>(system: string, user: string, schema: Record
     });
     const j: any = await res.json().catch(() => null);
     const msg = String(j?.error?.message ?? "").slice(0, 200);
-    if (res.status === 404) { lastErr = `${model} yok`; continue; }
+    if (res.status === 404) {
+      missing.add(model); lastErr = `${[...missing].join(", ")} yok`;
+      // Son sabit ad da yoksa: listeden bulunan modellerle aynı istek yeniden denenir (bir kez)
+      if (!extra.length && fixed.every((m) => missing.has(m)) && (await discoverModels(key)).length) return geminiJson<T>(system, user, schema);
+      continue;
+    }
     if (res.status === 429) { exhausted.add(model); lastQuota = `Gemini kotası (429, ${model}): ${msg}`; continue; }
     if (res.status === 503 || res.status === 500) { lastErr = `Gemini ${res.status} (${model}): ${msg}`; continue; }
     if (!res.ok) throw new Error(`Gemini ${res.status} (${model}): ${msg}`);
@@ -40,6 +76,7 @@ export async function geminiJson<T>(system: string, user: string, schema: Record
     try { return JSON.parse(text) as T; } catch { return null; }
   }
   if (lastQuota && !models.some((m) => !exhausted.has(m))) throw new GeminiQuotaError(lastQuota);
+  if (!models.length && !exhausted.size) throw new Error(`Gemini: kullanılabilir model yok (${[...missing].join(", ") || "-"} 404; hesabın model listesinde uygun Flash modeli bulunamadı, GEMINI_MODEL ile belirtin)`);
   if (!models.length) throw new GeminiQuotaError("Gemini: tüm modellerin kotası bu çalışmada doldu");
   throw new Error(lastErr || lastQuota || "Gemini yanıt vermedi");
 }

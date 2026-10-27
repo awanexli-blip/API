@@ -1,0 +1,35 @@
+name: Eski veritabanından kurtarma
+
+# 25.10'da çöken eski projede kalan elle girilmiş veriler (kategori eşleşmeleri, ürün istisnaları, kâr kuralları, marka/yasaklı kelime
+# listeleri). Proje şu an bağlantı kabul etmiyor (destek talebi SU-524672); açılınca önce "check", sonuç uygunsa "apply".
+# apply yalnızca yeni veritabanında olmayan satırları ekler; kâr kuralları kapalı, elle fiyat ve kategori komisyonu boş gelir (worker/recover-old.ts).
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check = yalnızca rapor · apply = eksikleri ekle (fiyat alanları kapalı/boş)"
+        type: choice
+        options: [check, apply]
+        default: "check"
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix worker
+      - name: Kurtar
+        env:
+          OLD_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}                 # eski proje (ölü adlar)
+          OLD_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
+          MODE: ${{ github.event.inputs.mode || 'check' }}
+        run: node --experimental-strip-types worker/recover-old.ts "$MODE"

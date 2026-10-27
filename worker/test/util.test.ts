@@ -1,6 +1,6 @@
 // Argüman doğrulama ve müşteri verisi maskeleme
 // node --experimental-strip-types worker/test/util.test.ts
-import { csvCell, arg, MODES, MARKETPLACES, SUPPLIER_ARG, maskPhone, maskEmail, maskName, maskAddress } from "../core/util.ts";
+import { csvCell, arg, MODES, MARKETPLACES, SUPPLIER_ARG, maskPhone, maskEmail, maskName, maskAddress, readAll } from "../core/util.ts";
 let fails = 0;
 const check = (n: string, c: boolean, i: unknown = "") => { console.log(`${c ? "OK  " : "HATA"} ${n}${c ? "" : "  " + JSON.stringify(i)}`); if (!c) fails++; };
 const throws = (f: () => unknown) => { try { f(); return false; } catch { return true; } };
@@ -17,5 +17,15 @@ check("adres maskesi tam adresi göstermez", !maskAddress("Atatürk Cad. No 5 Ka
 check("CSV formülü etkisiz", csvCell('=HYPERLINK("http://x")').startsWith("'="));
 check("CSV ayraç temizlenir", csvCell("a;b\nc") === "a,b c");
 check("negatif sayı da korunur", csvCell("-5") === "'-5");
+// Supabase 1000 satır sınırı: sunucu her istekte en fazla 1000 döndürür; readAll tamamını okur (28.10: 4.576 kopyanın 1.000'i okunuyordu)
+{
+  const rows = Array.from({ length: 4576 }, (_, i) => i);
+  const r = await readAll(async (from: number, to: number) => ({ data: rows.slice(from, Math.min(to + 1, from + 1000)), error: null }));
+  check("readAll: 1000 sınırını aşan tüm satırlar", r.data.length === 4576 && r.data[4575] === 4575 && !r.error, r.data.length);
+  const e = await readAll(async (from: number) => (from >= 1000 ? { data: null, error: { message: "boom" } } : { data: rows.slice(0, 1000), error: null }));
+  check("readAll: sayfa hatası bildirilir", e.error?.message === "boom" && e.data.length === 1000, e.data.length);
+  const exact = await readAll(async (from: number) => ({ data: from === 0 ? rows.slice(0, 1000) : [], error: null }));
+  check("readAll: tam 1000 satırda durur", exact.data.length === 1000);
+}
 if (fails) { console.log(`\n${fails} yardımcı testi başarısız`); process.exit(1); }
 console.log("\nYardımcı testleri geçti");

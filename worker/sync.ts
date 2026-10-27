@@ -22,7 +22,7 @@ import { fixImages } from "./core/image-fix.ts";
 import { flushAttrOptions } from "./core/attr-options.ts";
 import { aiFillAttributes } from "./core/ai-attrs.ts";
 import { syncBuybox } from "./core/buybox.ts";
-import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES } from "./core/util.ts";
+import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES, readAll } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
@@ -39,13 +39,21 @@ const previewFile = marketplaceId === "trendyol" ? "preview.csv" : `preview_${ma
 // Migration 002 (marketplace kolonları) çalıştırıldı mı? Çalıştırılmadıysa Trendyol eskisi gibi filtresiz okur/yazar.
 let mpColumns = true;
 
+// Başarısız toplu isteklerin hata metinleri özete (pushErrors, en fazla 10): "partial" durumunun nedeni panelde görünsün
+function noteErrors(summary: any, r: { errors?: string[] }) {
+  if (r.errors?.length) summary.pushErrors = [...(summary.pushErrors ?? []), ...r.errors].slice(0, 10);
+}
+
 // Pazaryerine ait satırlar (category_map, product_overrides)
-async function mpRows(table: string): Promise<any[]> {
-  const r = await db.from(table).select("*").eq("marketplace", marketplaceId);
-  if (!r.error) return r.data ?? [];
+// Sayfalı (1000 satır sınırı): ürün istisnası / kategori eşlemesi 1000'i geçince fazlası okunmuyordu
+async function mpRows(table: string, key: string): Promise<any[]> {
+  const r = await readAll((a, b) => db.from(table).select("*").eq("marketplace", marketplaceId).order(key).range(a, b));
+  if (!r.error) return r.data;
   if (marketplaceId !== "trendyol") throw new Error(`${table} okunamadı. Supabase migration 002 çalıştırıldı mı? (${r.error.message})`);
   mpColumns = false;
-  return (await db.from(table).select("*")).data ?? [];
+  const r2 = await readAll((a, b) => db.from(table).select("*").order(key).range(a, b));
+  if (r2.error) throw new Error(`${table} okunamadı: ${r2.error.message}`);
+  return r2.data;
 }
 
 // Ortak ayarlar (settings) + pazaryerine özel ayarlar (marketplace_settings, dolu alanlar ezer)
@@ -84,6 +92,7 @@ async function main() {
     const ids = listings.filter((l) => (l.status ?? "active") === "active" && l.quantity !== 0).map((l) => l.id);
     const z = ids.length ? await mp.zeroStock(ids) : { ok: 0, failed: 0, batchIds: [] as string[] };
     const summary: any = { marketplace: mp.id, salesPaused: true, listings: listings.length, zeroed: z.ok, failedBatches: z.failed, batchIds: z.batchIds, updated: 0, created: 0 };
+    noteErrors(summary, z);
     if (s.retire_legacy) summary.retire = await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
     if (z.batchIds.length && mp.checkBatches) summary.batchCheck = await mp.checkBatches(z.batchIds.slice(0, 40)).catch((e: any) => ({ error: String(e?.message ?? e) }));
     summary.listingsTable = await snapshotListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
@@ -109,16 +118,16 @@ async function main() {
   const fx: Record<string, number> = { TL: 1, TRY: 1, USD: Number(s.fx_usd), EUR: Number(s.fx_eur) };
   const minStock = Number(s.min_stock);
 
-  const catMap = new Map<string, any>((await mpRows("category_map")).map((c: any) => [c.xml_category, c]));
-  const ovMap = new Map<string, any>((await mpRows("product_overrides")).map((o: any) => [o.barcode, o]));
+  const catMap = new Map<string, any>((await mpRows("category_map", "xml_category")).map((c: any) => [c.xml_category, c]));
+  const ovMap = new Map<string, any>((await mpRows("product_overrides", "barcode")).map((o: any) => [o.barcode, o]));
   // Akıllı kâr kuralları (panel: Kâr kuralları). Tablo yoksa (migration 010 öncesi) kuralsız devam
-  const pr = await db.from("pricing_rules").select("*");
+  const pr = await readAll((a, b) => db.from("pricing_rules").select("*").order("id").range(a, b));
   const rules = rulesFor((pr.error ? [] : pr.data ?? []) as PricingRule[], marketplaceId);
   const ruleCount: Record<string, number> = {};
 
   // Yasaklı kelimeler (Trendyol ret nedenlerinden öğrenilir + elle eklenenler); yeni ürün metinleri gönderimden önce temizlenir
-  const bw = await db.from("banned_words").select("word").eq("marketplace", marketplaceId);
-  const banned: string[] = (bw.error ? [] : bw.data ?? []).map((r: any) => r.word);
+  const bw = await readAll((a, b) => db.from("banned_words").select("word").eq("marketplace", marketplaceId).order("word").range(a, b));
+  const banned: string[] = (bw.error ? [] : bw.data).map((r: any) => r.word);
   const clean = (title: string, description: string) => (marketplaceId === "trendyol" ? cleanForMarketplace(title, description, banned) : { title, description });
 
   // Eski tedarikçi (BayilikXML) kaldırıldıysa XML okunmaz; ilanları arşivlenip silinir (aşağıda)
@@ -395,7 +404,7 @@ async function main() {
       }
       if (newWords.size) await db.from("banned_words").upsert([...newWords].map((word) => ({ marketplace: marketplaceId, word, source: "ret" })), { onConflict: "marketplace,word", ignoreDuplicates: true });
       let sent = 0;
-      if (updates.length) { const r = await mp.updateRejected(updates); sent = r.ok; summary.batchIds.push(...r.batchIds); if (r.failed) summary.failedBatches += r.failed; }
+      if (updates.length) { const r = await mp.updateRejected(updates); sent = r.ok; summary.batchIds.push(...r.batchIds); if (r.failed) summary.failedBatches += r.failed; noteErrors(summary, r); }
       if (upserts.length) for (const part of chunk(upserts, 500)) await db.from("listing_fixes").upsert(part, { onConflict: "marketplace,listing_key" });
       summary.rejectFixes = { rejected: rejected.length, ...stat, resubmitted: sent, newBannedWords: [...newWords] };
     }
@@ -464,7 +473,7 @@ async function main() {
     }
     const r = await mp.pushInventory(toUpdate);
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
-    if (r.errors?.length) summary.pushErrors = r.errors;
+    noteErrors(summary, r);
     // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
     if (mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000), { minNet: Number(cfg.netProfitMin ?? 0), overridden: new Set([...ovMap.values()].filter((o: any) => o.price_override != null).map((o: any) => o.barcode)) }).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
 
@@ -474,7 +483,7 @@ async function main() {
         // Yalnızca satıştaki ilanlar: kapalı/onay bekleyen ilana stok gönderilemez (Trendyol hata verir)
         const gone = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && !(l.quantity === 0)).map((l) => l.id);
         const z = await mp.zeroStock(gone);
-        summary.zeroed += z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds);
+        summary.zeroed += z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds); noteErrors(summary, z);
       } else {
         summary.zeroMissingSkipped = `${mp.label} ilanlarının yarısından azı XML ile eşleşti, güvenlik için çalıştırılmadı`;
       }
@@ -486,7 +495,7 @@ async function main() {
       const loose = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && Number(l.quantity) > 0).map((l) => l.id);
       const dbOk = !(dbInv.stats as any).error && Number((dbInv.stats as any).listings ?? 0) > 0;
       if (!dbOk || loose.length > listings.length * 0.2) summary.unlinkedZeroSkipped = `${loose.length} bağsız ilan; güvenlik için stok sıfırlanmadı`;
-      else if (loose.length) { const z = await mp.zeroStock(loose); summary.unlinkedZeroed = z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds); }
+      else if (loose.length) { const z = await mp.zeroStock(loose); summary.unlinkedZeroed = z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds); noteErrors(summary, z); }
     }
   }
 
@@ -514,7 +523,7 @@ async function main() {
     const brandName = br.error ? undefined : br.data?.brand_name || undefined;
     if (brandName) summary.brandUsed = brandName;
     const r = await mp.createProducts(batch, { vatRate: Number(s.vat_rate), skip, brandName });
-    summary.created += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
+    summary.created += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds); noteErrors(summary, r);
   }
 
   if (summary.batchIds.length && mp.checkBatches) {
@@ -543,6 +552,10 @@ async function main() {
 }
 
 (async () => {
+  // Yarıda kalan çalışma (Actions zaman aşımı 45 dk / iptal / makine kaybı) "running" kalır, panelde hep "sürüyor" görünürdü:
+  // 60 dakikadan eskileri hata olarak kapatılır (yalnızca bu pazaryerinin kayıtları)
+  await db.from("sync_runs").update({ status: "error", finished_at: new Date().toISOString(), error: "yarıda kaldı (GitHub Actions zaman aşımı ya da iptal; sonraki çalışma kapattı)" })
+    .eq("status", "running").eq("marketplace", marketplaceId).lt("started_at", new Date(Date.now() - 60 * 60_000).toISOString());
   let { data: run, error } = await db.from("sync_runs").insert({ mode, trigger, status: "running", marketplace: marketplaceId }).select("id").single();
   if (error) ({ data: run } = await db.from("sync_runs").insert({ mode, trigger, status: "running" }).select("id").single()); // migration 002 öncesi
   const id = run?.id as number;

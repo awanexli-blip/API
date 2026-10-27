@@ -70,7 +70,9 @@ const hbSettings = { marketplace: "hepsiburada", enabled: true, auto_sync: false
 const hbListings = [
   { merchantSku: "OS13-AAA", hepsiburadaSku: "HBV1", price: 100, availableStock: 5, isSalable: true },
   { merchantSku: "ÖS13-G0et_94794", hepsiburadaSku: "HBV2", price: 2000, availableStock: 5, isSalable: true },
-  { merchantSku: "OS13-KILITLI", hepsiburadaSku: "HBV3", price: 150, availableStock: 0, isSalable: false },
+  { merchantSku: "OS13-KILITLI", hepsiburadaSku: "HBV3", price: 150, availableStock: 0, isSalable: false, isLocked: true },
+  // Stoğu bitmiş (HB stok 0 iken isSalable=false döner): kapalı sayılmaz, tedarikçide stok gelince yeniden stok gider
+  { merchantSku: "OS13-SIFIR", hepsiburadaSku: "HBV5", price: 150, availableStock: 0, isSalable: false },
   { merchantSku: "OS13-HBYETIM", hepsiburadaSku: "HBV4", price: 50, availableStock: 3, isSalable: true },
   ...Array.from({ length: 1500 }, (_, i) => ({ merchantSku: `BULK-${i}`, hepsiburadaSku: `HB${i}`, price: 99, availableStock: 4, isSalable: true })),
 ];

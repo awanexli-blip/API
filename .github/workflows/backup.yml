@@ -1,0 +1,147 @@
+name: Veritabanı yedeği
+
+# 25.10'da eski veritabanı yedeksiz çöktü (kategori eşleşmeleri, istisnalar, kâr kuralları, sipariş geçmişi kayboldu).
+# Her gün: yeri doldurulamayan tablolar (ayarlar, tedarikçiler, siparişler, eşleşmeler, istisnalar, kurallar...) + tüm şema.
+# Pazar: ürünler ve ilanlar dahil tam yedek (yeniden üretilen önbellek / geçmiş tabloları hariç).
+# Veri çıkışı (ücretsiz plan 5 GB/ay): günlük birkaç MB, haftalık ~60 MB.
+# Her yedek runner'da boş bir Postgres'e geri yüklenip satır sayılarıyla doğrulanır, sonra AES-256 ile şifrelenip
+# GitHub'a (günlük 7 / haftalık 35 gün) yüklenir. Depo herkese açık: şifresiz dosya yüklenmez. Geri yükleme: docs/YEDEK.md
+# Gerekli secret'lar: SUPABASE_DB_URL2 (Supabase > Connect > Session pooler adresi, parolalı), BACKUP_PASSPHRASE (en az 16 karakter).
+on:
+  schedule:
+    - cron: "40 0 * * *"   # her gün 03:40 (TR)
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "daily = kritik tablolar · full = ürünler/ilanlar dahil"
+        type: choice
+        options: [daily, full]
+        default: "daily"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PG_IMAGE: postgres:17
+      # Verisi alınmayan tablolar (şeması yedekte): yeniden üretilen önbellek / geçmiş. Günlük yedekte ürün tabloları da (haftalıkta var).
+      SKIP_ALWAYS: "audit_log supplier_stock_snap mp_categories mp_category_attrs attr_options listing_buybox marketplace_brands import_rows unmapped_categories"
+      SKIP_DAILY: "products product_variants product_images marketplace_listings"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          sparse-checkout: ops
+
+      - name: Tür ve secret kontrolü
+        id: kind
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL2 }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+          INPUT_KIND: ${{ github.event.inputs.kind }}
+        run: |
+          set -eu
+          if [ -z "${DB_URL}" ] || [ -z "${PASS}" ]; then
+            echo "::error::Yedek alınamadı: GitHub Secrets'ta SUPABASE_DB_URL2 ve/veya BACKUP_PASSPHRASE yok. Kurulum: docs/YEDEK.md"
+            exit 1
+          fi
+          if [ "${#PASS}" -lt 16 ]; then echo "::error::BACKUP_PASSPHRASE en az 16 karakter olmalı"; exit 1; fi
+          case "${DB_URL}" in postgres://*|postgresql://*) ;; *) echo "::error::SUPABASE_DB_URL2 postgresql:// ile başlamalı"; exit 1;; esac
+          kind="${INPUT_KIND:-}"
+          # Zamanlı çalışma: pazar günü tam, diğer günler günlük
+          if [ -z "$kind" ]; then if [ "$(date -u +%u)" = "7" ]; then kind=full; else kind=daily; fi; fi
+          case "$kind" in daily|full) ;; *) echo "::error::Geçersiz tür"; exit 1;; esac
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "stamp=$(date -u +%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
+
+      - name: Yedek al (pg_dump 17)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL2 }}
+          KIND: ${{ steps.kind.outputs.kind }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp ops/db-counts.sql out/count.sql
+          skip="$SKIP_ALWAYS"; if [ "$KIND" = "daily" ]; then skip="$skip $SKIP_DAILY"; fi
+          args=""; for t in $skip; do args="$args --exclude-table-data=public.$t"; done
+          # Doğrulama için canlı satır sayıları (tek bağlantı; verisi alınmayan tablolar karşılaştırılmaz)
+          docker run --rm -e DB_URL -v "$PWD/out:/out" "$PG_IMAGE" psql "$DB_URL" -v ON_ERROR_STOP=1 -At -f /out/count.sql > out/all_counts.txt
+          : > out/live_counts.txt
+          while read -r t n; do case " $skip " in *" $t "*) ;; *) echo "$t $n" >> out/live_counts.txt;; esac; done < out/all_counts.txt
+          [ -s out/live_counts.txt ] || { echo "::error::Canlı tablo sayımı okunamadı"; exit 1; }
+          # Tek tutarlı anlık görüntü; sahiplik ve yetkiler alınmaz (yeni projede service_role ile çalışır)
+          docker run --rm -e DB_URL -v "$PWD/out:/out" "$PG_IMAGE" sh -c \
+            "pg_dump \"\$DB_URL\" --schema=public --no-owner --no-privileges -Fc -Z 6 $args -f /out/db.dump"
+          size=$(stat -c %s out/db.dump)
+          echo "yedek boyutu: $size bayt"
+          [ "$size" -gt 10000 ] || { echo "::error::Yedek dosyası boş görünüyor"; exit 1; }
+
+      - name: Doğrula (boş Postgres'e geri yükle, satır sayılarını karşılaştır)
+        run: |
+          set -euo pipefail
+          docker run -d --name verify -e POSTGRES_PASSWORD=verify "$PG_IMAGE" >/dev/null
+          for i in $(seq 1 30); do docker exec verify pg_isready -U postgres >/dev/null 2>&1 && break; sleep 2; done
+          # Supabase'e özgü roller ve eklenti şeması (geri yükleme hatasız olsun)
+          docker exec verify psql -U postgres -v ON_ERROR_STOP=1 -q -c "create role anon; create role authenticated; create role service_role; create schema extensions; create extension pg_trgm schema extensions;"
+          docker cp out/db.dump verify:/tmp/db.dump
+          docker cp out/count.sql verify:/tmp/count.sql
+          # Hatalar sayılır ama durdurmaz (ör. Supabase'e özgü nesneler); asıl ölçüt satır sayıları
+          docker exec verify pg_restore -U postgres -d postgres --no-owner --no-privileges /tmp/db.dump > out/restore.log 2>&1 || true
+          echo "geri yükleme uyarısı: $(grep -c 'error:' out/restore.log || true)"
+          docker exec verify psql -U postgres -At -f /tmp/count.sql > out/restored_counts.txt
+          bad=0
+          printf "%-28s %10s %10s\n" tablo canli yedek
+          while read -r t n; do
+            m=$(awk -v t="$t" '$1 == t { print $2 }' out/restored_counts.txt); m=${m:--1}
+            printf "%-28s %10s %10s\n" "$t" "$n" "$m"
+            # Sayım ile döküm arasında birkaç satır değişebilir: %5 + 20 satır tolerans; dolu tablo boş gelirse ya da tablo yoksa hata
+            d=$(( n > m ? n - m : m - n ))
+            if [ "$m" -lt 0 ] || { [ "$n" -gt 0 ] && [ "$m" -eq 0 ]; } || [ "$d" -gt $(( n / 20 + 20 )) ]; then
+              echo "::error::Yedek doğrulanamadı: $t (canlı $n, yedek $m)"; bad=1
+            fi
+          done < out/live_counts.txt
+          docker rm -f verify >/dev/null
+          if [ "$bad" != 0 ]; then grep "error:" out/restore.log | head -20; exit 1; fi
+          echo "Yedek doğrulandı: $(wc -l < out/live_counts.txt) tablo"
+
+      - name: Şifrele (AES-256)
+        env:
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+          STAMP: ${{ steps.kind.outputs.stamp }}
+          KIND: ${{ steps.kind.outputs.kind }}
+        run: |
+          set -euo pipefail
+          f="out/trentakip-$KIND-$STAMP"
+          printf '%s' "$PASS" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 -o "$f.dump.gpg" out/db.dump
+          shred -u out/db.dump
+          sha256sum "$f.dump.gpg" > "$f.sha256"
+          cp out/live_counts.txt "$f.counts.txt"
+          ls -l out
+
+      - name: Yükle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: db-${{ steps.kind.outputs.kind }}-${{ steps.kind.outputs.stamp }}
+          path: |
+            out/*.dump.gpg
+            out/*.sha256
+            out/*.counts.txt
+          retention-days: ${{ steps.kind.outputs.kind == 'full' && 35 || 7 }}
+          if-no-files-found: error
+
+      - name: Telegram uyarısı (yedek alınamadı)
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${TG_TOKEN:-}" ] || [ -z "${TG_CHAT:-}" ]; then exit 0; fi
+          curl -sS -m 20 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=⚠️ Veritabanı yedeği alınamadı. Ayrıntı: ${RUN_URL}" >/dev/null

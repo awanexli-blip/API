@@ -37,6 +37,14 @@ const SOURCES: Record<string, () => Promise<{ id: number; name: string }[]>> = {
 {
   const mp = arg(process.argv[2], "trendyol", Object.keys(SOURCES), "pazaryeri");
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+  // Yer kilidi: liste ~200 MB (807 bin satır + trigram indeksi). Ücretsiz plan 500 MB; 25.10'da eski veritabanı sınırı aşınca çöktü.
+  // Doldurma sonrası tahmini boyut 400 MB'ı aşacaksa çalışma durur (panel marka araması liste yokken canlı Trendyol'dan yapar).
+  const { count: have } = await db.from("marketplace_brands").select("brand_id", { count: "planned", head: true }).eq("marketplace", mp);
+  const { data: size, error: se } = await db.rpc("db_size_bytes");
+  if (se) throw new Error(`Veritabanı boyutu okunamadı, güvenlik için durdu: ${se.message}`);
+  const projected = Number(size) + ((have ?? 0) > 0 ? 0 : 200 * 1024 ** 2);
+  if (projected > 400 * 1024 ** 2 && process.env.BRANDS_FORCE !== "1")
+    throw new Error(`Yer yok: veritabanı ${Math.round(Number(size) / 1024 ** 2)} MB, liste eklenince ~${Math.round(projected / 1024 ** 2)} MB olur (sınır 500, uyarı 400). Marka listesi indirilmedi; panel marka araması canlı Trendyol'dan yapar.`);
   const brands = await SOURCES[mp]();
   if (brands.length < 100) throw new Error(`${mp}: yalnızca ${brands.length} marka geldi, tablo güncellenmedi`);
   const now = new Date().toISOString();

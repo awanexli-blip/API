@@ -5,7 +5,7 @@
 import { breakdown, calcPrice, existingPriceSafe, type PricingConfig } from "../pricing.ts";
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
-import { normTitle, normFull } from "./util.ts";
+import { normTitle, normFull, readAll } from "./util.ts";
 import { salePriceOf } from "./sale-price.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
@@ -98,7 +98,11 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
   const rampRows: { k: string; p: number }[] = [];
   // Tedarikçi kod kopyaları (migration 057): grupta stokta en ucuz ilan dışındakilere stok 0 (fiyat yine güncellenir)
   const dupLosers = new Set<string>();
-  { const r = await ctx.db.rpc("dup_listing_losers", { p_mp: ctx.marketplaceId, p_min_stock: ctx.minStock }); if (!r.error) for (const x of r.data ?? []) dupLosers.add(x.listing_key); else console.error("kopya ilanlar okunamadı:", r.error.message); }
+  {
+    const r = await readAll<{ listing_key: string }>((a, b) => ctx.db.rpc("dup_listing_losers", { p_mp: ctx.marketplaceId, p_min_stock: ctx.minStock }).order("listing_key").range(a, b));
+    if (!r.error) for (const x of r.data) dupLosers.add(x.listing_key);
+    else { console.error("kopya ilanlar okunamadı:", r.error.message); (stats as any).duplicateError = r.error.message.slice(0, 200); }
+  }
   // Anahtar sıralı sayfalama (OFFSET sırasız ve derin sayfada yavaştı: ilan atlanabilir/çift gelebilirdi)
   for (let last = ""; ; ) {
     const { data, error } = await ctx.db.from("marketplace_listings")
@@ -233,7 +237,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
       for (const src of dedupeSources) {
         const stems = [...new Set((products ?? []).filter((p: any) => p.source === src).map((p: any) => codeStem(p.sku)))];
         for (let i = 0; i < stems.length; i += 200) {
-          const r = await ctx.db.rpc("product_code_siblings", { p_source: src, p_stems: stems.slice(i, i + 200) });
+          const r = await readAll((a, b) => ctx.db.rpc("product_code_siblings", { p_source: src, p_stems: stems.slice(i, i + 200) }).order("id").range(a, b));
           if (r.error) { console.error("kod kopyaları okunamadı:", r.error.message); continue; }
           const by = new Map<string, any[]>();
           for (const x of r.data ?? []) by.set(x.stem, [...(by.get(x.stem) ?? []), x]);

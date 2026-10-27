@@ -8,6 +8,23 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export const chunk = <T>(a: T[], n: number): T[][] => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 export const num = (v: any) => Number(String(v ?? "0").replace(",", "."));
 
+// Supabase (PostgREST) tek istekte en fazla 1000 satır döndürür, fazlası HATA VERMEDEN kesilir (.limit(20000) de 1000'de kalır).
+// Tamamı gereken okumalar sayfalı yapılır; sorgu kararlı sıralı olmalı (.order(benzersiz kolon)), yoksa sayfalar kayar.
+// 28.10: kopya ilan listesi 4.576 iken 1.000'i okunuyordu (3.538 kopya satışta kaldı).
+export async function readAll<T = any>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  size = 1000,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const out: T[] = [];
+  for (let from = 0; from < 2_000_000; from += size) {
+    const { data, error } = await page(from, from + size - 1);
+    if (error) return { data: out, error };
+    out.push(...(data ?? []));
+    if ((data?.length ?? 0) < size) break;
+  }
+  return { data: out, error: null };
+}
+
 // Barkod için ASCII dışı karakterleri at
 export const san = (v: string) => v.replace(/[^A-Za-z0-9._\-]/g, "");
 // Başlık karşılaştırması (çoklama koruması)

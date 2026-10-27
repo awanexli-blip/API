@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin, guard, unauthorized, bad, mpOf } from "@/lib/server";
+import { readAll } from "@/worker/core/util";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,9 @@ export async function GET(req: NextRequest) {
   const db = admin();
   const [ls, fx, cats, bw] = await Promise.all([
     db.from("marketplace_listings").select("listing_key, title, last_error, product_id, updated_at").eq("marketplace", mp).eq("status", "rejected").order("updated_at", { ascending: false }).limit(500),
-    db.from("listing_fixes").select("*").eq("marketplace", mp).limit(2000),
+    readAll((a, b) => db.from("listing_fixes").select("*").eq("marketplace", mp).order("listing_key").range(a, b)),
     db.rpc("store_categories", { mp }),
-    db.from("banned_words").select("word, source, created_at").eq("marketplace", mp).order("created_at", { ascending: false }),
+    readAll((a, b) => db.from("banned_words").select("word, source, created_at").eq("marketplace", mp).order("created_at", { ascending: false }).order("word").range(a, b)),
   ]);
   if (ls.error) return bad(ls.error.message);
   const fixes = new Map((fx.data ?? []).map((f: any) => [f.listing_key, f]));

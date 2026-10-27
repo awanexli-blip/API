@@ -64,7 +64,10 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `lib/supplier-xml.ts`, `app/api/suppliers/`, `app/_components/Suppliers.tsx` | Çoklu tedarikçi: XML adresi + alan eşlemesi (`suppliers`, migration 009), XML inceleme/önizleme |
 | `worker/core/db-products.ts`, `worker/core/listings.ts`, `worker/jobs.ts`, `app/api/listings/send`, `app/api/jobs` | Faz 3-4: ilan tablosu (`marketplace_listings`), iş kuyruğu (`jobs`), veritabanından pazaryerine gönderim ve stok/fiyat (migration 013) |
 | `app/api/feed/[token]`, `app/api/feeds`, `app/_components/Feeds.tsx` | Faz 2: XML feed dışa aktarma (gizli token adresi) |
-| `app/_components/Brands.tsx`, `BrandInput.tsx`, `app/api/brands/`, `worker/brands.ts`, `.github/workflows/brands.yml` | Markalar sekmesi (yeni ürün markası + geri al, marka dağılımı), marka arama (Trendyol marka listesi haftalık `marketplace_brands`) |
+| `app/_components/Brands.tsx`, `BrandInput.tsx`, `app/api/brands/`, `worker/brands.ts`, `.github/workflows/brands.yml` | Markalar sekmesi (yeni ürün markası + geri al, marka dağılımı), marka arama: liste indirilmez (200 MB, veritabanı sınırı), panel canlı Trendyol `brands/by-name` ile arar; `marketplace_brands`'e canlı sonuç yazılmaz (dolu görünürse worker diğer markaları "yok" sayar) |
+| `.github/workflows/backup.yml`, `ops/db-counts.sql`, `docs/YEDEK.md` | Günlük/haftalık şifreli veritabanı yedeği, geri yükleyerek doğrulama, geri yükleme kılavuzu |
+| `worker/recover-old.ts`, `.github/workflows/recover-old.yml` | Çöken eski veritabanından eksik satırları kurtarma (check/apply, fiyat alanları kapalı) |
+| `worker/core/util.ts` `readAll` | Supabase tek istekte en fazla 1000 satır verir, fazlası hatasız kesilir: tamamı gereken her okuma `readAll` + `.order(tekil)` ile |
 | `docs/TODO.md` | Yapılacaklar (öncelik sırasıyla) ve pazaryeri zorunlu alanları |
 | `docs/PROGRESS.md` | Gelişme günlüğü. **Her oturumda önce bunu oku, sonunda güncelle** |
 | `worker/pricing.ts` | `calcPrice()` fiyat formülü. Panel de simülasyon için aynı dosyayı import eder (`@/worker/pricing`) |
@@ -156,6 +159,8 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - **CSV tuzağı:** `preview.csv` ayracı `;`. Mevcut ürün satırlarının son sütununda (`MEVCUT (artacak; formül 479.9)`) ek bir `;` var. Analiz yaparken satırı ilk 8 `;` ile böl, kalanı durum sütunu say. `satis` sütunu **gönderilecek** fiyattır, mevcut fiyat değil (mevcut fiyatla karşılaştırma için Trendyol dışa aktarımı gerekir).
 - **Zamanlı çalışma:** cron UTC'dir. `auto_sync` açıksa 15 dakikada bir gerçekten güncelleme yapar. Önizleme istiyorsan `auto_sync`'i duraklat veya mod olarak `preview` yaz (varsayılan mod `auto`).
 - **Aracı yükleyici:** önceki yükleyici hâlâ senkronize ediyorsa fiyat/stokları ezer. Kullanıcı durdurdu ve secret'ı yeniledi, ama devam ettiğinden şüphelenirsen Trendyol panelindeki son güncelleme tarihlerine bak.
+- **1000 satır sınırı:** Supabase/PostgREST tek istekte en fazla 1000 satır döndürür, `.limit(20000)` de 1000'de kalır ve HATA VERMEZ (28.10: kopya kapatma 4.576'nın 1.000'ini görüyordu). Tamamı gereken okuma `readAll` ile.
+- **Hepsiburada stoksuz ilan:** HB stoğu 0 olan ilanı `isSalable=false` döndürür; bu "kapalı" sayılmaz (kapalıya stok gönderilmez, ilan kalıcı kapanırdı).
 - **Node:** worker `node --experimental-strip-types` ile TypeScript'i doğrudan çalıştırır (Node 22+). `worker/` kendi `package.json`'una sahip (`@supabase/supabase-js`, `fast-xml-parser`).
 
 ## 8. Ortam değişkenleri (sadece adlar)
@@ -165,6 +170,8 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 **Hepsiburada (GitHub Secrets):** `HB_MERCHANT_ID`, `HB_USERNAME`, `HB_PASSWORD`; Variables: `HB_ENV` (boş=SIT, `prod`), `HB_USER_AGENT`.
 
 **GitHub Secrets (worker):** `SUPABASE_URL2`, `SUPABASE_SERVICE_ROLE_KEY2` (25.10 yeni proje; eski adlar ölü projeye işaret eder), `XML_URL`, `TRENDYOL_SELLER_ID`, `TRENDYOL_API_KEY`, `TRENDYOL_API_SECRET`, `TRENDYOL_SHIPMENT_ADDRESS_ID`, `TRENDYOL_RETURN_ADDRESS_ID` (opsiyonel, `create` için; V2'de `TRENDYOL_CARGO_COMPANY_ID` kullanılmıyor). **GitHub Variables (opsiyonel):** `TRENDYOL_STOREFRONT`, `TRENDYOL_BRAND_NAME`.
+
+**Yedek (GitHub Secrets):** `SUPABASE_DB_URL2` (Session pooler adresi, parolalı), `BACKUP_PASSPHRASE` (yedek şifresi; kaybolursa yedekler açılmaz). Kurulum `docs/YEDEK.md`.
 
 **Vercel (panel):** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `GH_TOKEN` (fine-grained, bu repo, Actions: Read and write), `GH_REPO` (`awanexli-blip/API`).
 

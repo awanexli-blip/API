@@ -8,7 +8,7 @@ import { calcPrice, cfgFromSettings } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
 import { loadBrandMatcher } from "./core/brand-risk.ts";
-import { env, chunk, normFull, arg, SUPPLIER_ARG } from "./core/util.ts";
+import { env, chunk, normFull, arg, SUPPLIER_ARG, readAll } from "./core/util.ts";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const clamp = (x: number, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -41,7 +41,7 @@ async function main() {
   let s: any = base;
   if (mp !== "trendyol") { const { data: ms } = await db.from("marketplace_settings").select("*").eq("marketplace", mp).maybeSingle(); s = { ...base }; for (const [k, v] of Object.entries(ms ?? {})) if (v != null) s[k] = v; }
   const cfg = cfgFromSettings(s, Number(s.vat_rate ?? 20));
-  const pr = await db.from("pricing_rules").select("*");
+  const pr = await readAll((a, b) => db.from("pricing_rules").select("*").order("id").range(a, b));
   const rules = rulesFor((pr.data ?? []) as PricingRule[], mp);
 
   // Kategori/komisyon tahmini: pazaryerindeki kabul edilmiş ilanlardan; mağazadaki başlıklar (çoklama elemesi)
@@ -63,7 +63,7 @@ async function main() {
 
   // Satış hızı (son 7 gün tedarikçi stok düşüşü)
   const sold = new Map<string, number>();
-  const vel = await db.rpc("stock_velocity", { p_source: source, p_days: 7 });
+  const vel = await readAll((a, b) => db.rpc("stock_velocity", { p_source: source, p_days: 7 }).order("product_id").range(a, b));
   for (const r of (vel.data ?? []) as any[]) sold.set(r.product_id, Number(r.sold));
   const velDays = Math.max(0, ...((vel.data ?? []) as any[]).map((r) => Number(r.days)));
 
