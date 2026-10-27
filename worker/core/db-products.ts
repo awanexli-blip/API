@@ -81,6 +81,9 @@ function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number,
 export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[]; stats: Record<string, number> }> {
   const items: InventoryItem[] = [];
   const stats: Record<string, number> = { listings: 0, updated: 0, zeroed: 0, notLive: 0 };
+  // Tedarikçi kod kopyaları (migration 057): grupta stokta en ucuz ilan dışındakilere stok 0 (fiyat yine güncellenir)
+  const dupLosers = new Set<string>();
+  { const r = await ctx.db.rpc("dup_listing_losers", { p_mp: ctx.marketplaceId, p_min_stock: ctx.minStock }); if (!r.error) for (const x of r.data ?? []) dupLosers.add(x.listing_key); else console.error("kopya ilanlar okunamadı:", r.error.message); }
   // Anahtar sıralı sayfalama (OFFSET sırasız ve derin sayfada yavaştı: ilan atlanabilir/çift gelebilirdi)
   for (let last = ""; ; ) {
     const { data, error } = await ctx.db.from("marketplace_listings")
@@ -107,7 +110,9 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       // Formda girilen satış fiyatı olduğu gibi gider (smart politikanın kademeli düşüşü uygulanmaz)
       const sendPrice = ovOk ? ovPrice : "fixed" in pr && pr.fixed ? pr.price : existingPriceSafe(ctx.policy, Number(ls.price), pr.price, pr.cost, pr.pcfg, pr.comm);
       ctx.econ?.set(key, { cost: pr.cost, comm: pr.comm, pcfg: pr.pcfg, price: sendPrice ?? Number(ls.price) });
-      const qty = p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
+      const dup = dupLosers.has(key);
+      if (dup) stats.duplicateClosed = (stats.duplicateClosed ?? 0) + 1;
+      const qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
       items.push({ id: key, price: sendPrice, quantity: qty });
       stats.updated++;
     }
