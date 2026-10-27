@@ -180,6 +180,7 @@ export function createHepsiburada(): Marketplace {
   return {
     id: "hepsiburada",
     label: "Hepsiburada",
+    pushOnlyChanged: true,
 
     // Mağazadaki listing\'ler (satıcı stok kodu = merchantSku)
     async loadListings(): Promise<Listing[]> {
@@ -236,18 +237,25 @@ export function createHepsiburada(): Marketplace {
     // Stok ve fiyat ayrı uçlar; her biri takip numarası döner
     async pushInventory(list: InventoryItem[]): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      // Hız sınırı (429) / geçici hata (5xx): artan beklemeyle en çok 3 deneme
+      const hbRetry = async (url: string, body: string) => {
+        for (let i = 0; ; i++) {
+          try { return await hb(url, { method: "POST", body }); }
+          catch (e: any) { if (i >= 3 || !/Hepsiburada (429|5\d\d) /.test(String(e?.message))) throw e; await sleep(15000 * (i + 1)); }
+        }
+      };
       for (const batch of chunk(list, 500)) {
         try {
-          const r = await hb(`${LISTING}/listings/merchantid/${MERCHANT}/stock-uploads`, { method: "POST", body: JSON.stringify(batch.map((p) => ({ merchantSku: p.id, availableStock: p.quantity }))) });
+          const r = await hbRetry(`${LISTING}/listings/merchantid/${MERCHANT}/stock-uploads`, JSON.stringify(batch.map((p) => ({ merchantSku: p.id, availableStock: p.quantity }))));
           res.batchIds.push("stock:" + trackingId(r));
           const priced = batch.filter((p) => p.price != null);
           if (priced.length) {
             await sleep(300);
-            const r2 = await hb(`${LISTING}/listings/merchantid/${MERCHANT}/price-uploads`, { method: "POST", body: JSON.stringify(priced.map((p) => ({ merchantSku: p.id, price: p.price }))) });
+            const r2 = await hbRetry(`${LISTING}/listings/merchantid/${MERCHANT}/price-uploads`, JSON.stringify(priced.map((p) => ({ merchantSku: p.id, price: p.price }))));
             res.batchIds.push("price:" + trackingId(r2));
           }
           res.ok += batch.length;
-        } catch (e: any) { res.failed++; console.error(e.message); }
+        } catch (e: any) { res.failed++; console.error(e.message); if ((res.errors ??= []).length < 3) res.errors.push(String(e.message).replace(/merchantid\/[^/]+/gi, "merchantid/*").slice(0, 300)); }
         await sleep(300);
       }
       return res;

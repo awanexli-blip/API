@@ -79,6 +79,7 @@ export interface BatchResult {
   failed: number;       // başarısız toplu istek sayısı
   batchIds: string[];
   failedItems?: { id: string; reason: string }[]; // anında reddedilen ürünler (ör. Amazon Listings API doğrulaması)
+  errors?: string[];   // başarısız toplu isteklerin ilk hata mesajları (özet: pushErrors)
 }
 
 export interface Commission { rate: number; source: string }
@@ -107,6 +108,8 @@ export interface Marketplace {
   checkBatches?(ids: string[], opts?: { quick?: boolean }): Promise<BatchCheck>;
   /** Yeni ürün açmak için pazaryeri kategorisi şart mı (Trendyol/HB evet, Amazon teklif modunda hayır) */
   requiresCategory?: boolean;
+  // Stok/fiyat yalnızca pazaryerindeki değerden farklıysa gönderilir (HB: toplu yükleme hız sınırı; her turda 14 bin ilan gidince takılıyordu)
+  pushOnlyChanged?: boolean;
   /** Panelden gönderimde pazaryerindeki anahtar (varsayılan: BayilikXML "OS13-"+SKU, diğerleri barkod) */
   listingKeyFor?(source: string, variant: { sku: string; barcode: string | null }): string;
   /** Amazon: barkoddan (EAN/GTIN) veya başlıktan katalog eşleşmesi */

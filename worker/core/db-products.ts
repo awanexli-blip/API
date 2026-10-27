@@ -113,6 +113,8 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       const dup = dupLosers.has(key);
       if (dup) stats.duplicateClosed = (stats.duplicateClosed ?? 0) + 1;
       const qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
+      // Değişmeyen ilan gönderilmez (pushOnlyChanged pazaryerleri)
+      if (ctx.mp.pushOnlyChanged && Number(ls.quantity) === qty && (sendPrice == null || Math.abs(Number(ls.price) - sendPrice) < 0.01)) { stats.unchanged = (stats.unchanged ?? 0) + 1; continue; }
       items.push({ id: key, price: sendPrice, quantity: qty });
       stats.updated++;
     }

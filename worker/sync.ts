@@ -434,6 +434,7 @@ async function main() {
     }
     const r = await mp.pushInventory(toUpdate);
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
+    if (r.errors?.length) summary.pushErrors = r.errors;
     // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
     if (mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000)).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
 
