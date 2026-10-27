@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-27 (38) — Kopyalar kapatıldı, HB stok takılması, değişiklik geçmişi büyümesi
+- K onayı: satıştaki Toptancım kod kopyaları kapatılır (migration 057 `dup_listing_losers`): grupta stokta en ucuz ilan açık, diğerlerine her senkronda stok 0 (TY 4.576, HB 2.356 ilan). Silme yok; en ucuzun stoğu biterse sıradaki açılır.
+- HB: her turda 14 bin ilanın tamamı gönderiliyordu, 5 paketten sonra hata (muhtemelen hız sınırı): ~11 bin ilanın stoğu güncellenmiyordu. Artık yalnızca değişen ilanlar (`pushOnlyChanged`), 429/5xx'te bekleyip 3 deneme, ilk hata mesajları özete (`pushErrors`).
+- Değişiklik geçmişi 1,5 günde 47 MB (içe aktarma her maliyet değişikliğinde tüm varyant listesini yazıyordu; 30 günde ~900 MB, sınır 500). Otomatik işlemlerde varyant listesi/updated_* tutulmaz (migration 058); elle değişiklikler tam.
+- Açık: HB'de 873, TY'de 351 ilan ürüne bağlı değil (çoğu Royal; Royal yeniden eklenmedi): stokları güncellenmiyor. Kâr marjı %10-20 seçeneği K'nın seçimini bekliyor.
+
 ## 2026-10-27 (37) — Ürün formu: tüm zorunlular (HB dahil), Gönderime hazırlık, belge
 - K: "HB ayakkabıda cinsiyet istiyor ama formda yok; her pazaryerinin zorunlusu bizde de zorunlu olsun, eksiksiz panel". Neden: HB özellikleri panele hiç gelmiyordu (HB anahtarı yalnızca GitHub'da). Çözüm: "Pazaryeri kataloğu" iş akışı (`.github/workflows/catalog.yml`, `worker/catalog.ts`): kategori ağaçları (TY 3.361, HB 4.785 yaprak) günlük; panelin istediği kategori özellikleri iş kuyruğundan (`mp_attrs:<pazaryeri>`), panel iş akışını kendisi başlatır ve bekleme gösterir (~1-2 dk, sonra önbellekten anında). Vercel'de HB anahtarı varsa doğrudan.
 - Doğrulandı (canlı): HB Erkek Sneakers (204249) zorunlu: Cinsiyet, Ayakkabı Numarası (varyant), Renk (varyant); TY Sneaker (975) zorunlu 7. HB değer listeleri sayfalı (renk 1000+; önce ilk 1000'de kalıyordu, panel ve gönderim).
