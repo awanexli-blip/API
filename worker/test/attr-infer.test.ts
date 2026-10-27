@@ -88,5 +88,18 @@ for (const [a, mp, want] of [[{ "Satış fiyatı": "1.299,90" }, "trendyol", 129
   c(parseDyn({ competition: 0.1 }) === null && parseDyn(null) === null && parseDyn({ competition: 2, alone: 0.2, bands: [[null, 0.1]] }) === null, "hatalı ayar kapalı");
 }
 
+// Rekabet önerisi: in (en az 40 TL net), artır (ikinci çok pahalı), formüle dön (rakip yok)
+{
+  const { suggestFor } = await import("../core/buybox.ts");
+  const c = (ok: boolean, w: string) => { console.log(`${ok ? "OK  " : "HATA"} rekabet: ${w}`); if (!ok) fails++; };
+  const netAt = (p: number) => p - 300; // basit: maliyet+giderler 300
+  c(suggestFor({ order: 2, multiple: true, buybox: 400, second: 410, ours: 420, overridden: false, minNet: 40, netAt })?.kind === "lower", "1 TL altında 99 TL net -> in");
+  c(suggestFor({ order: 2, multiple: true, buybox: 330, second: 340, ours: 360, overridden: false, minNet: 40, netAt }) === null, "net 29 TL < 40 -> öneri yok");
+  const up = suggestFor({ order: 1, multiple: true, buybox: 400, second: 480, ours: 400, overridden: false, minNet: 40, netAt });
+  c(up?.kind === "raise" && up.price === 479, "ikinci 480 -> 479'a artır");
+  c(suggestFor({ order: 1, multiple: true, buybox: 400, second: 405, ours: 400, overridden: false, minNet: 40, netAt }) === null, "ikinci yakın -> dokunma");
+  c(suggestFor({ order: 1, multiple: false, buybox: 400, second: null, ours: 400, overridden: true, minNet: 40, netAt })?.kind === "reset", "rakip kalmadı -> formüle dön");
+}
+
 if (fails) { console.log(`\n${fails} özellik çıkarma testi başarısız`); process.exit(1); }
 console.log("\nÖzellik çıkarma testleri geçti");

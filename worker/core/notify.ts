@@ -74,5 +74,13 @@ export async function runAlerts(db: any, mp: { id: string; label: string }, summ
     const text = `📊 <b>Dünün özeti</b> (${day(y)})\nSipariş: <b>${k?.orders ?? 0}</b> · ${tl(k?.gross)}\nTahmini net kâr: <b>${tl(k?.net)}</b>\nİptal: ${k?.cancelled ?? 0} · İade: ${k?.returned ?? 0}\nTedarikçiye verilmeyi bekleyen sipariş: ${open ?? 0}\nReddedilen/hatalı ilan (24 saat): ${rej ?? 0}`;
     if (await notifyOnce(db, `daily:${today}`, text)) add("gunluk");
   }
+  // 7) Rekabet önerileri (günde bir, Trendyol): onay panelde (Pazaryeri > Rekabet > Öneriler)
+  if (mp.id === "trendyol") {
+    const { data: rows } = await db.from("listing_buybox").select("suggestion").eq("marketplace", "trendyol").not("suggestion", "is", null).limit(5000);
+    const c = { lower: 0, raise: 0, reset: 0 } as Record<string, number>;
+    for (const r of rows ?? []) c[r.suggestion] = (c[r.suggestion] ?? 0) + 1;
+    const total = c.lower + c.raise + c.reset;
+    if (total && await notifyOnce(db, `buybox:${day(TR(now))}`, `🏷️ <b>${total} rekabet önerisi</b> (güncel fiyatlarla)\nİn (buybox al): ${c.lower} · Artır: ${c.raise} · Formüle dön: ${c.reset}\nPanel → Trendyol → Rekabet → Öneriler: karşılaştır, seç, onayla.`)) add("rekabet");
+  }
   return out;
 }

@@ -454,7 +454,7 @@ async function main() {
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
     if (r.errors?.length) summary.pushErrors = r.errors;
     // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
-    if (mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000)).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    if (mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000), { minNet: Number(cfg.netProfitMin ?? 0), overridden: new Set([...ovMap.values()].filter((o: any) => o.price_override != null).map((o: any) => o.barcode)) }).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
 
     // XML'den kalkan ürünler: yalnızca eşleşme güvenilirse stoğu sıfırla
     if (s.zero_missing) {
