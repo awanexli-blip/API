@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-28 (44) — Ürün araştırması (deneme, varsayılan kapalı)
+- K: aynı ürünü bul, oradaki bilgiyi (ör. soru-cevaptaki ölçü) al, kendi cümlemizle ekle. Toptancım'da gerçek barkod yok (26.104 varyantın 0'ı), eşleşme fotoğraf + başlık + görsel dosya adı ipucuyla.
+- `worker/core/research.ts`: arama (gemini-2.5-flash + google_search + url_context) → aynı ürün mü (fotoğraf karşılaştırma; ilan fotoğrafı inmezse sayfa okuyarak) → alıntı sayfada mı → kabul kuralları (`acceptFacts`: yalnızca ölçülebilir bilgi türleri, sayı alıntıda, iki ilan çelişirse atılır, garanti/fiyat/kargo/stok/kod alınmaz). Başka ilanın markası açıklamaya giremez (desc-check `forbidden`). Migration 067'ye `facts`, `research` kolonları (067 henüz uygulanmamıştı). Deneme aracı `worker/desc-try.ts` (veritabanına yazmaz).
+- Canlı deneme (K'nın anahtarı): google_search yalnızca 2.5-flash'ta açık (3.5/3.6: 429). İlk denemede Trendyol'da aynı görünen ürün ve soru-cevap bilgileri bulundu; ama Trendyol ürün sayfaları Google sayfa okuyucusuna kapalı (URL_RETRIEVAL_STATUS_ERROR), doğrudan indirme 403 → bilgiler bağımsız doğrulanamadı, sistem hiçbirini kullanmadı (doğru davranış). Ürün başına 2-5 dk, araçlı ücretsiz kota birkaç denemede doldu. **Varsayılan kapalı (RESEARCH=1 açar); nasıl devam edileceği K kararı.**
+
 ## 2026-10-28 (43) — Yapay zekâ ile açıklama düzeltme (onaylı)
 - K: "yapay zekâ %100 düzeltebilirse açıklamaları düzgün yazsın". Akış: taslak (yalnızca tedarikçi metnindeki bilgi; yazım, düzen, madde listesi; kod/iletişim/fiyat/kargo sözleri çıkar) → kurallı kontrol `worker/core/desc-check.ts` (kaynakta olmayan sayı, model kodu, iddia: orijinal/garanti/%100/su geçirmez/sağlık/kargo/indirim..., iletişim, izinsiz HTML, marka riski, yasaklı kelime, bilgi kaybı) → ikinci çağrı doğrulama (dayanaksız tek ifade = taslak yok). Geçemeyen "Yazılamayan" + neden; ürün tedarikçi metniyle kalır.
 - Migration 067 `product_descriptions` + `desc_candidates` (sunucu tarafında aday seçimi, Trendyol'da satıştakiler önce) + `desc_counts`. **K SQL Editor'de çalıştıracak**; yokken her şey sessizce eski davranışta.

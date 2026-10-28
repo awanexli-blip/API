@@ -11,6 +11,7 @@ import { geminiEnabled, geminiJson, GeminiQuotaError } from "./gemini.ts";
 import { checkDescription, stripTags } from "./desc-check.ts";
 import { loadBrandMatcher } from "./brand-risk.ts";
 import { readAll } from "./util.ts";
+import { researchProduct, type Fact } from "./research.ts";
 
 const Draft = z.object({ html: z.string(), confident: z.boolean(), notes: z.string() });
 const Verify = z.object({ unsupported: z.array(z.string()), verdict: z.enum(["dogru", "hatali"]) });
@@ -23,7 +24,10 @@ KESİN KURALLAR:
 - Kaynakta yoksa şunları asla yazma: orijinal, garanti, %100, en iyi/kaliteli, su geçirmez, sertifika, sağlık etkisi, el yapımı, yerli üretim, kargo/teslimat, fiyat/indirim/hediye, stok.
 - Yazım, noktalama ve büyük-küçük harf hatalarını düzelt; tekrarları birleştir; tedarikçi kodlarını, web adreslerini, telefon/iletişim bilgilerini, "sitemizde", "mağazamızda" gibi ifadeleri çıkar.
 - Kaynaktaki her somut bilgiyi koru (ölçü, adet, malzeme, özellik). Sayıları aynen yaz.
+- Kaynakta olmayan yorum ya da fayda cümlesi kurma ("kullanım kolaylığı sunar", "rahatlama sağlar", "şık görünüm kazandırır", "ideal" gibi): yalnızca bilgiyi yaz.
 - Biçim: 1-2 cümlelik giriş <p> içinde, sonra <ul><li> maddeleri (her madde kaynaktan bir bilgi). Gerekirse <strong> ile kısa başlık. Başka HTML etiketi ya da öznitelik kullanma. Emoji yok.
+- "DOĞRULANMIŞ EK BİLGİLER" bölümü aynı ürünün başka ilanlarından doğrulanmış bilgilerdir: bunları da kullan (ör. ölçü, süre, malzeme),
+  ama kendi cümlenle yaz; site, satıcı, marka ya da ilan adı yazma, "satıcı belirtti" deme.
 - Türkçe, sade, abartısız. 400-1500 karakter ideal; kaynak kısaysa kısa kalsın, şişirme.
 - Kaynak çelişkili, anlaşılmaz ya da ürünü tarif etmiyorsa confident: false ver ve html boş kalsın. Emin değilsen confident: false.
 notes: neyi düzelttiğin (kısa).`;
@@ -47,11 +51,32 @@ async function ask<T>(schema: z.ZodType<T>, gschema: Record<string, unknown>, sy
   return r.stop_reason === "refusal" ? null : ((r.parsed_output as T) ?? null);
 }
 
-type Cand = { id: string; title: string; description: string; brand: string | null; category: string | null; attributes: Record<string, unknown> | null; source_hash: string };
-const sourceBlock = (c: Cand) => {
+type Cand = { id: string; title: string; description: string; brand: string | null; category: string | null; attributes: Record<string, unknown> | null; source_hash: string; image_url: string | null };
+const titleOnly = (c: Cand) => stripTags(c.description).trim().toLocaleLowerCase("tr") === c.title.trim().toLocaleLowerCase("tr");
+const sourceBlock = (c: Cand, facts: Fact[] = []) => {
   const attrs = Object.entries(c.attributes ?? {}).filter(([k, v]) => !/kategori|satış fiyatı|@|^_/i.test(k) && v != null && typeof v !== "object").slice(0, 25).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join("\n");
-  return `BAŞLIK: ${c.title}\n${attrs ? `ÖZELLİKLER:\n${attrs}\n` : ""}AÇIKLAMA:\n${stripTags(c.description).slice(0, 4000)}`;
+  const own = titleOnly(c) ? "(tedarikçi açıklaması yok)" : stripTags(c.description).slice(0, 4000);
+  return `BAŞLIK: ${c.title}\n${attrs ? `ÖZELLİKLER:\n${attrs}\n` : ""}AÇIKLAMA:\n${own}${facts.length ? `\nDOĞRULANMIŞ EK BİLGİLER:\n${facts.map((f) => `- ${f.name}: ${f.value}`).join("\n")}` : ""}`;
 };
+// Ürün araştırması Gemini Google aramasıyla (Claude anahtarı olsa da). Varsayılan KAPALI, RESEARCH=1 açar (28.10 deneme: Trendyol/HB
+// ürün sayfaları Google sayfa okuyucusuna kapalı -> bilgiler bağımsız doğrulanamıyor; arama araçlı ücretsiz kota birkaç denemede doldu)
+const researchOn = () => geminiEnabled() && process.env.RESEARCH === "1";
+
+// Taslak -> kurallı kontrol -> doğrulama (veritabanına yazmaz; deneme aracı da kullanır: worker/desc-try.ts)
+export async function composeDescription(c: Cand, facts: Fact[], ctx: { brandMatch?: (t: string, d?: string) => string | null; banned?: string[]; forbidden?: string[] }):
+  Promise<{ status: "ready"; html: string; notes: string } | { status: "skipped"; reason: string; checks: any }> {
+  const src = sourceBlock(c, facts);
+  const d = await ask(Draft, DRAFT_SCHEMA, SYSTEM_DRAFT, `KAYNAK:\n${src}\n\nBu ürünün açıklamasını kurallara göre düzenle.`);
+  if (!d) return { status: "skipped", reason: "model yanıt vermedi", checks: {} };
+  if (!d.confident || !d.html.trim()) return { status: "skipped", reason: `model emin değil${d.notes ? `: ${d.notes.slice(0, 200)}` : ""}`, checks: {} };
+  // Doğrulanmış bilgiler kaynak sayılır (ölçüdeki sayılar geçer); başka ilanın markası yazılamaz
+  const chk = checkDescription(d.html, { title: c.title, description: `${c.description}\n${facts.map((f) => `${f.name} ${f.value}`).join("\n")}`, attributes: c.attributes, brand: c.brand }, ctx);
+  if (!chk.ok) return { status: "skipped", reason: `kontrol: ${chk.reasons.join("; ")}`, checks: { rules: chk.reasons, draft: d.html.slice(0, 3000) } };
+  const v = await ask(Verify, VERIFY_SCHEMA, SYSTEM_VERIFY, `KAYNAK:\n${src}\n\nTASLAK:\n${chk.text}`);
+  if (!v) return { status: "skipped", reason: "doğrulama yanıt vermedi", checks: {} };
+  if (v.verdict !== "dogru" || v.unsupported.length) return { status: "skipped", reason: `doğrulama: dayanaksız ifade: ${v.unsupported.slice(0, 3).join(" | ").slice(0, 300)}`, checks: { unsupported: v.unsupported.slice(0, 10), draft: chk.html } };
+  return { status: "ready", html: chk.html, notes: d.notes.slice(0, 300) };
+}
 
 export async function draftDescriptions(db: any, opts: { max?: number } = {}) {
   const out: Record<string, any> = { provider: claudeOn() ? "claude" : geminiEnabled() ? "gemini" : null, candidates: 0, ready: 0, skipped: 0, errors: 0, reasons: {} as Record<string, number> };
@@ -67,22 +92,24 @@ export async function draftDescriptions(db: any, opts: { max?: number } = {}) {
   { const { data } = await db.from("product_descriptions").select("product_id, attempts").in("product_id", cands.map((c: Cand) => c.id)); for (const r of data ?? []) prev.set(r.product_id, r.attempts); }
   for (const c of cands as Cand[]) {
     const now = new Date().toISOString();
-    const base = { product_id: c.id, source_hash: c.source_hash, original: c.description, updated_at: now, attempts: (prev.get(c.id) ?? 0) + 1, model: out.provider };
+    const base: Record<string, any> = { product_id: c.id, source_hash: c.source_hash, original: c.description, updated_at: now, attempts: (prev.get(c.id) ?? 0) + 1, model: out.provider };
     const skip = async (reason: string, checks: any = {}) => {
       out.skipped++; const key = reason.replace(/[:(].*$/, "").trim(); out.reasons[key] = (out.reasons[key] ?? 0) + 1;
       await db.from("product_descriptions").upsert({ ...base, status: "skipped", draft: null, reason: reason.slice(0, 500), checks });
     };
     try {
-      const src = sourceBlock(c);
-      const d = await ask(Draft, DRAFT_SCHEMA, SYSTEM_DRAFT, `KAYNAK:\n${src}\n\nBu ürünün açıklamasını kurallara göre düzenle.`);
-      if (!d) { await skip("model yanıt vermedi"); continue; }
-      if (!d.confident || !d.html.trim()) { await skip(`model emin değil${d.notes ? `: ${d.notes.slice(0, 200)}` : ""}`); continue; }
-      const chk = checkDescription(d.html, { title: c.title, description: c.description, attributes: c.attributes, brand: c.brand }, { brandMatch, banned });
-      if (!chk.ok) { await skip(`kontrol: ${chk.reasons.join("; ")}`, { rules: chk.reasons }); continue; }
-      const v = await ask(Verify, VERIFY_SCHEMA, SYSTEM_VERIFY, `KAYNAK:\n${src}\n\nTASLAK:\n${chk.text}`);
-      if (!v) { await skip("doğrulama yanıt vermedi"); continue; }
-      if (v.verdict !== "dogru" || v.unsupported.length) { await skip(`doğrulama: dayanaksız ifade: ${v.unsupported.slice(0, 3).join(" | ").slice(0, 300)}`, { unsupported: v.unsupported.slice(0, 10) }); continue; }
-      const { error: we } = await db.from("product_descriptions").upsert({ ...base, status: "ready", draft: chk.html, reason: null, checks: { rules: [], unsupported: [], notes: d.notes.slice(0, 300) } });
+      // Ürün araştırması: aynı ürünün başka ilanlarından doğrulanmış bilgiler (bulunamazsa yalnızca tedarikçi metni)
+      let facts: Fact[] = [], foreign: string[] = [];
+      if (researchOn() && c.image_url) {
+        const rr = await researchProduct({ title: c.title, description: c.description, image_url: c.image_url });
+        facts = rr.facts; foreign = rr.research.foreignNames ?? [];
+        Object.assign(base, { facts, research: rr.research });
+        out.researched = (out.researched ?? 0) + 1; if (facts.length) out.withFacts = (out.withFacts ?? 0) + 1;
+      }
+      if (titleOnly(c) && !facts.length) { await skip(`kaynak bilgi yok: tedarikçi açıklaması başlığın kopyası${base.research?.status ? `, araştırma: ${base.research.status}` : ""}`); continue; }
+      const r = await composeDescription(c, facts, { brandMatch, banned, forbidden: foreign });
+      if (r.status === "skipped") { await skip(r.reason, r.checks); continue; }
+      const { error: we } = await db.from("product_descriptions").upsert({ ...base, status: "ready", draft: r.html, reason: null, checks: { rules: [], unsupported: [], notes: r.notes } });
       if (we) { out.errors++; out.lastError = we.message.slice(0, 200); continue; }
       out.ready++;
     } catch (e: any) {

@@ -9,7 +9,7 @@ export const stripTags = (html: string) => html.replace(/<br\s*\/?>/gi, " ").rep
 export const norm = (s: string) => ` ${stripTags(String(s ?? "")).toLocaleLowerCase("tr").replace(/ı/g, "i").replace(/[^0-9a-zçğöşü%.,]+/g, " ").replace(/\s+/g, " ").trim()} `;
 
 // Kaynakta geçmiyorsa taslakta da olamaz (pazaryeri yanıltıcı iddia sayar ya da uydurma olabilir)
-const CLAIMS: [string, RegExp][] = [
+export const CLAIMS: [string, RegExp][] = [
   ["orijinal", /orijinal|original|lisansl/], ["%100", /%\s?100|yüzde yüz|yuzde yuz/], ["garanti", /garanti/], ["kargo", /kargo|teslimat|aynı gün|ayni gun|hızlı gönderim|hizli gonderim/],
   ["fiyat/indirim", /indirim|kampanya|fiyat|ucuz|uygun fiyat|hediye|bedava|ücretsiz|ucretsiz/], ["en iyi", /en iyi|en kaliteli|1\.? kalite|birinci sınıf|birinci sinif|lüks|luks|premium/],
   ["sağlık", /tedavi|şifa|sifa|iyileştir|iyilestir|hastalık|hastalik|ağrı|agri|zayıfla|zayifla|kilo ver|bağışıklık|bagisiklik|antibakteriyel|antibakteriel/],
@@ -39,7 +39,7 @@ const numbers = (s: string) => [...s.matchAll(/\d+(?:[.,]\d+)?/g)].map((m) => m[
 const codes = (s: string) => [...s.matchAll(/\b(?=[a-z0-9-]*\d)(?=[a-z0-9-]*[a-zçğıöşü])[a-zçğıöşü0-9-]{2,}\b/gi)].map((m) => m[0].toLocaleLowerCase("tr").replace(/ı/g, "i"));
 
 export function checkDescription(draftHtml: string, source: { title: string; description: string; attributes?: Record<string, unknown> | null; brand?: string | null },
-  opts: { brandMatch?: (t: string, d?: string) => string | null; banned?: string[] } = {}): DescCheck {
+  opts: { brandMatch?: (t: string, d?: string) => string | null; banned?: string[]; forbidden?: string[] } = {}): DescCheck {
   const reasons: string[] = [];
   const c = cleanHtml(draftHtml);
   if (c.error) return { ok: false, reasons: [c.error], text: "", html: "" };
@@ -62,6 +62,8 @@ export function checkDescription(draftHtml: string, source: { title: string; des
     if (b && !opts.brandMatch(src)) reasons.push(`marka riski: ${b}`);
   }
   for (const w of opts.banned ?? []) if (w && norm(text).includes(` ${norm(w).trim()} `)) reasons.push(`yasaklı kelime: ${w}`);
+  // Araştırmada bulunan başka ilanın markası / adı (worker/core/research.ts foreignNames)
+  for (const w of opts.forbidden ?? []) if (w && nOut.includes(` ${norm(w).trim()} `)) reasons.push(`başka ilanın markası/adı: ${w}`);
   // Kaynaktaki içeriğin büyük kısmı korunmalı (model metni kısaltıp bilgiyi atmasın): kaynağın anlamlı kelimelerinin en az %40'ı taslakta
   const words = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length >= 5));
   const sw = words(source.description), ow = words(text);

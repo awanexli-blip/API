@@ -80,3 +80,48 @@ export async function geminiJson<T>(system: string, user: string, schema: Record
   if (!models.length) throw new GeminiQuotaError("Gemini: tüm modellerin kotası bu çalışmada doldu");
   throw new Error(lastErr || lastQuota || "Gemini yanıt vermedi");
 }
+
+// Araçlı / görselli serbest çağrı (ürün araştırması: worker/core/research.ts). Google araması (google_search) bu hesapta yalnızca
+// gemini-2.5-flash'ta açık (28.10 denendi; 3.5/3.6'da 429), sayfa okuma (url_context) hepsinde. JSON modu araçlarla birlikte
+// kullanılamadığı için JSON metinden ayrıştırılır (parseLooseJson). Kota (429): GeminiQuotaError.
+export type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
+export async function geminiCall(o: { parts: GeminiPart[]; system?: string; tools?: ("google_search" | "url_context")[]; model?: string; temperature?: number; timeoutMs?: number }) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY yok");
+  const model = o.model ?? process.env.GEMINI_RESEARCH_MODEL ?? "gemini-2.5-flash";
+  for (let t = 0; ; t++) {
+    const wait = last + GAP - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    last = Date.now();
+    const res = await fetch(`${BASE}/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, signal: AbortSignal.timeout(o.timeoutMs ?? 240_000),
+      body: JSON.stringify({
+        ...(o.system ? { systemInstruction: { parts: [{ text: o.system }] } } : {}),
+        contents: [{ role: "user", parts: o.parts }],
+        ...(o.tools?.length ? { tools: o.tools.map((x) => ({ [x]: {} })) } : {}),
+        generationConfig: { temperature: o.temperature ?? 0 },
+      }),
+    });
+    const j: any = await res.json().catch(() => null);
+    const msg = String(j?.error?.message ?? "").slice(0, 200);
+    if (res.status === 429) throw new GeminiQuotaError(`Gemini kotası (429, ${model}): ${msg}`);
+    if ((res.status === 503 || res.status === 500) && t < 2) { await new Promise((r) => setTimeout(r, 5000 * (t + 1))); continue; }
+    if (!res.ok) throw new Error(`Gemini ${res.status} (${model}): ${msg}`);
+    const c = j?.candidates?.[0] ?? {};
+    return {
+      text: (c.content?.parts ?? []).map((p: any) => p.text ?? "").join(""),
+      queries: (c.groundingMetadata?.webSearchQueries ?? []) as string[],
+      sources: ((c.groundingMetadata?.groundingChunks ?? []) as any[]).map((g) => ({ uri: String(g.web?.uri ?? ""), title: String(g.web?.title ?? "") })),
+      urls: ((c.urlContextMetadata?.urlMetadata ?? []) as any[]).map((u) => ({ url: String(u.retrievedUrl ?? ""), ok: u.urlRetrievalStatus === "URL_RETRIEVAL_STATUS_SUCCESS" })),
+      model,
+    };
+  }
+}
+
+// Model metnindeki ilk JSON nesnesi (```json blokları, öncesi/sonrası açıklama olabilir)
+export function parseLooseJson<T = any>(text: string): T | null {
+  const s = String(text ?? "").replace(/```(?:json)?/gi, "");
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  try { return JSON.parse(s.slice(a, b + 1)) as T; } catch { return null; }
+}
