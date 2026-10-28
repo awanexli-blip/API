@@ -1,0 +1,53 @@
+# Sunucu (VPS) açıldı mı: 10 dakikada bir dışarıdan bakar (SSH portu + HTTPS); açılınca Telegram'a bir kez yazar ve kendini kapatır.
+# Yeniden izlemek için: Actions -> "Sunucu izleme" -> Enable workflow (ya da elle Run workflow).
+# Bu dosya değişince (push) izlemenin başladığı Telegram'a bildirilir (bildirim kanalı denemesi).
+name: Sunucu izleme
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/vps-watch.yml"]
+
+permissions:
+  actions: write   # açılınca kendini kapatmak için
+  contents: read
+
+concurrency:
+  group: vps-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HOST: 89.252.153.145
+      DOMAIN: trentakip.duckdns.org
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - name: Kontrol ve bildirim
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          send() {
+            if [ -z "${TG_TOKEN:-}" ] || [ -z "${TG_CHAT:-}" ]; then echo "Telegram secret'ları yok"; return 0; fi
+            curl -sS -m 20 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode "chat_id=${TG_CHAT}" --data-urlencode "text=$1" >/dev/null
+          }
+          ssh_up=no; https_up=no
+          timeout 10 bash -c "exec 3<>/dev/tcp/$HOST/22 && head -c 4 <&3" 2>/dev/null | grep -q SSH && ssh_up=yes
+          curl -sf -m 15 "https://$DOMAIN/auth/v1/health" >/dev/null && https_up=yes
+          echo "ssh=$ssh_up https=$https_up"
+          if [ "$EVENT" = "push" ]; then
+            send "👀 Sunucu izleme başladı. Sunucu açılınca buradan haber vereceğim. Şu an: SSH $ssh_up, HTTPS $https_up"
+            exit 0
+          fi
+          if [ "$ssh_up" = yes ] || [ "$https_up" = yes ]; then
+            send "✅ Sunucu açıldı (89.252.153.145). SSH: $ssh_up, HTTPS: $https_up. Claude'a \"sunucu açıldı\" yaz: disk 80 GB'a büyütülecek, servisler kontrol edilecek."
+            gh workflow disable vps-watch.yml && echo "izleme kapatıldı"
+          fi
