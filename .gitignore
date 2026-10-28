@@ -9,3 +9,6 @@ xml_dump.csv
 preview_*.csv
 *.xlsx
 kaynaklar/
+
+# Kişisel editör ayarları
+.vscode/
