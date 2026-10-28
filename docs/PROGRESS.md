@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-28 (45) — VPS kuruldu; Supabase'den sunucuya taşıma kiti
+- Sunucu (Cenuta, 89.252.153.145, `trentakip.duckdns.org`, Ubuntu 24.04): `ops/vps/setup.sh` çalıştı (anahtarla giriş, şifreli giriş kapalı, ufw, fail2ban, swap, Node 24, pg 17 istemcisi). `/etc/trentakip/env` K doldurdu, değer yazdırmadan doğrulandı (Supabase 26.056 ürün, GitHub 200, Telegram ok). `trentakip-dispatch.timer` açık, ilk tetikleme Trendyol + HB'yi başlattı. GitHub cron 1 gün daha açık (çift tetikleme sıraya girer), sonra kapanır. `supplier-vps.timer` sunucudan okunacak tedarikçi gelince.
+- SSH "banner timeout" nedeni: 1 CPU'da ilk açılış güncellemeleri işlemciyi dolduruyordu (load 4-5, %60 nice). K 2 CPU / 4 GB yükseltmesini istedi (disk 48 GB kalır); 28.10 akşamı henüz yansımadı.
+- K kararı: 150 bin ürün hedefi, Supabase ücretsiz 500 MB'a sığmaz (26 bin = 218 MB) → tamamen sunucuya, 7 gün deneme. Kit `ops/vps/db/` + `docs/VPS_TASIMA.md`: Supabase ile aynı sürümler (Postgres 17.11, PostgREST 14.18, GoTrue v2.197.0) + küçük görsel deposu + Caddy HTTPS; kod değişmez, geçişte yalnızca adres/anahtar. `mirror.sh` Supabase'den okuyarak kopyalar, satır sayılarını karşılaştırır. Görsel deposu yerelde denendi (yetki, üzerine yazma, yol kaçışı, tür, supabase-js yükleme). Sunucuda henüz kurulmadı: `SUPABASE_DB_URL` bekleniyor.
+
 ## 2026-10-28 (44) — Ürün araştırması (deneme, varsayılan kapalı)
 - K: aynı ürünü bul, oradaki bilgiyi (ör. soru-cevaptaki ölçü) al, kendi cümlemizle ekle. Toptancım'da gerçek barkod yok (26.104 varyantın 0'ı), eşleşme fotoğraf + başlık + görsel dosya adı ipucuyla.
 - `worker/core/research.ts`: arama (gemini-2.5-flash + google_search + url_context) → aynı ürün mü (fotoğraf karşılaştırma; ilan fotoğrafı inmezse sayfa okuyarak) → alıntı sayfada mı → kabul kuralları (`acceptFacts`: yalnızca ölçülebilir bilgi türleri, sayı alıntıda, iki ilan çelişirse atılır, garanti/fiyat/kargo/stok/kod alınmaz). Başka ilanın markası açıklamaya giremez (desc-check `forbidden`). Migration 067'ye `facts`, `research` kolonları (067 henüz uygulanmamıştı). Deneme aracı `worker/desc-try.ts` (veritabanına yazmaz).

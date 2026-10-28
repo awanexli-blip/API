@@ -1,0 +1,95 @@
+# Sunucuda Supabase yerine: Postgres + PostgREST + GoTrue (Supabase ile aynı sürümler) + görsel deposu + Caddy (HTTPS).
+# Panel/worker kodu değişmez: SUPABASE_URL=https://<alan adı>, anahtarlar /etc/trentakip/db.env içinden üretilen JWT'ler.
+# Kurulum: ops/vps/db/install.sh · Kopya: ops/vps/db/mirror.sh · Ayrıntı: docs/VPS_TASIMA.md
+name: trentakip
+services:
+  db:
+    image: postgres:17.11-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD}
+      AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD}
+    # 2 GB sunucu için ölçülü; 4 GB'a geçince shared_buffers=1GB, effective_cache_size=3GB
+    command: >
+      postgres -c shared_buffers=${PG_SHARED_BUFFERS:-256MB} -c effective_cache_size=${PG_CACHE:-1GB}
+      -c work_mem=8MB -c maintenance_work_mem=128MB -c max_connections=60
+      -c wal_compression=on -c log_min_duration_statement=2000
+    volumes:
+      - /var/lib/trentakip/pg:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    ports: ["127.0.0.1:5432:5432"]
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 10
+
+  rest:
+    image: postgrest/postgrest:v14.18
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_MAX_ROWS: "1000"   # Supabase ile aynı (kod readAll ile sayfalar)
+      PGRST_DB_POOL: "20"
+      PGRST_DB_CHANNEL_ENABLED: "true"
+      PGRST_OPENAPI_MODE: disabled
+    ports: ["127.0.0.1:3000:3000"]
+
+  auth:
+    image: supabase/gotrue:v2.197.0
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      PORT: "9999"
+      API_EXTERNAL_URL: https://${DOMAIN}/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${AUTH_ADMIN_PASSWORD}@db:5432/postgres?search_path=auth
+      GOTRUE_SITE_URL: ${PANEL_URL}
+      GOTRUE_URI_ALLOW_LIST: ${PANEL_URL}
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      # Davet e-postası için (isteğe bağlı): boşsa davet çalışmaz, giriş çalışır
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_FROM:-}
+      GOTRUE_RATE_LIMIT_TOKEN_REFRESH: "150"
+    ports: ["127.0.0.1:9999:9999"]
+
+  storage:
+    image: node:24.22.1-alpine
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      STORAGE_DIR: /data
+    command: ["node", "/app/storage.mjs"]
+    volumes:
+      - ./storage.mjs:/app/storage.mjs:ro
+      - /var/lib/trentakip/storage:/data
+    ports: ["127.0.0.1:5000:5000"]
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+      PANEL_URL: ${PANEL_URL}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/lib/trentakip/storage:/srv/storage:ro
+      - /var/lib/trentakip/caddy:/data

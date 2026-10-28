@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip veritabanı kopyası (günde 4 kez; senkron dakikalarından uzak :40)
+
+[Timer]
+OnCalendar=*-*-* 03,09,15,21:40:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target
