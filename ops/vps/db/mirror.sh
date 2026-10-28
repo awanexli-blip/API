@@ -65,6 +65,6 @@ if diff -q $W/counts-src.txt $W/counts-dst.txt >/dev/null; then
   echo "   TAMAM: $(wc -l < $W/counts-dst.txt) tablo, satır sayıları aynı"
 else
   # Kopya sırasında senkron çalıştıysa birkaç tabloda küçük fark olabilir (sync_runs, audit_log vb.)
-  echo "   FARK (kaynak | hedef):"; diff <(cat $W/counts-src.txt) <(cat $W/counts-dst.txt) | grep '^[<>]' | head -20
+  echo "   FARK (kaynak | hedef):"; { diff $W/counts-src.txt $W/counts-dst.txt || true; } | grep '^[<>]' | head -20 || true
 fi
 echo "süre: $(( $(date +%s) - t0 )) sn · boyut: $(psql_dst -c "select pg_size_pretty(pg_database_size('postgres'))")"
