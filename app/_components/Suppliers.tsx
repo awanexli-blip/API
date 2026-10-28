@@ -8,7 +8,24 @@ const FIELDS = Object.keys(FIELD_LABEL) as Field[];
 const STATUS_TR: Record<string, string> = { ok: "tamam", partial: "kısmen", error: "hata", running: "sürüyor" };
 const slugify = (s: string) => s.toLocaleLowerCase("tr").replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
 // Aynı tedarikçinin ek XML linki: boş SKU öneki / eşleme = ana linkinki
-type FeedDraft = { id?: string; label: string; url: string; url_masked?: string; sku_prefix: string; mapping: Record<string, Field> | null; item_path: string; own: boolean; info?: Row | null };
+// type "api": tedarikçi REST API'si (lib/supplier-api.ts). apiText: ayar (JSON, anahtarsız); secret: yeni anahtar (boşsa kayıtlı korunur)
+type FeedDraft = { id?: string; label: string; url: string; url_masked?: string; sku_prefix: string; mapping: Record<string, Field> | null; item_path: string; own: boolean; info?: Row | null;
+  type: "xml" | "api"; apiText: string; secret: string; hasSecret: boolean };
+const API_TEMPLATE = JSON.stringify({ auth: { type: "bearer", secret_env: "" }, items_path: "data", paging: { type: "page", param: "page", size_param: "limit", size: 100, start: 1 } }, null, 2);
+// Kimlik türüne göre anahtarın yazıldığı alan (panelde maskelenir)
+const SECRET_FIELD: Record<string, string> = { bearer: "token", header: "token", query: "token", basic: "pass", oauth2: "client_secret" };
+const SECRET_HELP: Record<string, string> = {
+  none: "Anahtar yok.", bearer: "Authorization: Bearer <anahtar>.", header: "Başlıkta anahtar (auth.name: başlık adı, ör. X-Api-Key).", query: "Adreste ?<auth.name>=<anahtar>.",
+  basic: "Kullanıcı adı auth.user (ya da user_env), parola aşağıya.", oauth2: "auth.token_url + client_id; client_secret aşağıya.",
+};
+const feedApi = (f: FeedDraft): { api?: any; error?: string } => {
+  let api: any;
+  try { api = f.apiText.trim() ? JSON.parse(f.apiText) : {}; } catch (e: any) { return { error: `${f.label || "Ek link"}: API ayarı geçerli JSON değil (${e.message})` }; }
+  const field = SECRET_FIELD[api?.auth?.type];
+  if (f.secret && field) api = { ...api, auth: { ...api.auth, [field]: f.secret } };
+  return { api };
+};
+const apiView = (a: any) => { if (!a) return ""; const auth = Object.fromEntries(Object.entries(a.auth ?? {}).filter(([k, v]) => !k.startsWith("has_") && v != null)); return JSON.stringify({ ...a, auth }, null, 2); };
 type Draft = {
   feeds: FeedDraft[];
   id?: string; code: string; name: string; xml_url: string; url_masked?: string; url_from_env?: string | null; active: boolean; nightly: boolean;
@@ -60,8 +77,9 @@ export default function Suppliers({ api, notify }: { api: Api; notify: Notify })
               <td data-label="Aktif"><input type="checkbox" checked={s.active} onChange={() => toggle(s, "active")} /></td>
               <td data-label="Otomatik (saatlik)"><input type="checkbox" checked={s.nightly} disabled={!s.active} onChange={() => toggle(s, "nightly")} /></td>
               <td className="n"><div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                <button className="btn primary" disabled={!s.active || !s.has_url} onClick={() => run(s.code, s.name)}>İçe aktar</button>
-                <button className="btn" onClick={() => setD({ ...empty(), ...s, feeds: (s.feeds ?? []).map((f: Row) => ({ id: f.id, label: f.label ?? "", url: "", url_masked: f.url_masked, sku_prefix: f.sku_prefix ?? "", mapping: f.mapping ?? null, item_path: f.item_path ?? "", own: !!f.mapping })), xml_url: "", item_path: s.item_path ?? "", marketplace_brand: s.marketplace_brand ?? "", default_attributes: Object.entries(s.default_attributes ?? {}).map(([k, v]) => `${k} = ${v}`).join("\n") })}>Düzenle</button>
+                <button className="btn primary" disabled={!s.active || (!s.has_url && !s.feeds?.length)} onClick={() => run(s.code, s.name)}>İçe aktar</button>
+                <button className="btn" onClick={() => setD({ ...empty(), ...s, feeds: (s.feeds ?? []).map((f: Row) => ({ id: f.id, label: f.label ?? "", url: "", url_masked: f.url_masked, sku_prefix: f.sku_prefix ?? "", mapping: f.mapping ?? null, item_path: f.item_path ?? "", own: !!f.mapping,
+                  type: f.type === "api" ? "api" : "xml", apiText: apiView(f.api), secret: "", hasSecret: !!Object.keys(f.api?.auth ?? {}).find((k) => k.startsWith("has_")) })), xml_url: "", item_path: s.item_path ?? "", marketplace_brand: s.marketplace_brand ?? "", default_attributes: Object.entries(s.default_attributes ?? {}).map(([k, v]) => `${k} = ${v}`).join("\n") })}>Düzenle</button>
                 <button className="btn danger" onClick={() => remove(s)}>Sil</button>
               </div></td>
             </tr>
@@ -95,15 +113,31 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
     setBusy(`${f.label || "Ek link"} inceleniyor...`);
     try {
       const own = f.own && f.mapping && Object.keys(f.mapping).length ? f.mapping : null;
-      const r = await api("/api/suppliers/inspect", { method: "POST", body: JSON.stringify({ ...(f.url ? { url: f.url } : { id: d.id, feed_id: f.id }), item_path: f.item_path || d.item_path || undefined, mapping: own ?? (f.own ? undefined : d.mapping), ...settings, sku_prefix: f.sku_prefix || d.sku_prefix }) });
-      setFeed(i, { info: r, item_path: f.item_path || (r.item_path !== d.item_path ? r.item_path : ""), mapping: f.own ? own ?? r.mapping : f.mapping });
+      // REST API: yeni adres / yeni anahtar yazıldıysa ekrandaki ayarla, değilse kayıtlı ayar ve anahtarla denenir
+      let target: Row;
+      if (f.type === "api" && (f.url || f.secret || !f.id)) {
+        const a = feedApi(f);
+        if (a.error) { notify("err", a.error); return; }
+        if (!f.url) { notify("err", "Kaydedilmemiş API linkini denemek için adresi yaz"); return; }
+        target = { url: f.url, type: "api", api: a.api };
+      } else target = f.url ? { url: f.url } : { id: d.id, feed_id: f.id };
+      const mainMapping = Object.keys(d.mapping).length ? d.mapping : undefined;
+      const r = await api("/api/suppliers/inspect", { method: "POST", body: JSON.stringify({ ...target, item_path: f.type === "api" ? undefined : f.item_path || d.item_path || undefined, mapping: own ?? (f.own ? undefined : mainMapping), ...settings, sku_prefix: f.sku_prefix || d.sku_prefix }) });
+      setFeed(i, { info: r, item_path: f.type === "api" ? "" : f.item_path || (r.item_path !== d.item_path ? r.item_path : ""), mapping: f.own ? own ?? r.mapping : f.mapping });
+      // Ana XML'i olmayan (yalnızca API'li) tedarikçi: eşleme bu linkten önerilir ve 2. adımda düzenlenir
+      if (!mainMapping && !f.own) { setInfo(r); setD((p) => ({ ...p, mapping: r.mapping })); }
     } catch (e: any) { notify("err", e.message); }
     finally { setBusy(""); }
   }
   async function save() {
     setBusy("Kaydediliyor...");
     try {
-      const feeds = d.feeds.map((f) => ({ id: f.id, label: f.label, url: f.url || undefined, sku_prefix: f.sku_prefix, mapping: f.own ? f.mapping : null, item_path: f.item_path }));
+      const feeds: Row[] = [];
+      for (const f of d.feeds) {
+        const a = f.type === "api" ? feedApi(f) : { api: undefined };
+        if (a.error) { notify("err", a.error); return; }
+        feeds.push({ id: f.id, label: f.label, url: f.url || undefined, sku_prefix: f.sku_prefix, mapping: f.own ? f.mapping : null, item_path: f.type === "api" ? "" : f.item_path, type: f.type, api: a.api });
+      }
       await api("/api/suppliers", { method: "PUT", body: JSON.stringify({ ...d, feeds, xml_url: d.xml_url || undefined, code: isNew ? d.code : undefined }) });
       notify("good", `${d.name} kaydedildi. Listeden "İçe aktar" ile ürünleri alabilirsin.`); onClose();
     } catch (e: any) { notify("err", e.message); }
@@ -113,7 +147,7 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
   const mappedFields = Object.values(d.mapping);
   const paths: { path: string; fill?: number; samples?: string[] }[] = info?.fields ?? Object.keys(d.mapping).map((path) => ({ path }));
   const feedsOk = d.feeds.every((f) => (f.url || f.id) && (!f.own || (f.mapping && Object.keys(f.mapping).length)));
-  const canSave = d.name.trim() && (isNew ? d.code && d.xml_url : true) && mappedFields.some((f) => f === "model" || f === "variant_sku") && mappedFields.includes("title") && feedsOk;
+  const canSave = d.name.trim() && (isNew ? d.code && (d.xml_url || d.feeds.some((f) => f.type === "api" && f.url)) : true) && mappedFields.some((f) => f === "model" || f === "variant_sku") && mappedFields.includes("title") && feedsOk;
 
   return (
     <>
@@ -139,10 +173,11 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
         </div>
         {info && <p style={{ marginBottom: 0 }}>✓ {info.count.toLocaleString("tr-TR")} ürün bulundu ({info.sizeMb} MB), ürün listesi yolu: <code>{info.item_path}</code>{info.suggested && " · alanlar otomatik eşlendi, kontrol et"}</p>}
 
-        <h3 style={{ margin: "18px 0 4px" }}>Ek XML linkleri ({d.feeds.length})</h3>
+        <h3 style={{ margin: "18px 0 4px" }}>Ek linkler: XML ya da REST API ({d.feeds.length})</h3>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
           Aynı tedarikçinin diğer listeleri. Hepsi birlikte indirilir, ürünler bu tedarikçiye (xml:{d.code || "kod"}) yazılır; biri inmezse içe aktarma durur ve hiçbir stok sıfırlanmaz.
-          SKU öneki ve alan eşlemesi boşsa ana linkinki kullanılır.
+          SKU öneki ve alan eşlemesi boşsa ana linkinki kullanılır. Ürünleri REST API ile veren tedarikçide türü "REST API" seç
+          (ana XML adresi boş kalabilir); tüm sayfalar okunur, biri okunamazsa içe aktarma durur.
         </p>
         {d.feeds.map((f, i) => (
           <div key={f.id ?? `yeni-${i}`} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10, marginBottom: 8 }}>
@@ -150,22 +185,42 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
               <label className="f">Ad<input type="text" value={f.label} placeholder={`Link ${i + 2}`} onChange={(e) => setFeed(i, { label: e.target.value })} /></label>
               <label className="f">SKU öneki<input type="text" value={f.sku_prefix} placeholder={d.sku_prefix || "ana linkle aynı"} onChange={(e) => setFeed(i, { sku_prefix: e.target.value.replace(/[^A-Za-z0-9._-]/g, "").slice(0, 12) })} /><small>Linkler arasında kod çakışmasın diye farklı olabilir</small></label>
             </div>
-            <label className="f" style={{ marginTop: 8 }}>XML adresi {f.url_masked && <span className="muted">(kayıtlı: {f.url_masked}; değiştirmek için yeni adres yaz)</span>}
-              <input type="text" value={f.url} placeholder="https://..." onChange={(e) => setFeed(i, { url: e.target.value, info: null })} />
+            <div className="row" style={{ gap: 12, marginTop: 8 }}>
+              <label className="check"><input type="radio" checked={f.type === "xml"} onChange={() => setFeed(i, { type: "xml", info: null })} />XML</label>
+              <label className="check"><input type="radio" checked={f.type === "api"} onChange={() => setFeed(i, { type: "api", info: null, apiText: f.apiText || API_TEMPLATE })} />REST API</label>
+            </div>
+            <label className="f" style={{ marginTop: 8 }}>{f.type === "api" ? "API ürün listesi adresi" : "XML adresi"} {f.url_masked && <span className="muted">(kayıtlı: {f.url_masked}; değiştirmek için yeni adres yaz)</span>}
+              <input type="text" value={f.url} placeholder={f.type === "api" ? "https://api.tedarikci.com/v1/products" : "https://..."} onChange={(e) => setFeed(i, { url: e.target.value, info: null })} />
             </label>
+            {f.type === "api" && (() => {
+              let authType = "none";
+              try { authType = JSON.parse(f.apiText || "{}")?.auth?.type ?? "none"; } catch { /* yazılırken geçersiz JSON olabilir */ }
+              const field = SECRET_FIELD[authType];
+              return <>
+                <label className="f" style={{ marginTop: 8 }}>API ayarı (JSON)
+                  <textarea rows={8} style={{ fontFamily: "monospace", fontSize: 12 }} value={f.apiText} onChange={(e) => setFeed(i, { apiText: e.target.value, info: null })} />
+                  <small>auth.type: none / bearer / header / query / basic / oauth2 · paging.type: none / page / offset / cursor / next_url · items_path: ürün listesinin yolu (boşsa bulunur).
+                    Anahtar GitHub Secret / sunucu .env'de ise auth.secret_env (ör. TEDARIKCI_X_TOKEN); panelden denemek için anahtarı aşağıya yaz. {SECRET_HELP[authType] ?? ""}</small>
+                </label>
+                {field && <label className="f" style={{ marginTop: 8 }}>Anahtar ({field}) {f.hasSecret && <span className="muted">(kayıtlı; değiştirmek için yaz, boş bırakılırsa korunur)</span>}
+                  <input type="password" autoComplete="new-password" value={f.secret} onChange={(e) => setFeed(i, { secret: e.target.value, info: null })} />
+                  <small>Yalnızca sunucuda saklanır, panele geri gönderilmez.</small>
+                </label>}
+              </>;
+            })()}
             <div className="row" style={{ gap: 12, marginTop: 8, flexWrap: "wrap" }}>
               <label className="check"><input type="checkbox" checked={f.own} onChange={(e) => setFeed(i, { own: e.target.checked, mapping: e.target.checked ? f.mapping : null })} />Bu linkin alan yapısı farklı (kendi eşlemesi)</label>
-              <button className="btn" disabled={!!busy || (!f.url && !f.id)} onClick={() => inspectFeed(i)}>İncele</button>
+              <button className="btn" disabled={!!busy || (!f.url && !f.id)} onClick={() => inspectFeed(i)}>{f.type === "api" ? "Test et (ilk 3 sayfa)" : "İncele"}</button>
               <button className="btn danger" onClick={() => setD((p) => ({ ...p, feeds: p.feeds.filter((_, j) => j !== i) }))}>Kaldır</button>
             </div>
             {f.own && <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>{f.mapping && Object.keys(f.mapping).length ? `Kendi eşlemesi: ${Object.keys(f.mapping).length} alan (incelemede otomatik önerildi)` : "Kendi eşlemesi için önce İncele'ye bas."}</p>}
             {f.info && (() => {
               const bad = (f.info.preview ?? []).filter((x: Row) => x.error).length;
-              return <p style={{ fontSize: 13, margin: "6px 0 0" }}>✓ {Number(f.info.count).toLocaleString("tr-TR")} ürün ({f.info.sizeMb} MB){bad ? <span style={{ color: "var(--warn)" }}> · önizlemede {bad} ürün okunamadı{!f.own ? ": alan yapısı farklı olabilir, \"kendi eşlemesi\"ni işaretleyip yeniden incele" : ""}</span> : " · önizleme sorunsuz"}{f.info.preview?.find((x: Row) => x.payload) ? ` · örnek SKU: ${f.info.preview.find((x: Row) => x.payload).payload.sku}` : ""}</p>;
+              return <p style={{ fontSize: 13, margin: "6px 0 0" }}>✓ {Number(f.info.count).toLocaleString("tr-TR")} ürün {f.type === "api" ? `(${f.info.pages} sayfa${f.info.partial ? ", devamı var; içe aktarmada tamamı okunur" : ""}, yol ${f.info.item_path})` : `(${f.info.sizeMb} MB)`}{bad ? <span style={{ color: "var(--warn)" }}> · önizlemede {bad} ürün okunamadı{!f.own ? ": alan yapısı farklı olabilir, \"kendi eşlemesi\"ni işaretleyip yeniden incele" : ""}</span> : " · önizleme sorunsuz"}{f.info.preview?.find((x: Row) => x.payload) ? ` · örnek SKU: ${f.info.preview.find((x: Row) => x.payload).payload.sku}` : ""}</p>;
             })()}
           </div>
         ))}
-        <button className="btn" onClick={() => setD((p) => ({ ...p, feeds: [...p.feeds, { label: "", url: "", sku_prefix: "", mapping: null, item_path: "", own: false }] }))}>+ Ek link</button>
+        <button className="btn" onClick={() => setD((p) => ({ ...p, feeds: [...p.feeds, { label: "", url: "", sku_prefix: "", mapping: null, item_path: "", own: false, type: "xml", apiText: "", secret: "", hasSecret: false }] }))}>+ Ek link</button>
       </div>
 
       {(info || Object.keys(d.mapping).length > 0) && <div className="card">

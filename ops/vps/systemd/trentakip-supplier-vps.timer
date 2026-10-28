@@ -1,0 +1,10 @@
+[Unit]
+Description=Trentakip tedarikçi içe aktarma (sunucudan, 15 dakikada bir)
+
+[Timer]
+OnCalendar=*-*-* *:00,15,30,45:00
+RandomizedDelaySec=60
+Persistent=false
+
+[Install]
+WantedBy=timers.target

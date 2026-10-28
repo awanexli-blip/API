@@ -66,6 +66,8 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `app/api/feed/[token]`, `app/api/feeds`, `app/_components/Feeds.tsx` | Faz 2: XML feed dışa aktarma (gizli token adresi) |
 | `app/_components/Brands.tsx`, `BrandInput.tsx`, `app/api/brands/`, `worker/brands.ts`, `.github/workflows/brands.yml` | Markalar sekmesi (yeni ürün markası + geri al, marka dağılımı), marka arama: liste indirilmez (200 MB, veritabanı sınırı), panel canlı Trendyol `brands/by-name` ile arar; `marketplace_brands`'e canlı sonuç yazılmaz (dolu görünürse worker diğer markaları "yok" sayar) |
 | `.github/workflows/backup.yml`, `ops/db-counts.sql`, `docs/YEDEK.md` | Günlük/haftalık şifreli veritabanı yedeği, geri yükleyerek doğrulama, geri yükleme kılavuzu |
+| `lib/supplier-api.ts`, `docs/TEDARIKCI_API.md` | Tedarikçi REST API okuyucusu (sayfalama, kimlik, `runner: "vps"`), panelden ek link türü "REST API"; anahtarlar `SUPPLIER_SECRETS` / sunucu env |
+| `ops/vps/`, `docs/VPS_KURULUM.md` | Sunucu kurulumu (`setup.sh`), senkron tetikleyici (`dispatch.mjs`, trigger=schedule), systemd zamanlayıcıları |
 | `worker/recover-old.ts`, `.github/workflows/recover-old.yml` | Çöken eski veritabanından eksik satırları kurtarma (check/apply, fiyat alanları kapalı) |
 | `worker/core/util.ts` `readAll` | Supabase tek istekte en fazla 1000 satır verir, fazlası hatasız kesilir: tamamı gereken her okuma `readAll` + `.order(tekil)` ile |
 | `docs/TODO.md` | Yapılacaklar (öncelik sırasıyla) ve pazaryeri zorunlu alanları |
@@ -172,6 +174,8 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 **GitHub Secrets (worker):** `SUPABASE_URL2`, `SUPABASE_SERVICE_ROLE_KEY2` (25.10 yeni proje; eski adlar ölü projeye işaret eder), `XML_URL`, `TRENDYOL_SELLER_ID`, `TRENDYOL_API_KEY`, `TRENDYOL_API_SECRET`, `TRENDYOL_SHIPMENT_ADDRESS_ID`, `TRENDYOL_RETURN_ADDRESS_ID` (opsiyonel, `create` için; V2'de `TRENDYOL_CARGO_COMPANY_ID` kullanılmıyor). **GitHub Variables (opsiyonel):** `TRENDYOL_STOREFRONT`, `TRENDYOL_BRAND_NAME`.
 
 **Yedek (GitHub Secrets):** `SUPABASE_DB_URL2` (Session pooler adresi, parolalı), `BACKUP_PASSPHRASE` (yedek şifresi; kaybolursa yedekler açılmaz). Kurulum `docs/YEDEK.md`.
+
+**Tedarikçi API anahtarları:** GitHub Secret `SUPPLIER_SECRETS` (her satır `AD=değer`; panelde `auth.secret_env` ile verilen adlar), VPS: `/etc/trentakip/env`.
 
 **Vercel (panel):** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `GH_TOKEN` (fine-grained, bu repo, Actions: Read and write), `GH_REPO` (`awanexli-blip/API`).
 

@@ -2,6 +2,7 @@
 // Akış: ürün listesini bul -> her ürünü düz alanlara aç -> eşlemeye göre CSV satırı gibi -> grupla (aynı model = varyant) -> yük.
 // Node testleri uzantılı import ister; tsconfig allowImportingTsExtensions açık.
 import { groupRows, groupToPayload, mapHeaders, type Field, type Group, type RawRow } from "./import.ts";
+import type { ApiSource } from "./supplier-api.ts";
 
 export type Supplier = {
   code: string; mapping: Record<string, Field>; item_path?: string | null; sku_prefix?: string; sku_ascii?: boolean;
@@ -9,7 +10,8 @@ export type Supplier = {
 };
 
 // Aynı tedarikçinin ek XML linki (suppliers.feeds, migration 048). Boş alanlar ana linkin ayarını kullanır.
-export type Feed = { id: string; label?: string; url?: string; sku_prefix?: string | null; mapping?: Record<string, Field> | null; item_path?: string | null };
+// type "api": REST API (lib/supplier-api.ts, ayar api alanında); yoksa XML
+export type Feed = { id: string; label?: string; url?: string; sku_prefix?: string | null; mapping?: Record<string, Field> | null; item_path?: string | null; type?: "xml" | "api"; api?: ApiSource | null };
 export function feedSupplier<T extends Supplier>(sup: T, feed?: Feed | null): T {
   if (!feed) return sup;
   return { ...sup, sku_prefix: feed.sku_prefix ?? sup.sku_prefix, mapping: feed.mapping && Object.keys(feed.mapping).length ? feed.mapping : sup.mapping, item_path: feed.item_path || sup.item_path };

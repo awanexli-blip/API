@@ -1,0 +1,10 @@
+[Unit]
+Description=Trentakip senkron tetikleyici (15 dakikada bir: :07 :22 :37 :52)
+
+[Timer]
+OnCalendar=*-*-* *:07,22,37,52:00
+Persistent=false
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

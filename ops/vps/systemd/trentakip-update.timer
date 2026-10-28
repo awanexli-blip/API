@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip kod güncelleme (10 dakikada bir)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

@@ -7,7 +7,7 @@ Son güncelleme: 28.10.2026.
 ## Şu an
 
 > **28.10 (PROGRESS 41):** 1000 satır sınırı (kopyaların 3.538'i satışta kalmıştı), HB kalıcı kapanma, Gemini 404, Trendyol yeniden deneme, yedek, eski veritabanı kurtarma aracı yazıldı.
-> **Bekleyen (K):** [ ] migration 066'yı SQL Editor'de çalıştır → sonra kod gönderilir · [ ] `SUPABASE_DB_URL2` + `BACKUP_PASSPHRASE` secret → Actions → Veritabanı yedeği (daily, sonra full) · [ ] eski veritabanı açılınca "Eski veritabanından kurtarma" check → apply · [ ] S0.4 Auth ayarları (K: şimdilik bekliyor) · [ ] S0.5 depo açık/özel kararı.
+> **Bekleyen (K):** [ ] `ops/fix-toptancim-mapping.sql` (açıklama = detail, kategori = tam yol) · [ ] VPS IP + GitHub token (`docs/VPS_KURULUM.md`) · [ ] yeni tedarikçilerin API dokümanları (`docs/TEDARIKCI_API.md`) · [x] migration 066'yı SQL Editor'de çalıştır → sonra kod gönderilir · [ ] `SUPABASE_DB_URL2` + `BACKUP_PASSPHRASE` secret → Actions → Veritabanı yedeği (daily, sonra full) · [ ] eski veritabanı açılınca "Eski veritabanından kurtarma" check → apply · [ ] S0.4 Auth ayarları (K: şimdilik bekliyor) · [ ] S0.5 depo açık/özel kararı.
 > **Sıradaki (Claude):** gönderim sonrası ilk senkronda `duplicateClosed` (TY ~4.576), HB kapalı sayısı, `pushErrors`, Gemini taslakları; S3.1 ikinci tur denetim; VPS gelince taşıma.
 > Eski kutu (23.10):
 

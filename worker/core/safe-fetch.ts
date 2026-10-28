@@ -69,14 +69,17 @@ export async function checkUrl(raw: string | URL): Promise<URL> {
 
 export type SafeResponse = { status: number; ok: boolean; url: string; contentType: string; body: Buffer; text: () => string };
 
-export async function safeFetch(raw: string | URL, opts: { maxBytes: number; timeoutMs: number; maxRedirects?: number; accept?: RegExp; headers?: Record<string, string> }): Promise<SafeResponse> {
+// method/body: tedarikçi REST API'leri (POST ile ürün listesi, OAuth2 belirteç). POST yönlendirmesi yalnızca 307/308'de izlenir (gövde korunur).
+export async function safeFetch(raw: string | URL, opts: { maxBytes: number; timeoutMs: number; maxRedirects?: number; accept?: RegExp; headers?: Record<string, string>; method?: "GET" | "POST"; body?: string }): Promise<SafeResponse> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs);
   try {
     let u = await checkUrl(raw);
     for (let hop = 0; ; hop++) {
-      const r = await fetch(u, { redirect: "manual", signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)", ...(opts.headers ?? {}) } });
+      const method = opts.method ?? "GET";
+      const r = await fetch(u, { method, body: method === "POST" ? opts.body : undefined, redirect: "manual", signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0 (urun-paneli)", ...(opts.headers ?? {}) } });
       if (r.status >= 300 && r.status < 400 && r.headers.get("location")) {
+        if (method === "POST" && r.status !== 307 && r.status !== 308) { await r.body?.cancel().catch(() => {}); throw new SafeFetchError(`POST isteği yönlendirildi (HTTP ${r.status})`); }
         await r.body?.cancel().catch(() => {});
         if (hop >= (opts.maxRedirects ?? 3)) throw new SafeFetchError("Çok fazla yönlendirme");
         u = await checkUrl(new URL(r.headers.get("location")!, u));

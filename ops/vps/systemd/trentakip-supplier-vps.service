@@ -1,0 +1,19 @@
+[Unit]
+Description=Trentakip: IP izinli tedarikçi API'lerini içe aktar (yalnızca runner=vps olanlar)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+EnvironmentFile=/etc/trentakip/env
+Environment=NODE_OPTIONS=--max-old-space-size=1536
+Environment=ACTOR=sunucu
+WorkingDirectory=/opt/trentakip
+ExecStart=/usr/bin/node --experimental-strip-types worker/import-xml.ts vps
+TimeoutStartSec=40min
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/trentakip
+PrivateTmp=true

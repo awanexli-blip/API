@@ -1,0 +1,16 @@
+[Unit]
+Description=Trentakip: GitHub senkronunu tam vaktinde başlat (trigger=schedule, duraklatmaya uyar)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+EnvironmentFile=/etc/trentakip/env
+WorkingDirectory=/opt/trentakip
+ExecStart=/usr/bin/node ops/vps/dispatch.mjs
+TimeoutStartSec=120
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/trentakip
+PrivateTmp=true

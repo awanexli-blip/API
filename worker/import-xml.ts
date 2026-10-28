@@ -14,6 +14,7 @@ import { safeFetch } from "./core/safe-fetch.ts";
 import { notifyOnce } from "./core/notify.ts";
 import { esc } from "./core/telegram.ts";
 import { feedSupplier, findItems, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
+import { fetchApiItems, loadSupplierSecrets } from "../lib/supplier-api.ts";
 
 const stable = (v: any): string => Array.isArray(v) ? `[${v.map(stable).join(",")}]`
   : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}` : JSON.stringify(v);
@@ -57,8 +58,10 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
   };
   try {
     const mainUrl = sup.xml_url || (sup.url_from_env && /^[A-Z0-9_]+$/.test(sup.url_from_env) ? process.env[sup.url_from_env] : "");
-    if (!mainUrl) throw new Error(`XML adresi yok${sup.url_from_env ? ` (GitHub Secret ${sup.url_from_env} boş)` : ""}`);
-    const feeds: (Feed & { url: string })[] = [{ id: "ana", label: "Ana link", url: mainUrl }, ...((Array.isArray(sup.feeds) ? sup.feeds : []) as Feed[]).map((f) => ({ ...f, url: String(f.url ?? "") }))];
+    const extra = ((Array.isArray(sup.feeds) ? sup.feeds : []) as Feed[]).map((f) => ({ ...f, url: String(f.url ?? "") }));
+    // Yalnızca REST API'li tedarikçide ana XML adresi olmayabilir (ürünler ek linkten / API'den)
+    if (!mainUrl && !extra.length) throw new Error(`XML adresi yok${sup.url_from_env ? ` (GitHub Secret ${sup.url_from_env} boş)` : ""}`);
+    const feeds: (Feed & { url: string })[] = [...(mainUrl ? [{ id: "ana", label: "Ana link", url: mainUrl }] : []), ...extra];
     const items: { row: number; payload: any; hash: string }[] = [];
     const seen = new Set<string>(), seenSku = new Set<string>();
     const perFeed: string[] = [];
@@ -66,13 +69,23 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     const feedHash = createHash("sha1");
     for (const [fi, feed] of feeds.entries()) {
       const name = feed.label || `Link ${fi + 1}`;
-      if (!feed.url) throw new Error(`${name}: XML adresi yok`);
-      // İç ağ adresi, sonsuz yönlendirme ve 300 MB üstü gövde reddedilir (denetim S2.1)
-      const res = await safeFetch(feed.url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
-      if (!res.ok) throw new Error(`${name}: XML indirilemedi (HTTP ${res.status})`);
-      feedHash.update(res.body);
-      const built = buildItems(parseXml(res.text()), feedSupplier(sup, feed), seen, seenSku);
-      if (!built.total) throw new Error(`${name}: XML'de ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
+      if (!feed.url) throw new Error(`${name}: ${feed.type === "api" ? "API" : "XML"} adresi yok`);
+      let built: ReturnType<typeof buildItems>;
+      if (feed.type === "api") {
+        // REST API: tüm sayfalar okunur (eksik okumada hata: stoklar sıfırlanmaz), ürünler XML ile aynı eşleme hattından geçer
+        const api = await fetchApiItems(feed.url, feed.api ?? {}, { label: name });
+        const body = JSON.stringify(api.items);
+        feedHash.update(body);
+        built = buildItems({ items: api.items }, { ...feedSupplier(sup, feed), item_path: "items" }, seen, seenSku);
+        console.log(`${sup.name} / ${name}: API ${api.pages} sayfa (${api.path || "kök"})`);
+      } else {
+        // İç ağ adresi, sonsuz yönlendirme ve 300 MB üstü gövde reddedilir (denetim S2.1)
+        const res = await safeFetch(feed.url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
+        if (!res.ok) throw new Error(`${name}: XML indirilemedi (HTTP ${res.status})`);
+        feedHash.update(res.body);
+        built = buildItems(parseXml(res.text()), feedSupplier(sup, feed), seen, seenSku);
+      }
+      if (!built.total) throw new Error(`${name}: ${feed.type === "api" ? "API yanıtında" : "XML'de"} ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
       // Satır numaraları link başına ayrı aralıkta (hata listesinde hangi linkten geldiği anlaşılsın)
       const off = fi * 1_000_000;
       items.push(...built.items.map((i) => ({ ...i, row: i.row + off })));
@@ -180,15 +193,26 @@ async function main() {
   const which = arg(process.argv[2], "all", SUPPLIER_ARG, "tedarikçi");
   const dry = process.argv.includes("--dry");
   const actor = process.env.ACTOR || "xml-import";
+  loadSupplierSecrets(process.env.SUPPLIER_SECRETS); // REST API anahtarları (auth.*_env)
   const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
   let q = db.from("suppliers").select("*").eq("active", true);
-  if (which === "nightly") q = q.eq("nightly", true);
+  if (which === "nightly" || which === "vps") q = q.eq("nightly", true);
   else if (which !== "all") q = q.eq("code", which);
   const { data: sups, error } = await q;
   if (error) throw new Error(error.message);
   if (!sups?.length) { console.log(`İçe aktarılacak tedarikçi yok (${which})`); return; }
+  // IP izinli tedarikçi API'leri (feeds[].api.runner = "vps") yalnızca sunucudan okunur: GitHub'da atlanır (hata sayılmaz, stok sıfırlanmaz);
+  // sunucu "vps" argümanıyla yalnızca bunları çalıştırır (diğerleri GitHub'da kalır, iki kez okunmaz)
+  const onVps = process.env.RUNNER === "vps";
+  const needsVps = (s: any) => (Array.isArray(s.feeds) ? s.feeds : []).some((f: any) => f?.type === "api" && f.api?.runner === "vps");
+  const list = (sups as any[]).filter((s) => {
+    if (which === "vps") return needsVps(s);
+    if (needsVps(s) && !onVps) { console.log(`${s.name}: yalnızca sunucudan okunur (IP izni), burada atlandı`); return false; }
+    return true;
+  });
+  if (!list.length) { console.log(`İçe aktarılacak tedarikçi yok (${which})`); return; }
   let failed = 0;
-  for (const sup of sups) {
+  for (const sup of list) {
     try { await importSupplier(db, sup, dry, actor); }
     catch (e: any) { failed++; console.error(e.message); }
   }

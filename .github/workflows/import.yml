@@ -39,5 +39,6 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           XML_URL: ${{ secrets.XML_URL }}   # BayilikXML (url_from_env); diğer tedarikçilerin adresi veritabanında
           ACTOR: ${{ github.event.inputs.actor || 'zamanlı' }}
+          SUPPLIER_SECRETS: ${{ secrets.SUPPLIER_SECRETS }}   # tedarikçi REST API anahtarları (AD=değer satırları)
           SUPPLIER: ${{ github.event.inputs.supplier || 'nightly' }}
         run: node --experimental-strip-types worker/import-xml.ts "$SUPPLIER"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Trentakip: kodu GitHub main'den güncelle (yalnızca ileri sarma; değişince bağımlılıklar)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+WorkingDirectory=/opt/trentakip
+ExecStart=/bin/sh -c 'old=$(git rev-parse HEAD); git pull -q --ff-only && new=$(git rev-parse HEAD); if [ "$old" != "$new" ] && ! git diff --quiet "$old" "$new" -- worker/package-lock.json; then npm ci --prefix worker --no-audit --no-fund --silent; fi; echo "kod: $(git rev-parse --short HEAD)"'
+TimeoutStartSec=10min

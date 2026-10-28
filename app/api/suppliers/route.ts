@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { admin } from "@/lib/server";
 import { authorize, dbError } from "@/lib/products";
 import { FIELD_LABEL } from "@/lib/import";
+import { maskApi, sanitizeApiSource } from "@/lib/supplier-api";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,10 @@ const mask = (u?: string | null) => {
   if (!u) return "";
   try { const x = new URL(u); return `${x.protocol}//${x.host}${x.pathname.length > 1 ? "/…" : ""}${x.search ? "?…" : ""}`; } catch { return "…"; }
 };
-// Ek linkler (feeds): adres tarayıcıya gitmez, maskeli gösterilir
+// Ek linkler (feeds): adres tarayıcıya gitmez, maskeli gösterilir; REST API anahtarları (token/parola/secret) hiç gönderilmez
 const view = (s: any) => ({ ...s, xml_url: undefined, url_masked: s.url_from_env ? `GitHub Secret: ${s.url_from_env}` : mask(s.xml_url), has_url: !!(s.xml_url || s.url_from_env),
-  feeds: (Array.isArray(s.feeds) ? s.feeds : []).map((f: any) => ({ id: f.id, label: f.label ?? "", sku_prefix: f.sku_prefix ?? "", mapping: f.mapping ?? null, item_path: f.item_path ?? "", url_masked: mask(f.url), has_url: !!f.url })) });
+  feeds: (Array.isArray(s.feeds) ? s.feeds : []).map((f: any) => ({ id: f.id, label: f.label ?? "", sku_prefix: f.sku_prefix ?? "", mapping: f.mapping ?? null, item_path: f.item_path ?? "", url_masked: mask(f.url), has_url: !!f.url,
+    type: f.type === "api" ? "api" : "xml", api: f.type === "api" ? maskApi(f.api) : null })) });
 const okUrl = (u: string) => { try { const x = new URL(u.trim()); return /^https?:$/.test(x.protocol) ? x.toString() : null; } catch { return null; } };
 const mapCheck = (m: Record<string, string>) => { const v = Object.values(m); return (v.includes("model") || v.includes("variant_sku")) && v.includes("title"); };
 
@@ -79,7 +81,14 @@ export async function PUT(req: NextRequest) {
       const id = /^[a-z0-9-]{1,40}$/.test(String(f.id ?? "")) ? String(f.id) : `l${Date.now().toString(36)}${i}`;
       const url = f.url ? okUrl(String(f.url)) : byId.get(id)?.url ?? null;
       if (f.url && !url) return NextResponse.json({ error: `${i + 1}. ek link: adres http(s) ile başlamalı` }, { status: 400 });
-      if (!url) return NextResponse.json({ error: `${i + 1}. ek link: XML adresi gerekli` }, { status: 400 });
+      if (!url) return NextResponse.json({ error: `${i + 1}. ek link: ${f.type === "api" ? "API" : "XML"} adresi gerekli` }, { status: 400 });
+      // REST API linki: ayar doğrulanır; boş bırakılan anahtar alanı kayıtlı değeri korur
+      let api: any = null;
+      if (f.type === "api") {
+        const r = sanitizeApiSource(f.api ?? {}, byId.get(id)?.api ?? null);
+        if (r.error) return NextResponse.json({ error: `${i + 1}. ek link (API): ${r.error}` }, { status: 400 });
+        api = r.api;
+      }
       const prefix = String(f.sku_prefix ?? "").trim();
       if (!/^[A-Za-z0-9._-]{0,12}$/.test(prefix)) return NextResponse.json({ error: `${i + 1}. ek link: SKU öneki en fazla 12 karakter` }, { status: 400 });
       let mapping: Record<string, string> | null = null;
@@ -87,7 +96,8 @@ export async function PUT(req: NextRequest) {
         mapping = Object.fromEntries(Object.entries(f.mapping).filter(([k, v]) => k.length <= 200 && FIELDS.includes(String(v))).slice(0, 200)) as Record<string, string>;
         if (!mapCheck(mapping)) return NextResponse.json({ error: `${i + 1}. ek link: eşlemede Model kodu ve Ürün adı seçilmeli` }, { status: 400 });
       }
-      out.push({ id, label: String(f.label ?? "").trim().slice(0, 60) || `Link ${i + 2}`, url, sku_prefix: prefix || null, mapping, item_path: String(f.item_path ?? "").trim().slice(0, 200) || null });
+      out.push({ id, label: String(f.label ?? "").trim().slice(0, 60) || `Link ${i + 2}`, url, sku_prefix: prefix || null, mapping, item_path: String(f.item_path ?? "").trim().slice(0, 200) || null,
+        ...(api ? { type: "api", api } : {}) });
     }
     row.feeds = out;
   }
