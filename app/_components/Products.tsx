@@ -523,7 +523,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
           {input("cost_price", "Alış fiyatı (KDV dahil, TL)", "Kâr hesabı ve zarar kontrolü için gerekli", "decimal", undefined, "0,00")}
           <label className="f">Satış fiyatı (isteğe bağlı, KDV dahil)
             <input type="text" inputMode="decimal" value={pAttrs["Satış fiyatı"] ?? ""} placeholder="Boş: formülle hesaplanır" onChange={(e) => setAttr("Satış fiyatı", e.target.value.replace(/[^0-9.,]/g, ""))} />
-            <small>Yazarsan Trendyol ve Hepsiburada'ya bu fiyat gider; zarar ettiriyorsa uygulanmaz, formül fiyatı kullanılır.</small>
+            <small>Yazarsan Trendyol ve Hepsiburada'ya her zaman bu fiyat gider (zarar etse bile sistem değiştirmez). Boşsa formülle hesaplanır.</small>
           </label>
           {single && <label className="f">Stok
             <input type="text" inputMode="numeric" value={f.variants[0].stock} placeholder="0" onChange={(e) => setV(0, "stock", e.target.value)} />
@@ -668,7 +668,7 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
 
       {!isNew && <AmazonMatches key={matchKey} api={api} notify={notify} productId={f.id!} variants={f.variants} canEdit={canEdit} />}
 
-      {role === "admin" && <PricePreview api={api} cost={n(f.cost_price) ?? n(f.variants[0]?.cost_price ?? "")} currency={f.currency} vat={Number(f.vat_rate) || 20} category={f.category} brand={f.brand} source={f.source ?? "manual"} stock={f.variants.reduce((t, v) => t + (Number(v.stock) || 0), 0)} />}
+      {role === "admin" && <PricePreview api={api} cost={n(f.cost_price) ?? n(f.variants[0]?.cost_price ?? "")} currency={f.currency} vat={Number(f.vat_rate) || 20} category={f.category} brand={f.brand} source={f.source ?? "manual"} stock={f.variants.reduce((t, v) => t + (Number(v.stock) || 0), 0)} attrs={pAttrs} />}
 
       <div className="card">
         <h2>Gönderime hazırlık</h2>

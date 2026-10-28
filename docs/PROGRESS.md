@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-28 (46) — Elle girilen satış fiyatı her zaman gider
+- K: "fiyatı yazarsam o fiyat girsin, yazmazsam formül; ekledikten sonra zarar etse bile karışma". Önceden zarar ettiren elle fiyat yok sayılıp formül kullanılıyordu. Artık `priceFor` (worker/core/db-products.ts) formdaki "Satış fiyatı" (ve "Satış fiyatı@pazaryeri") varsa onu olduğu gibi gönderir: zararda ya da maliyet boş olsa bile. Smart politika / kademeli zam zaten uygulanmıyordu. Zarardakiler senkron özetinde `fixedLoss` sayılır (bilgi). Maliyetsiz ürün rekabet önerisine girmez.
+- Ürün formundaki fiyat önizlemesi girilen fiyatı gösterir, zarardaysa kırmızı "ZARARDA, yine de bu fiyat gider". Test `worker/test/sale-price.test.ts` (7).
+- Panel "Ürün istisnaları / Rekabet" elle fiyatı (product_overrides) eskisi gibi: zarar ettiriyorsa formül (değiştirilmedi).
+
 ## 2026-10-28 (45) — VPS kuruldu; Supabase'den sunucuya taşıma kiti
 - Sunucu (Cenuta, 89.252.153.145, `trentakip.duckdns.org`, Ubuntu 24.04): `ops/vps/setup.sh` çalıştı (anahtarla giriş, şifreli giriş kapalı, ufw, fail2ban, swap, Node 24, pg 17 istemcisi). `/etc/trentakip/env` K doldurdu, değer yazdırmadan doğrulandı (Supabase 26.056 ürün, GitHub 200, Telegram ok). `trentakip-dispatch.timer` açık, ilk tetikleme Trendyol + HB'yi başlattı. GitHub cron 1 gün daha açık (çift tetikleme sıraya girer), sonra kapanır. `supplier-vps.timer` sunucudan okunacak tedarikçi gelince.
 - SSH "banner timeout" nedeni: 1 CPU'da ilk açılış güncellemeleri işlemciyi dolduruyordu (load 4-5, %60 nice). K 2 CPU / 4 GB yükseltmesini istedi (disk 48 GB kalır); 28.10 akşamı henüz yansımadı.

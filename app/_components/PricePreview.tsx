@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import { breakdown, calcPrice, type PricingConfig } from "@/worker/pricing";
 import { cfgFromSettings } from "./pricing-config";
 import { applyRules, rulesFor, type PricingRule } from "@/worker/pricing-rules";
+import { salePriceOf } from "@/worker/core/sale-price";
 import { tl, type Api, type Row } from "./shared";
 
 const MARKETS = [["trendyol", "Trendyol"], ["hepsiburada", "Hepsiburada"], ["amazon", "Amazon TR"]] as const;
 
 // Ürün detayında: her pazaryerinin fiyat ayarları + akıllı kâr kurallarıyla tahmini satış fiyatı ve net kâr
 // (varsayılan komisyonla; canlıda ilanın kendi komisyonu kullanılır)
-export default function PricePreview({ api, cost, currency, vat, category, brand, source, stock }: {
+export default function PricePreview({ api, cost, currency, vat, category, brand, source, stock, attrs }: {
   api: Api; cost: number | null; currency: string; vat: number; category: string; brand: string; source: string; stock: number;
+  attrs?: Record<string, string>; // formdaki "Satış fiyatı": girildiyse o fiyat gider (zarar etse bile)
 }) {
   const [data, setData] = useState<Record<string, { s: Row; rules: PricingRule[] }> | null>(null);
   useEffect(() => {
@@ -33,7 +35,10 @@ export default function PricePreview({ api, cost, currency, vat, category, brand
             const tlCost = cost * (fx[currency] ?? 0);
             const cfg: PricingConfig = cfgFromSettings(s, vat);
             const { cfg: rc, applied } = applyRules(cfg, rulesFor(rules, m), { cost: tlCost, supplier: source.replace(/^xml:/, ""), category, brand, stock });
-            const r = calcPrice(tlCost, rc, cfg.commissionRate);
+            const fixed = salePriceOf(attrs, m);
+            const r = fixed > 0
+              ? (() => { const fb = breakdown(fixed, tlCost, rc, cfg.commissionRate); return { ok: true, price: fixed, netProfit: fb.net, profitRate: fb.rate, note: fb.net > 0 ? "elle girilen fiyat" : "elle girilen fiyat: ZARARDA, yine de bu fiyat gider", reason: undefined }; })()
+              : calcPrice(tlCost, rc, cfg.commissionRate);
             const b = r.ok ? breakdown(r.price, tlCost, rc, cfg.commissionRate) : null;
             return (
               <tr key={m}>
@@ -43,7 +48,7 @@ export default function PricePreview({ api, cost, currency, vat, category, brand
                 <td data-label="Kargo" className="n">{b ? (b.shipping ? tl(b.shipping) : "alıcı öder") : "-"}</td>
                 <td data-label="İade payı" className="n">{b ? tl(b.returns) : "-"}</td>
                 <td data-label="KDV farkı" className="n">{b ? tl(b.vatDue) : "-"}</td>
-                <td data-label="Net kâr" className="n" style={{ color: r.ok ? "var(--ok)" : undefined }}>{r.ok ? `${tl(r.netProfit)} (%${Math.round(r.profitRate * 100)})` : "-"}</td>
+                <td data-label="Net kâr" className="n" style={{ color: r.ok ? (r.netProfit > 0 ? "var(--ok)" : "var(--bad)") : undefined }}>{r.ok ? `${tl(r.netProfit)} (%${Math.round(r.profitRate * 100)})` : "-"}</td>
                 <td data-label="Kural" className="muted" style={{ fontSize: 12 }}>{applied.join(", ") || "genel ayar"}{r.note ? ` · ${r.note}` : ""}</td>
               </tr>
             );

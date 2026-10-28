@@ -272,7 +272,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 }
 
 // 10) birim testleri
-for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts", "desc-check.test.ts", "research.test.ts"]) {
+for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts", "desc-check.test.ts", "research.test.ts", "sale-price.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
 }

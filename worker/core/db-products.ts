@@ -62,20 +62,22 @@ export const listingKeyOf = (source: string, variant: { sku: string; barcode: st
   source === "xml:bayilik" ? `OS13-${variant.sku}` : variant.barcode ?? "";
 
 // Fiyat: tedarikçi maliyeti (döviz çevrilir) + pazaryeri komisyonu + akıllı kâr kuralları
-function priceFor(ctx: DbCtx, p: any, v: any, key: string | null, stock: number, catName?: string | null) {
-  const cost = Number(v.cost_price ?? p.cost_price) * (ctx.fx[p.currency ?? "TRY"] ?? 0);
-  if (!(cost > 0)) return { ok: false as const, reason: "maliyet yok", cost, comm: ctx.cfg.commissionRate, pcfg: ctx.cfg };
+export function priceFor(ctx: Pick<DbCtx, "fx" | "cfg" | "catMap" | "mp" | "marketplaceId" | "rules" | "shipFor" | "dyn" | "skip">, p: any, v: any, key: string | null, stock: number, catName?: string | null) {
+  const cost0 = Number(v.cost_price ?? p.cost_price) * (ctx.fx[p.currency ?? "TRY"] ?? 0);
+  const cost = Number.isFinite(cost0) && cost0 > 0 ? cost0 : 0;
+  // Ürün formunda girilen satış fiyatı (KDV dahil; "Satış fiyatı@hepsiburada" o pazaryerinde ezer): olduğu gibi gider (K, 28.10:
+  // "fiyatı yazarsam o fiyat, zarar etse bile karışma"). Maliyet yoksa da gider. Boşsa formül.
+  const fixed = salePriceOf(p.attributes, ctx.marketplaceId);
+  if (!(cost > 0) && !(fixed > 0)) return { ok: false as const, reason: "maliyet yok", cost, comm: ctx.cfg.commissionRate, pcfg: ctx.cfg };
   const panelRate = ctx.catMap.get(p.category)?.commission_rate;
   // Kategori ipucu: pazaryeri kategori adı (gönderimde bulunan) ya da Trendyol'da öğrenilen ad; oran tablosu olan adaptör kullanır (HB EK.4)
   const hintCat = catName ?? (ctx.marketplaceId !== "trendyol" ? String(p.attributes?.["Trendyol kategori adı"] ?? "") : "");
   const comm = ctx.mp.commission(key, p.category ?? "", panelRate != null ? Number(panelRate) : null, ctx.cfg.commissionRate, { category: hintCat, title: p.title }).rate;
   const base: PricingConfig = { ...ctx.cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(ctx.shipFor ? { shippingCost: ctx.shipFor(p.desi != null ? Number(p.desi) : null) } : {}) };
   const pcfg = ctx.rules.length ? applyRules(base, ctx.rules, { cost, supplier: supplierOf(p.source), category: p.category, brand: p.brand, stock }).cfg : base;
-  // Ürün formunda girilen satış fiyatı (KDV dahil; "Satış fiyatı@hepsiburada" o pazaryerinde ezer): boşsa formül. Zarar ettiriyorsa uygulanmaz.
-  const fixed = salePriceOf(p.attributes, ctx.marketplaceId);
   if (fixed > 0) {
-    if (breakdown(fixed, cost, pcfg, comm).net > 0) return { ok: true as const, price: Math.round(fixed * 100) / 100, cost, comm, pcfg, fixed: true };
-    ctx.skip(`girilen satış fiyatı zarar ettiriyor (${fixed} TL): formül fiyatı kullanıldı`);
+    const loss = !(cost > 0) || breakdown(fixed, cost, pcfg, comm).net <= 0;
+    return { ok: true as const, price: Math.round(fixed * 100) / 100, cost, comm, pcfg, fixed: true, loss };
   }
   const r = calcPrice(cost, pcfg, comm);
   if (!r.ok) return { ok: false as const, reason: r.reason ?? "fiyat hesaplanamadı", cost, comm, pcfg };
@@ -122,6 +124,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       if (ov?.hidden) { items.push({ id: key, price: null, quantity: 0 }); stats.zeroed++; continue; } // panelde gizlenen ilan
       const pr = priceFor(ctx, p, v, key, avail);
       if (!pr.ok) { items.push({ id: key, price: null, quantity: 0 }); stats.zeroed++; ctx.skip(`veritabanı ürünü: ${pr.reason} (stok 0)`); continue; }
+      if ("loss" in pr && pr.loss) stats.fixedLoss = (stats.fixedLoss ?? 0) + 1; // elle girilen fiyat zararda (bilgi; fiyat yine gider)
       // Duruma göre marj karşılaştırması (kapalıyken): ilandaki bugünkü fiyat -> yeni kuralın hedef fiyatı
       if ("alt" in pr && pr.alt != null && Number(ls.price) > 0) {
         const cur = Number(ls.price), d = (pr.alt - cur) / cur;
@@ -148,7 +151,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
         const cap = Math.max(pr.floor, Math.floor(base * (1 + ctx.dyn.cfg.ramp) * 100) / 100);
         if (sendPrice > cap) { sendPrice = cap; stats.rampCapped = (stats.rampCapped ?? 0) + 1; }
       }
-      ctx.econ?.set(key, { cost: pr.cost, comm: pr.comm, pcfg: pr.pcfg, price: sendPrice ?? Number(ls.price) });
+      if (pr.cost > 0) ctx.econ?.set(key, { cost: pr.cost, comm: pr.comm, pcfg: pr.pcfg, price: sendPrice ?? Number(ls.price) }); // maliyetsiz elle fiyat: rekabet önerisi yok
       const dup = dupLosers.has(key);
       if (dup) stats.duplicateClosed = (stats.duplicateClosed ?? 0) + 1;
       const qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
