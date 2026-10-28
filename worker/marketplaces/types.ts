@@ -122,6 +122,8 @@ export interface Marketplace {
   fetchOrders?(fromMs: number, toMs: number): Promise<OrderIn[]>;
   /** Onaylı ürünün görsellerini değiştir (Trendyol content-bulk-update) */
   updateImages?(items: { contentId: string; images: string[] }[]): Promise<BatchResult>;
+  /** Onaylı ilanın açıklaması (Trendyol content-bulk-update). Onaylı yapay zekâ açıklamaları (migration 067) */
+  updateDescriptions?(items: { contentId: string; description: string }[]): Promise<BatchResult>;
   /** Cevap bekleyen müşteri soruları (müşteri adı döndürülmez) ve cevap gönderme (yalnızca onaylı cevap, worker/core/inbox.ts) */
   fetchQuestions?(): Promise<QuestionIn[]>;
   /** İade talepleri (salt okunur) ve hakediş kayıtları (gerçek komisyon) */

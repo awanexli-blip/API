@@ -215,6 +215,12 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
       const ids: string[] = (job.payload?.product_ids ?? []).slice(0, 200);
       const { data: products, error: pe } = await ctx.db.from("products").select("*, product_variants(*), product_images(url, position)").in("id", ids);
       if (pe) throw new Error(pe.message);
+      // Panelde onaylanan yapay zekâ açıklaması (migration 067) tedarikçi metninin yerine gönderilir; tablo yoksa tedarikçi metni
+      {
+        const ad = await ctx.db.from("product_descriptions").select("product_id, draft").eq("status", "approved").in("product_id", ids);
+        const byId = new Map((ad.error ? [] : ad.data ?? []).filter((r: any) => r.draft).map((r: any) => [r.product_id, r.draft]));
+        for (const p of products ?? []) if (byId.has(p.id)) p.description = byId.get(p.id);
+      }
       const groups = new Map<string, NewProduct[]>(); // marka -> ürünler (adaptör çağrısı başına tek marka)
       // Katalog eşleşmesi gereken pazaryeri (Amazon): onaylı eşleşmeler
       const confirmed = new Map<string, string>();

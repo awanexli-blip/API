@@ -1,0 +1,41 @@
+name: Açıklama taslakları
+
+# Yapay zekâ ile düzeltilmiş açıklama taslakları (worker/desc-draft.ts). Yalnızca veritabanına taslak yazar; panelde onaylananları
+# senkron Trendyol'a gönderir. Saatte bir, çalışma başına DESC_PER_RUN ürün (Gemini ücretsiz kotası).
+# Kapatmak için: GitHub Variable DESC_ENABLED = 0
+on:
+  schedule:
+    - cron: "20 * * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Bu çalışmada en fazla kaç ürün (1-200)"
+        default: "10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desc-draft
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    if: vars.DESC_ENABLED != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix worker
+      - name: Taslak yaz
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DESC_PER_RUN: ${{ github.event.inputs.count || vars.DESC_PER_RUN || '10' }}
+        run: node --experimental-strip-types worker/desc-draft.ts

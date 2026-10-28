@@ -19,6 +19,7 @@ import { syncInbox, notifyOrders } from "./core/inbox.ts";
 import { runAlerts } from "./core/notify.ts";
 import { parseDyn } from "./core/dynamic-margin.ts";
 import { fixImages } from "./core/image-fix.ts";
+import { pushDescriptions } from "./core/descriptions.ts";
 import { flushAttrOptions } from "./core/attr-options.ts";
 import { aiFillAttributes } from "./core/ai-attrs.ts";
 import { syncBuybox } from "./core/buybox.ts";
@@ -434,6 +435,11 @@ async function main() {
   if (doUpdate && mp.updateImages) {
     summary.imageFix = await fixImages(db, mp, listings).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
     if (Array.isArray(summary.imageFix?.batchIds)) summary.batchIds.push(...summary.imageFix.batchIds);
+  }
+  // Panelde onaylanan yapay zekâ açıklamaları (migration 067) canlı ilana; satış durdurulmuşsa gönderilmez
+  if (doUpdate && mp.updateDescriptions) {
+    summary.descriptions = await pushDescriptions(db, mp, listings).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    if (Array.isArray(summary.descriptions?.batchIds)) summary.batchIds.push(...summary.descriptions.batchIds);
   }
   // Müşteri soruları (F7): çek, taslak, Telegram; yalnızca onaylı cevaplar gönderilir
   if (mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));

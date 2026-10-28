@@ -28,6 +28,7 @@ import Opportunities from "./_components/Opportunities";
 import Orders from "./_components/Orders";
 import Inbox from "./_components/Inbox";
 import SalesReport from "./_components/SalesReport";
+import Descriptions from "./_components/Descriptions";
 import { applyTheme, currentTheme, type Theme } from "./_components/theme";
 
 type Role = "viewer" | "editor" | "admin";
@@ -132,6 +133,7 @@ function Panel({ token, email }: { token: string; email: string }) {
     { path: "siparisler", label: "Siparişler", icon: "cart", show: canEdit, active: section === "siparisler" },
     { path: "sorular", label: "Müşteri soruları", icon: "info", show: canEdit, active: section === "sorular" },
     { path: "urunler", label: "Ürünler", icon: "box", show: true, group: "Katalog", active: section === "urunler" },
+    { path: "aciklamalar", label: "Açıklamalar", icon: "list", show: canEdit, active: section === "aciklamalar" },
     { path: "tedarikciler", label: "Tedarikçiler", icon: "truck", show: isAdmin, active: section === "tedarikciler" },
     { path: "ice-aktar", label: "İçe aktar", icon: "upload", show: canEdit, active: section === "ice-aktar" },
     { path: "feed", label: "XML feed", icon: "rss", show: isAdmin, active: section === "feed" },
@@ -168,6 +170,7 @@ function Panel({ token, email }: { token: string; email: string }) {
   else if (section === "siparisler" && canEdit) page = <Orders api={api} notify={notify} />;
   else if (section === "sorular" && canEdit) page = <Inbox api={api} notify={notify} />;
   else if (section === "urunler") page = <Products api={api} notify={notify} />;
+  else if (section === "aciklamalar" && canEdit) page = <Descriptions api={api} notify={notify} isAdmin={isAdmin} />;
   else if (section === "tedarikciler" && isAdmin) page = <Suppliers api={api} notify={notify} />;
   else if (section === "ice-aktar" && canEdit) page = <Import api={api} notify={notify} isAdmin={isAdmin} onDone={() => {}} />;
   else if (section === "feed" && isAdmin) page = <Feeds api={api} notify={notify} />;

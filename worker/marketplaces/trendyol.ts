@@ -621,6 +621,21 @@ export function createTrendyol(): Marketplace {
       return res;
     },
 
+    // Onaylı ürünün açıklamasını değiştir (content-bulk-update, dokümanla doğrulandı 28.10: contentId zorunlu, diğer alanlar isteğe bağlı,
+    // yalnızca gönderilen alan değişir, en fazla 1.000 öğe; 200 = kuyruğa alındı, sonuç batch-requests ile okunur)
+    async updateDescriptions(items: { contentId: string; description: string }[]): Promise<BatchResult> {
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      const body = items.filter((i) => i.description.trim()).map((i) => ({ contentId: Number(i.contentId), description: i.description.slice(0, 30000) }));
+      for (const batch of chunk(body, 500)) {
+        try {
+          const r = await tg(`/product/sellers/${SELLER_ID}/products/content-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
+          res.ok += batch.length; res.batchIds.push(r.batchRequestId);
+        } catch (e: any) { failBatch(res, e); }
+        await sleep(500);
+      }
+      return res;
+    },
+
     // Onaylı ürünün görsellerini değiştir (content-bulk-update, dokümanla doğrulandı 23.10: contentId + images, en fazla 1.000 ürün/istek,
     // yalnızca gönderilen alan değişir). Sonuç batch-requests ile okunur.
     async updateImages(items: { contentId: string; images: string[] }[]): Promise<BatchResult> {
