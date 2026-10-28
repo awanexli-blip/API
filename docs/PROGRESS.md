@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-28 (47) — Yayındaki ürünü yeniden gönderme = güncelleme; aynı ürünü eklerken sor
+- K: "neyi değiştirirsem onu güncellesin"; "aynı ürün varsa sor, onaylarsam güncellensin".
+- Gönderim (`lib/listings-send.ts`): yayındaki ilan artık "zaten yayında" diye reddedilmez, iş kuyruğuna güncelleme olarak girer (ilan "yayında" kalır). Çift tıklama koruması ürünün düzenlenme zamanını da içerir (düzenleyip yeniden gönderim yeni iş).
+- Worker (`processSendJobs`): yayındaki onaylı ilanda değişen alanlar `worker/core/content-diff.ts` ile bulunur, yalnızca onlar Trendyol `content-bulk-update` ile gider (`updateContent`: başlık / açıklama / görsel; doküman 28.10). Karşılaştırma son gönderilen içeriğin iziyle (`marketplace_listings.content_sent`, **migration 068**, K SQL Editor'de çalıştıracak); iz yoksa canlı ilanla (başlık metni, açıklama özeti, görsel sayısı). Emin olunamayan alan gönderilmez. Fiyat/stok aynı çalışmadaki senkronla. Hepsiburada'da içerik güncelleme yok (yalnızca fiyat/stok; panel mesajı söyler). Başarısızsa ilan yayında kalır, hata ilan satırında.
+- Toplu ilan upsert'i kolon kümesine göre bölündü: önceden yeni ilan satırlarıyla aynı istekteki yayındaki ilanların başlık/fiyat kolonları NULL yazılıyordu (PostgREST kolon birleşimi).
+- Ürün ekleme (`POST /api/products`): aynı model kodu / varyant SKU / barkod varsa 409 + mevcut ürün; panel sorar, Tamam'da mevcut ürün formdaki bilgilerle güncellenir (`update_existing`): varyantlar SKU/barkodla eşlenir, eşleşenin ve ürünün SKU'su korunur (ilan anahtarı değişmesin), formda olmayan eski varyantlar silinmez.
+- Testler: `content-diff.test.ts` (12) + tüm worker testleri, birim testleri, `next build` temiz. Canlıda henüz denenmedi: ilk yeniden gönderimde Trendyol toplu sonuç (`batchCheck`) kontrol edilecek.
+
 ## 2026-10-28 (46) — Elle girilen satış fiyatı her zaman gider
 - K: "fiyatı yazarsam o fiyat girsin, yazmazsam formül; ekledikten sonra zarar etse bile karışma". Önceden zarar ettiren elle fiyat yok sayılıp formül kullanılıyordu. Artık `priceFor` (worker/core/db-products.ts) formdaki "Satış fiyatı" (ve "Satış fiyatı@pazaryeri") varsa onu olduğu gibi gönderir: zararda ya da maliyet boş olsa bile. Smart politika / kademeli zam zaten uygulanmıyordu. Zarardakiler senkron özetinde `fixedLoss` sayılır (bilgi). Maliyetsiz ürün rekabet önerisine girmez.
 - Ürün formundaki fiyat önizlemesi girilen fiyatı gösterir, zarardaysa kırmızı "ZARARDA, yine de bu fiyat gider". Test `worker/test/sale-price.test.ts` (7).

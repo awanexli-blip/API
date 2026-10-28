@@ -6,6 +6,7 @@ import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
+import { descHashOf } from "../core/content-diff.ts";
 import type { BatchCheck, BatchResult, BuyboxInfo, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
 
 const loadJson = (f: string): Record<string, number> => {
@@ -240,6 +241,7 @@ export function createTrendyol(): Marketplace {
             categoryId: c.category?.id != null ? String(c.category.id) : undefined, categoryName: c.category?.name ?? "", commission: liveComm.get(barcode),
             contentId: c.contentId != null ? String(c.contentId) : c.id != null ? String(c.id) : undefined,
             images: Array.isArray(c.images) ? c.images.map((i: any) => String(i?.url ?? i)).filter(Boolean) : undefined,
+            descHash: typeof c.description === "string" && c.description.trim() ? descHashOf(c.description) : undefined,
             attributes: Object.fromEntries(attrs.filter((a) => a.name && a.value != null && String(a.value).trim()).map((a) => [String(a.name), String(a.value)])) });
           if (!closed && c.category?.id != null) {
             const cid = String(c.category.id);
@@ -626,6 +628,26 @@ export function createTrendyol(): Marketplace {
     async updateDescriptions(items: { contentId: string; description: string }[]): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
       const body = items.filter((i) => i.description.trim()).map((i) => ({ contentId: Number(i.contentId), description: i.description.slice(0, 30000) }));
+      for (const batch of chunk(body, 500)) {
+        try {
+          const r = await tg(`/product/sellers/${SELLER_ID}/products/content-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
+          res.ok += batch.length; res.batchIds.push(r.batchRequestId);
+        } catch (e: any) { failBatch(res, e); }
+        await sleep(500);
+      }
+      return res;
+    },
+
+    // Yayındaki ürünün değişen içeriği (başlık / açıklama / görsel; yeniden "Gönder"): content-bulk-update, yalnızca gönderilen alan değişir
+    // (dokümanla doğrulandı 28.10: items[] = contentId + title/description/images). Barkod, marka, kategori değiştirilemez.
+    async updateContent(items: { contentId: string; title?: string; description?: string; images?: string[] }[]): Promise<BatchResult> {
+      const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      const body = items.map((i) => ({
+        contentId: Number(i.contentId),
+        ...(i.title?.trim() ? { title: i.title.slice(0, 100) } : {}),
+        ...(i.description?.trim() ? { description: i.description.slice(0, 30000) } : {}),
+        ...(i.images?.length ? { images: i.images.slice(0, 8).map((url) => ({ url: jpgUrl(url, undefined, "p") })) } : {}),
+      })).filter((i) => Number.isFinite(i.contentId) && Object.keys(i).length > 1);
       for (const batch of chunk(body, 500)) {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products/content-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });

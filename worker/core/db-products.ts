@@ -7,6 +7,7 @@ import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle, normFull, readAll } from "./util.ts";
 import { salePriceOf } from "./sale-price.ts";
+import { contentChanges, fpOf, type ContentFp } from "./content-diff.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher } from "./brand-risk.ts";
@@ -170,6 +171,14 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
   return { items, stats };
 }
 
+// Toplu upsert'te satırda olmayan kolon NULL yazılır (PostgREST: kolon listesi tüm satırların birleşimi): yayındaki ilanın başlığı/fiyatı
+// ya da içerik izi, aynı istekteki yeni ilan satırları yüzünden silinmesin diye satırlar kolon kümesine göre ayrı gönderilir.
+async function upsertListings(db: any, rows: any[]) {
+  const by = new Map<string, any[]>();
+  for (const r of rows) { const k = Object.keys(r).sort().join(","); by.set(k, [...(by.get(k) ?? []), r]); }
+  for (const part of by.values()) await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
+}
+
 export type SendResult = { jobs: number; sent: number; errors: number; batchIds: string[]; keys: Map<string, number> };
 
 export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendResult> {
@@ -225,6 +234,21 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         for (const p of products ?? []) if (byId.has(p.id)) p.description = byId.get(p.id);
       }
       const groups = new Map<string, NewProduct[]>(); // marka -> ürünler (adaptör çağrısı başına tek marka)
+      // Yayındaki ilanı yeniden gönderme = değişen içeriğin güncellenmesi. Son gönderilen içeriğin izi (migration 068 yoksa canlı içerikle karşılaştırılır)
+      const sentFp = new Map<string, ContentFp | null>();
+      let fpSupported = true;
+      {
+        const keys = (products ?? []).flatMap((p: any) => (p.product_variants ?? []).map((v: any) => keyFor(p.source, v))).filter((k: string | null) => k && ctx.existing.has(k));
+        for (let i = 0; i < keys.length && fpSupported; i += 200) {
+          const r = await ctx.db.from("marketplace_listings").select("listing_key, content_sent").eq("marketplace", ctx.marketplaceId).in("listing_key", keys.slice(i, i + 200));
+          if (r.error) { fpSupported = false; break; }
+          for (const x of r.data ?? []) sentFp.set(x.listing_key, x.content_sent ?? null);
+        }
+      }
+      const contentUpd: { keys: string[]; contentId: string; ch: Record<string, any>; fp: ContentFp }[] = [];
+      const byContent = new Map<string, (typeof contentUpd)[number] | { keys: string[]; fp: ContentFp }>(); // aynı içerik (varyantlar) tek güncelleme
+      const baseline: { key: string; fp: ContentFp }[] = [];
+      let contentUnsupported = 0;
       // Katalog eşleşmesi gereken pazaryeri (Amazon): onaylı eşleşmeler
       const confirmed = new Map<string, string>();
       if (ctx.mp.findCatalogMatches) {
@@ -285,7 +309,24 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         for (const v of vlist) {
           const key = keyFor(p.source, v);
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
-          if (ctx.existing.has(key)) { rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: ctx.lsBy.get(key)?.status === "pending" ? "pending_approval" : "live", updated_at: now }); continue; }
+          if (ctx.existing.has(key)) {
+            const live = ctx.lsBy.get(key);
+            rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: live?.status === "pending" ? "pending_approval" : "live", updated_at: now });
+            // Yayında ve onaylı: değişen başlık / açıklama / görsel güncellenir (fiyat ve stok bu çalışmadaki senkronla gider)
+            if (live?.status === "active" && p.status === "active") {
+              const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title };
+              const cur = { title: c.title, description: c.description, images: Array.isArray(v.images) && v.images.length ? v.images : images };
+              const fp = fpOf(cur);
+              const prev = live.contentId ? byContent.get(live.contentId) : undefined;
+              if (prev) { prev.keys.push(key); continue; }
+              const ch = contentChanges(cur, sentFp.get(key), { title: live.title, descHash: live.descHash, images: live.images });
+              if (!Object.keys(ch).length) { if (fpSupported && !sentFp.get(key)) baseline.push({ key, fp }); if (live.contentId) byContent.set(live.contentId, { keys: [key], fp }); continue; }
+              if (!ctx.mp.updateContent || !live.contentId) { contentUnsupported++; continue; }
+              const u = { keys: [key], contentId: live.contentId, ch, fp };
+              contentUpd.push(u); byContent.set(live.contentId, u);
+            }
+            continue;
+          }
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
           if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
           if (win && win.id !== p.id) { fail(key, p, v, `Tedarikçide aynı ürünün kopyası (kod ${win.sku}): stokta en ucuz olan o, yalnızca o gönderilir`); continue; }
@@ -331,7 +372,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           groups.get(brand)!.push(np);
           ctx.lsTitles.add(normFull(title)); // aynı başlıklı ikinci ürün (başka tedarikçiden) aynı çalışmada çift ilan açmasın
           titleClaimed = true;
-          rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now });
+          rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now,
+            ...(fpSupported ? { content_sent: fpOf({ title: np.name, description: np.detail, images: vImages }) } : {}) });
           out.keys.set(key, job.id);
         }
       }
@@ -348,12 +390,32 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         if (r.ok > 0) await rememberLearned(ctx, items, new Set((r.failedItems ?? []).map((f) => f.id)));
       }
       out.sent += sentInJob;
-      if (rows.length) await ctx.db.from("marketplace_listings").upsert(rows, { onConflict: "marketplace,listing_key" });
-      const result = { sent: sentInJob, errors: rows.filter((r) => r.status === "error").length, already: rows.filter((r) => r.status === "live" || r.status === "pending_approval").length };
+      // Yayındaki ilanların değişen içeriği (tek istek; başarısızsa ilan yayında kalır, hata ilan satırına yazılır)
+      let contentUpdated = 0;
+      const fields: Record<string, number> = {};
+      if (contentUpd.length && ctx.mp.updateContent) {
+        const r = await ctx.mp.updateContent(contentUpd.map((u) => ({ contentId: u.contentId, ...u.ch })));
+        out.batchIds.push(...r.batchIds);
+        const keys = new Set(contentUpd.flatMap((u) => u.keys));
+        if (r.ok > 0 && !r.failed) {
+          contentUpdated = contentUpd.length;
+          for (const u of contentUpd) for (const f of Object.keys(u.ch)) fields[f] = (fields[f] ?? 0) + 1;
+          if (fpSupported) for (const u of contentUpd) for (const k of u.keys) { const row = rows.find((x) => x.listing_key === k); if (row) row.content_sent = u.fp; }
+        } else {
+          const why = `İçerik güncellenemedi (ilan yayında, eski içerikle): ${(r as any).errors?.[0] ?? "pazaryeri isteği başarısız"}`.slice(0, 500);
+          for (const row of rows) if (keys.has(row.listing_key)) row.last_error = why;
+        }
+      }
+      // Eski ilanlar: değişiklik yoksa bugünkü içerik iz olarak saklanır (sonraki değişiklik kesin bilinir)
+      if (fpSupported) for (const b of baseline) { const row = rows.find((x) => x.listing_key === b.key); if (row && !row.content_sent) row.content_sent = b.fp; }
+      if (fpSupported) for (const row of rows) if (!row.content_sent && sentFp.get(row.listing_key)) row.content_sent = sentFp.get(row.listing_key);
+      await upsertListings(ctx.db, rows);
+      const result = { sent: sentInJob, errors: rows.filter((r) => r.status === "error").length, already: rows.filter((r) => r.status === "live" || r.status === "pending_approval").length,
+        ...(contentUpdated ? { contentUpdated, fields } : {}), ...(contentUnsupported ? { contentUnsupported } : {}) };
       if (failedBatches && !sentInJob) throw new Error(`${ctx.mp.label} isteği başarısız (${failedBatches} paket)`);
       await ctx.db.rpc("job_finish", { job_id: job.id, ok: true, res: result, err: null });
     } catch (e: any) {
-      if (rows.length) await ctx.db.from("marketplace_listings").upsert(rows.map((r) => (r.status === "sent" ? { ...r, status: "queued" } : r)), { onConflict: "marketplace,listing_key" });
+      await upsertListings(ctx.db, rows.map((r) => (r.status === "sent" ? { ...r, status: "queued" } : r)));
       await ctx.db.rpc("job_finish", { job_id: job.id, ok: false, res: null, err: String(e?.message ?? e) });
     }
   }

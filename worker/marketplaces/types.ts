@@ -13,6 +13,7 @@ export interface Listing {
   asin?: string;         // Amazon: ilanın bağlı olduğu ASIN
   attributes?: Record<string, string>; // onaylı ilanın özellikleri (özellik adı -> değer), ürün kaydına öğrenilir
   contentId?: string;    // Trendyol içerik kimliği (onaylı ürün içerik güncellemesi)
+  descHash?: string;     // ilandaki açıklamanın özeti (content-diff.ts: yeniden gönderimde açıklama değişti mi)
   images?: string[];     // ilandaki görseller (yoksa / WebP ise görsel onarımı, worker/core/image-fix.ts)
   // Reddedilen ilan (Trendyol): ret türleri ve açıklamaları + düzeltme için mevcut içerik
   reject?: { types: string[]; details: string[]; title?: string; description?: string; images?: string[]; categoryId?: string; categoryName?: string };
@@ -124,6 +125,8 @@ export interface Marketplace {
   updateImages?(items: { contentId: string; images: string[] }[]): Promise<BatchResult>;
   /** Onaylı ilanın açıklaması (Trendyol content-bulk-update). Onaylı yapay zekâ açıklamaları (migration 067) */
   updateDescriptions?(items: { contentId: string; description: string }[]): Promise<BatchResult>;
+  // Yayındaki ilanın değişen içeriği (yalnızca verilen alanlar; Trendyol content-bulk-update)
+  updateContent?(items: { contentId: string; title?: string; description?: string; images?: string[] }[]): Promise<BatchResult>;
   /** Cevap bekleyen müşteri soruları (müşteri adı döndürülmez) ve cevap gönderme (yalnızca onaylı cevap, worker/core/inbox.ts) */
   fetchQuestions?(): Promise<QuestionIn[]>;
   /** İade talepleri (salt okunur) ve hakediş kayıtları (gerçek komisyon) */

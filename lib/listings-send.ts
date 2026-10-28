@@ -24,7 +24,7 @@ export async function queueSend(a: Actor, b: { product_ids?: unknown; marketplac
   if (!ids.length || ids.length > 200) return fail("1-200 ürün seç");
 
   const db = admin();
-  const { data: products, error } = await db.from("products").select("id, title, status, source, product_variants(id, sku, barcode)").in("id", ids);
+  const { data: products, error } = await db.from("products").select("id, title, status, source, updated_at, product_variants(id, sku, barcode, updated_at)").in("id", ids);
   if (error) return dbFail(error);
   const now = new Date().toISOString();
   const rows: any[] = [];
@@ -37,19 +37,28 @@ export async function queueSend(a: Actor, b: { product_ids?: unknown; marketplac
       rows.push({ marketplace, listing_key: key, variant_id: v.id, product_id: p.id, status: "queued", title: p.title, last_error: null, updated_at: now });
     }
   }
-  // Zaten yayında / onay bekleyen / gönderilmiş ilanlar yeniden sıraya alınmaz
+  // Yayındaki ilan: yeniden gönderim = güncelleme (değişen başlık/açıklama/görsel gider, fiyat-stok senkronla; ilan "yayında" kalır).
+  // Onay bekleyen / gönderilmiş / sırada olan yeniden sıraya alınmaz.
+  const updateIds = new Set<string>();
   if (rows.length) {
     const { data: ex } = await db.from("marketplace_listings").select("listing_key, status").eq("marketplace", marketplace).in("listing_key", rows.map((r) => r.listing_key));
-    const busy = new Map((ex ?? []).filter((x: any) => ["live", "pending_approval", "sent", "queued"].includes(x.status)).map((x: any) => [x.listing_key, x.status]));
-    for (const r of [...rows]) if (busy.has(r.listing_key)) { problems.push(`${r.title}: zaten ${busy.get(r.listing_key) === "live" ? "yayında" : busy.get(r.listing_key) === "pending_approval" ? "onay bekliyor" : "sırada"}`); rows.splice(rows.indexOf(r), 1); }
+    const st = new Map((ex ?? []).map((x: any) => [x.listing_key, x.status]));
+    for (const r of [...rows]) {
+      const s0 = st.get(r.listing_key);
+      if (s0 === "live") { updateIds.add(r.product_id); rows.splice(rows.indexOf(r), 1); continue; }
+      if (["pending_approval", "sent", "queued"].includes(s0)) { problems.push(`${r.title}: zaten ${s0 === "pending_approval" ? "onay bekliyor" : "sırada"}`); rows.splice(rows.indexOf(r), 1); }
+    }
   }
-  const sendIds = [...new Set(rows.map((r) => r.product_id))];
+  const sendIds = [...new Set([...rows.map((r) => r.product_id), ...updateIds])];
   if (!sendIds.length) return fail(problems.length ? `Gönderilecek ürün yok: ${problems.slice(0, 5).join("; ")}` : "Gönderilecek ürün yok");
 
-  const { error: le } = await db.from("marketplace_listings").upsert(rows, { onConflict: "marketplace,listing_key" });
-  if (le) return dbFail(le);
-  // Aynı ürünler aynı saatte iki kez sıraya girmesin (çift tıklama)
-  const hash = createHash("sha1").update(sendIds.sort().join(",")).digest("hex").slice(0, 16);
+  if (rows.length) {
+    const { error: le } = await db.from("marketplace_listings").upsert(rows, { onConflict: "marketplace,listing_key" });
+    if (le) return dbFail(le);
+  }
+  // Aynı ürünler aynı saatte iki kez sıraya girmesin (çift tıklama); ürün düzenlendiyse (updated_at) yeni iş
+  const ver = new Map((products ?? []).map((p: any) => [p.id, [p.updated_at, ...(p.product_variants ?? []).map((v: any) => v.updated_at)].join("|")]));
+  const hash = createHash("sha1").update(sendIds.sort().map((id) => `${id}@${ver.get(id) ?? ""}`).join(",")).digest("hex").slice(0, 16);
   const idem = `send:${marketplace}:${hash}:${now.slice(0, 13)}`;
   const { data: job, error: je } = await db.from("jobs").insert({ type: `send_products:${marketplace}`, marketplace, payload: { product_ids: sendIds }, idempotency_key: idem, created_by: a.email }).select("id").single();
   if (je && je.code !== "23505") return dbFail(je);
@@ -64,5 +73,5 @@ export async function queueSend(a: Actor, b: { product_ids?: unknown; marketplac
     started = r.status === 204;
     if (!started) startError = `GitHub ${r.status}`;
   }
-  return { status: 200, body: { ok: true, job_id: job?.id ?? null, duplicate: je?.code === "23505", queued: rows.length, products: sendIds.length, problems, started, startError } };
+  return { status: 200, body: { ok: true, job_id: job?.id ?? null, duplicate: je?.code === "23505", queued: rows.length, updates: updateIds.size, products: sendIds.length, problems, started, startError } };
 }

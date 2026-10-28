@@ -110,7 +110,8 @@ async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmi
   try {
     const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace, now }) });
     const extra = r.problems?.length ? ` Atlananlar: ${r.problems.slice(0, 3).join("; ")}${r.problems.length > 3 ? " ..." : ""}` : "";
-    notify("good", `${r.products} ürün (${r.queued} varyant) ${label}${marketplace === "hepsiburada" ? "'ya" : "'a"} gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${extra}`);
+    const upd = r.updates ? ` ${r.updates} ürün zaten yayında: değiştirdiğin başlık/açıklama/görsel güncellenecek, fiyat ve stok senkronla gider${marketplace === "hepsiburada" ? " (Hepsiburada'da içerik güncellemesi yok, yalnızca fiyat/stok)" : ""}.` : "";
+    notify("good", `${r.products} ürün (${r.queued} yeni varyant) ${label}${marketplace === "hepsiburada" ? "'ya" : "'a"} gönderilmek üzere sıraya alındı${r.duplicate ? " (zaten sıradaydı)" : ""}. ${r.started ? "Senkron başlatıldı, sonuç birkaç dakika içinde ürün detayında görünür." : r.startError ? `Senkron başlatılamadı (${r.startError}); bir sonraki otomatik senkronda gönderilecek.` : "Bir sonraki senkronda gönderilecek."}${upd}${extra}`);
     return true;
   } catch (e: any) { notify("err", e.message); return false; }
 }
@@ -125,7 +126,7 @@ async function sendToMarketplaces(api: Api, notify: Notify, ids: string[], isAdm
     try {
       const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace: mp, now }) });
       ok = true;
-      out.push(`${label}: ${r.queued} varyant sırada${r.duplicate ? " (zaten sıradaydı)" : ""}${r.started ? ", senkron başladı" : r.startError ? ` (senkron başlatılamadı: ${r.startError})` : ""}${r.problems?.length ? ` · atlanan: ${r.problems.slice(0, 2).join("; ")}` : ""}`);
+      out.push(`${label}: ${r.queued} yeni varyant sırada${r.updates ? `, ${r.updates} yayındaki ürün güncellenecek${mp === "hepsiburada" ? " (yalnızca fiyat/stok)" : ""}` : ""}${r.duplicate ? " (zaten sıradaydı)" : ""}${r.started ? ", senkron başladı" : r.startError ? ` (senkron başlatılamadı: ${r.startError})` : ""}${r.problems?.length ? ` · atlanan: ${r.problems.slice(0, 2).join("; ")}` : ""}`);
     } catch (e: any) { out.push(`${label}: ${e.message}`); }
   }
   notify(ok ? "good" : "err", `${out.join(" · ")}. Sonuç birkaç dakika içinde ürün detayındaki "Pazaryerlerinde" bölümünde görünür.`);
@@ -403,8 +404,21 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
     if (!r.success) { setErrs(issuesByPath(r.error)); notify("err", "Formda hata var, kırmızı alanları düzelt."); return; }
     setErrs({}); setBusy(true);
     try {
-      const saved = await api(isNew ? "/api/products" : `/api/products/${f.id}`, { method: isNew ? "POST" : "PUT", body: JSON.stringify(payload) });
-      notify("good", `${isNew ? "Ürün oluşturuldu" : "Ürün kaydedildi"}: ${saved.title} (SKU ${saved.sku})`);
+      let saved: any;
+      try {
+        saved = await api(isNew ? "/api/products" : `/api/products/${f.id}`, { method: isNew ? "POST" : "PUT", body: JSON.stringify(payload) });
+      } catch (e: any) {
+        // Aynı ürün sistemde var: sor, onaylanırsa o ürün formdaki bilgilerle güncellenir (yeni ürün açılmaz)
+        const ex = isNew && e?.status === 409 ? e.data?.existing : null;
+        if (!ex?.id) throw e;
+        if (!confirm(`Bu ürün sistemde zaten var (${ex.match}):
+${ex.title} (SKU ${ex.sku})
+
+Tamam: mevcut ürün bu formdaki bilgilerle güncellensin (yeni ürün açılmaz).
+İptal: hiçbir şey kaydedilmesin.`)) { notify("err", "Kaydedilmedi: ürün sistemde zaten var."); return; }
+        saved = await api("/api/products", { method: "POST", body: JSON.stringify({ ...payload, update_existing: ex.id }) });
+      }
+      notify("good", `${saved.updated_existing ? "Mevcut ürün güncellendi" : isNew ? "Ürün oluşturuldu" : "Ürün kaydedildi"}: ${saved.title} (SKU ${saved.sku})`);
       if (then === "new") return onNew();
       if (then === "close") return onClose();
       setF(fromProduct(saved)); setSavedF(fromProduct(saved));

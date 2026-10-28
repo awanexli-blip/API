@@ -2361,3 +2361,6 @@ returns jsonb language sql stable security invoker set search_path = public as $
   ) from public.product_descriptions
 $$;
 revoke execute on function public.desc_counts() from public, anon, authenticated;
+
+-- 068_listing_content_sent.sql
+alter table public.marketplace_listings add column if not exists content_sent jsonb;

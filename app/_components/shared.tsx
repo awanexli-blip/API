@@ -25,7 +25,8 @@ export function useApi(token: string): Api {
           headers: init?.body instanceof FormData ? { Authorization: `Bearer ${token}` } : { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error ?? `Sunucu hatası ${res.status}`);
+        // Hata nesnesinde durum kodu ve gövde de taşınır (ör. 409 + existing: "ürün zaten var, güncellensin mi?")
+        if (!res.ok) throw Object.assign(new Error(data.error ?? `Sunucu hatası ${res.status}`), { status: res.status, data });
         return data;
       } catch (e: any) {
         if (e?.name === "AbortError") throw new Error("Sunucu 25 saniyede yanıt vermedi (Vercel ortam değişkenlerini kontrol et)");
