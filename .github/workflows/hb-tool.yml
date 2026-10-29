@@ -20,6 +20,10 @@ on:
         options: [sit, prod]
         default: sit
 
+# En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
+permissions:
+  contents: read
+
 jobs:
   run:
     runs-on: ubuntu-latest

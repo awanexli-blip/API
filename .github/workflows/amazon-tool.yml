@@ -14,6 +14,10 @@ on:
         description: "Argümanlar (search: 8690000000000 veya kelimeler · validate/offer: SKU ASIN fiyat adet · item: SKU · delete: SKU SKU ... · stock: SKU adet · price: SKU fiyat · feed: feedId)"
         default: ""
 
+# En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
+permissions:
+  contents: read
+
 jobs:
   run:
     runs-on: ubuntu-latest

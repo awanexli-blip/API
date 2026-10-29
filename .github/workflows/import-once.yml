@@ -9,6 +9,10 @@ concurrency:
   group: import-xml
   cancel-in-progress: false
 
+# En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
+permissions:
+  contents: read
+
 jobs:
   import:
     runs-on: ubuntu-latest

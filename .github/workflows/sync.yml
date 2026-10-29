@@ -27,6 +27,10 @@ on:
         options: [manual, schedule]
         default: "manual"
 
+# En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
+permissions:
+  contents: read
+
 jobs:
   sync:
     runs-on: ubuntu-latest

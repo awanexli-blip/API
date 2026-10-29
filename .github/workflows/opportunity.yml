@@ -15,6 +15,10 @@ on:
         description: "Pazaryeri"
         default: "trendyol"
 
+# En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
+permissions:
+  contents: read
+
 jobs:
   score:
     runs-on: ubuntu-latest

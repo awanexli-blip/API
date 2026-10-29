@@ -11,6 +11,10 @@ on:
         options: [trendyol]
         default: "trendyol"
 
+# En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
+permissions:
+  contents: read
+
 jobs:
   brands:
     runs-on: ubuntu-latest

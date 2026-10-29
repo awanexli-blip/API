@@ -11,6 +11,10 @@ on:
         description: "Tedarikçi kodu"
         default: "toptancim"
 
+# En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
+permissions:
+  contents: read
+
 jobs:
   probe:
     runs-on: ubuntu-latest

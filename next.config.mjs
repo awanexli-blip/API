@@ -23,7 +23,8 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" },
-  { key: "Content-Security-Policy-Report-Only", value: csp },
+  // 29.10: rapor modundan zorunluya (dış betik yok; Supabase adresi ortamdan, sunucuya geçişte kendiliğinden güncellenir)
+  { key: "Content-Security-Policy", value: csp },
 ];
 
 /** @type {import('next').NextConfig} */
