@@ -23,7 +23,7 @@ export async function syncInbox(db: any, mp: Marketplace, tone?: string | null) 
         await db.from("inbox_items").update({ status: "answered", answered_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() }).eq("id", it.id);
         out.sent = (out.sent as number) + 1;
       } catch (e: any) {
-        await db.from("inbox_items").update({ status: "failed", last_error: String(e?.message ?? e).slice(0, 300), updated_at: new Date().toISOString() }).eq("id", it.id);
+        await db.from("inbox_items").update({ status: "failed", last_error: String(e?.message ?? e).slice(0, 1000), updated_at: new Date().toISOString() }).eq("id", it.id);
         out.failed = (out.failed as number) + 1;
       }
     }

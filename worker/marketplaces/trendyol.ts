@@ -38,6 +38,13 @@ export function createTrendyol(): Marketplace {
 
   // Geçici hata: okuma (GET) ağ hatası / 5xx / 429'da 3 kez beklenip tekrarlanır (27.10: tek "fetch failed" 230 sayfalık listelemeyi
   // ve bütün senkronu düşürdü). Yazma isteği yalnızca 429'da (istek işlenmeden reddedildi) tekrarlanır: ağ hatasında çift yazma riski var.
+  const errReason = (body: string) => {
+    try {
+      const j = JSON.parse(body);
+      const list = [...(Array.isArray(j?.errors) ? j.errors : []).map((e: any) => e?.message ?? e?.key), j?.message, j?.detail, j?.title].filter((x) => typeof x === "string" && x.trim());
+      return [...new Set(list)].join("; ").slice(0, 300);
+    } catch { return ""; }
+  };
   async function tg(path: string, init?: RequestInit) {
     const read = !init?.method || init.method === "GET";
     for (let t = 0; ; t++) {
@@ -49,7 +56,8 @@ export function createTrendyol(): Marketplace {
       }
       if (t < 3 && (res.status === 429 || (read && res.status >= 500))) { await sleep(Number(process.env.TRENDYOL_RETRY_MS ?? 3000) * (t + 1)); continue; }
       const text = await res.text();
-      if (!res.ok) throw new Error(`Trendyol ${res.status} ${path}: ${text.slice(0, 400)}`);
+      // Hata gövdesindeki açıklama (errors[].message) başa: uzun gövde kesilince asıl neden kayboluyordu (29.10, soru cevabı 400)
+      if (!res.ok) throw new Error(`Trendyol ${res.status}${errReason(text) ? `: ${errReason(text)}` : ""} (${path.split("?")[0]}) ${text.slice(0, 400)}`);
       return text ? JSON.parse(text) : {};
     }
   }
