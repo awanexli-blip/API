@@ -1,8 +1,20 @@
 {
   "_not": "worker/price-impact.ts senaryoları (salt okunur önizleme). Bu dosya değişince Actions 'Kargo etkisi' çalışır. Tutarlar KDV dahil TL.",
   "scenarios": [
-    { "name": "Bugünkü kural (300 altı kargo yok, üstü 90)", "shipping_cost": 90, "bands": null },
-    { "name": "A Güvenli (200 altı 105, 200-350 113, üstü 115)", "shipping_cost": 115, "bands": [{ "below": 200, "cost": 105 }, { "below": 350, "cost": 113 }] },
-    { "name": "B Ucuz baremli (200 altı 66, 200-350 113, üstü 115)", "shipping_cost": 115, "bands": [{ "below": 200, "cost": 66 }, { "below": 350, "cost": 113 }] }
-  ]
+    {
+      "name": "Canlı model (200 altı 105, 200-350 113, üstü 115)",
+      "shipping_cost": 115,
+      "bands": [
+        {
+          "below": 200,
+          "cost": 105
+        },
+        {
+          "below": 350,
+          "cost": 113
+        }
+      ]
+    }
+  ],
+  "_son_calisma": "29.10 kargo modeli canlıya alındıktan sonra doğrulama"
 }
