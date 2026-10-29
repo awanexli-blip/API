@@ -41,7 +41,8 @@ async function read(mp: string) {
   const db = admin();
   const { data: base, error } = await db.from("settings").select("*").eq("id", 1).single();
   if (error) return { error: error.message };
-  if (mp === "trendyol") return { data: base };
+  // Trendyol kargo basamakları ortak tabloda (migration 069); kolon yoksa da alan görünsün (kaydederken migration uyarısı)
+  if (mp === "trendyol") return { data: { ...base, shipping_bands: base.shipping_bands ?? null } };
   const { data: own, error: e2 } = await db.from("marketplace_settings").select("*").eq("marketplace", mp).maybeSingle();
   if (e2) return { error: `Supabase migration 002 çalıştırılmamış (${e2.message})` };
   const merged: Record<string, unknown> = { ...base, enabled: false, ...Object.fromEntries(Object.entries(own ?? {}).filter(([, v]) => v != null)) };
@@ -102,9 +103,10 @@ export async function PUT(req: NextRequest) {
   const db = admin();
   const now = new Date().toISOString();
   if (mp === "trendyol") {
-    for (const k of MP_ONLY) delete patch[k];
+    for (const k of MP_ONLY) if (k !== "shipping_bands") delete patch[k];
     const { error } = await db.from("settings").update({ ...patch, updated_at: now }).eq("id", 1);
-    if (error) return bad(error.message.includes("commission_plus_vat") ? "Komisyon +KDV ayarı için Supabase migration 002 çalıştırılmalı" : error.message);
+    if (error) return bad(error.message.includes("commission_plus_vat") ? "Komisyon +KDV ayarı için Supabase migration 002 çalıştırılmalı"
+      : error.message.includes("shipping_bands") ? "Trendyol kargo basamakları için Supabase migration 069 çalıştırılmalı (SQL Editor)" : error.message);
   } else {
     for (const k of BASE_ONLY) delete patch[k];
     const { error } = await db.from("marketplace_settings").upsert({ marketplace: mp, ...patch, updated_at: now });

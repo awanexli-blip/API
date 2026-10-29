@@ -158,13 +158,14 @@ export default function Settings({ api, notify, marketplace }: Props) {
               </label>
               <label className="f">Varsayılan desi<input type="text" inputMode="decimal" value={f.default_desi} onChange={(e) => setF({ ...f, default_desi: e.target.value })} /><small>XML'de desi yoksa</small></label>
             </div>}
+            <label className="check"><input type="checkbox" checked={f.shipping_vat_included !== false} onChange={(e) => setF({ ...f, shipping_vat_included: e.target.checked })} />Kargo tutarları KDV dahil (Hepsiburada tarifesi KDV hariçtir: işareti kaldır)</label>
+          </>}
             {"shipping_bands_text" in f && <label className="f" style={{ maxWidth: 520 }}>Kargo basamakları (barem)
               <input type="text" placeholder="200=43,99; 400=75,99" value={f.shipping_bands_text} onChange={(e) => setF({ ...f, shipping_bands_text: e.target.value })} />
               <small>Sipariş tutarı bu değerin altındaysa satıcının ödediği sabit kargo; son basamağın üstünde desi tarifesi. Doluysa ücretsiz kargo eşiği kullanılmaz. Boş = basamak yok.
-                {marketplace === "hepsiburada" ? " Hepsiburada 21.09.2026: 0–199,99 TL 43,99 + KDV, 200–399,99 TL 75,99 + KDV (hepsiJET/Sürat, 0–1 gün kargolama)." : ""}</small>
+                {marketplace === "hepsiburada" ? " Hepsiburada 21.09.2026: 0–199,99 TL 43,99 + KDV, 200–399,99 TL 75,99 + KDV (hepsiJET/Sürat, 0–1 gün kargolama)." : ""}
+                {marketplace === "trendyol" ? " Trendyol: 300 TL altında da kargo satıcıdan kesiliyor (Ekim dökümü: 139–199 TL siparişte 58–65 TL ya da 104 TL, 200–300 TL'de 102–112 TL, üstünde 107–115 TL; KDV dahil). Son basamağın üstü: yukarıdaki kargo ücreti." : ""}</small>
             </label>}
-            <label className="check"><input type="checkbox" checked={f.shipping_vat_included !== false} onChange={(e) => setF({ ...f, shipping_vat_included: e.target.checked })} />Kargo tutarları KDV dahil (Hepsiburada tarifesi KDV hariçtir: işareti kaldır)</label>
-          </>}
         </div>
         <h3>Davranış</h3>
         <div className="grid" style={{ gridTemplateColumns: "1fr" }}>

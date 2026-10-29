@@ -1,0 +1,28 @@
+name: Kargo etkisi (önizleme)
+
+# Kargo modeli senaryolarının fiyat ve kâr etkisi (worker/price-impact.ts). Salt okunur: pazaryerine ve veritabanına yazmaz.
+# Senaryolar ops/price-impact.json; sonuç iş akışı notlarında.
+on:
+  push:
+    branches: [main]
+    paths: ["ops/price-impact.json", "worker/price-impact.ts"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix worker
+      - name: Etki
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
+        run: node --experimental-strip-types worker/price-impact.ts trendyol

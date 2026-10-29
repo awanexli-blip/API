@@ -2364,3 +2364,6 @@ revoke execute on function public.desc_counts() from public, anon, authenticated
 
 -- 068_listing_content_sent.sql
 alter table public.marketplace_listings add column if not exists content_sent jsonb;
+
+-- 069_trendyol_shipping_bands.sql
+alter table public.settings add column if not exists shipping_bands jsonb;
