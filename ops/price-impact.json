@@ -1,8 +1,8 @@
 {
-  "_not": "worker/price-impact.ts senaryoları (salt okunur önizleme). Bu dosya değişince Actions 'Kargo etkisi' çalışır. Tutarlar KDV dahil TL.",
+  "_not": "worker/price-impact.ts senaryoları (salt okunur önizleme). Bu dosya değişince Actions 'Kargo etkisi' çalışır. carrier: Trendyol barem + desi tarifesi (worker/core/trendyol-cargo.ts), fast: zamanında kargolama (Tablo 1).",
   "scenarios": [
     {
-      "name": "Canlı model (200 altı 105, 200-350 113, üstü 115)",
+      "name": "Canlı (sabit 105/113/115)",
       "shipping_cost": 115,
       "bands": [
         {
@@ -14,7 +14,26 @@
           "cost": 113
         }
       ]
+    },
+    {
+      "name": "Sürat geç (Tablo 2)",
+      "carrier": "Sürat",
+      "fast": false
+    },
+    {
+      "name": "Sürat zamanında (Tablo 1)",
+      "carrier": "Sürat",
+      "fast": true
+    },
+    {
+      "name": "TEX zamanında (Tablo 1)",
+      "carrier": "TEX",
+      "fast": true
+    },
+    {
+      "name": "TEX geç (Tablo 2)",
+      "carrier": "TEX",
+      "fast": false
     }
-  ],
-  "_son_calisma": "29.10 kargo modeli canlıya alındıktan sonra doğrulama"
+  ]
 }

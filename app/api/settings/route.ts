@@ -30,7 +30,7 @@ const NUM: Record<string, [number, number, boolean]> = {
 };
 // Boş bırakılabilen (null) sayısal alanlar
 const OPTIONAL = ["squeeze_min_net", "multi_unit_min_net", "net_profit_min", "net_profit_max", "net_margin_min"];
-const BOOL = ["sales_paused", "xml_price_includes_vat", "auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
+const BOOL = ["cargo_fast", "sales_paused", "xml_price_includes_vat", "auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
 const POLICIES = ["keep", "floor", "formula", "smart"];
 // Yalnızca ortak (settings) tablosunda olanlar
 const BASE_ONLY = ["xml_price_includes_vat", "min_markup", "vat_rate", "fx_usd", "fx_eur", "update_prices"];
@@ -42,7 +42,7 @@ async function read(mp: string) {
   const { data: base, error } = await db.from("settings").select("*").eq("id", 1).single();
   if (error) return { error: error.message };
   // Trendyol kargo basamakları ortak tabloda (migration 069); kolon yoksa da alan görünsün (kaydederken migration uyarısı)
-  if (mp === "trendyol") return { data: { ...base, shipping_bands: base.shipping_bands ?? null } };
+  if (mp === "trendyol") return { data: { ...base, shipping_bands: base.shipping_bands ?? null, cargo_carrier: base.cargo_carrier ?? "", cargo_fast: base.cargo_fast === true, default_desi: base.default_desi ?? 2 } };
   const { data: own, error: e2 } = await db.from("marketplace_settings").select("*").eq("marketplace", mp).maybeSingle();
   if (e2) return { error: `Supabase migration 002 çalıştırılmamış (${e2.message})` };
   const merged: Record<string, unknown> = { ...base, enabled: false, ...Object.fromEntries(Object.entries(own ?? {}).filter(([, v]) => v != null)) };
@@ -103,10 +103,17 @@ export async function PUT(req: NextRequest) {
   const db = admin();
   const now = new Date().toISOString();
   if (mp === "trendyol") {
-    for (const k of MP_ONLY) if (k !== "shipping_bands") delete patch[k];
-    const { error } = await db.from("settings").update({ ...patch, updated_at: now }).eq("id", 1);
+    for (const k of MP_ONLY) if (!["shipping_bands", "cargo_carrier", "default_desi"].includes(k)) delete patch[k];
+    if ("cargo_carrier" in patch) patch.cargo_carrier = String(patch.cargo_carrier || "").trim() || null; // boş = sabit basamaklar
+    let { error } = await db.from("settings").update({ ...patch, updated_at: now }).eq("id", 1);
+    // Migration 070 yokken kargo firması alanları kaydı bozmasın: onlarsız tekrar (firma seçilmişse uyarı)
+    if (error && /cargo_carrier|cargo_fast|default_desi/.test(error.message) && !patch.cargo_carrier) {
+      const { cargo_carrier, cargo_fast, default_desi, ...rest } = patch as any;
+      ({ error } = await db.from("settings").update({ ...rest, updated_at: now }).eq("id", 1));
+    }
     if (error) return bad(error.message.includes("commission_plus_vat") ? "Komisyon +KDV ayarı için Supabase migration 002 çalıştırılmalı"
-      : error.message.includes("shipping_bands") ? "Trendyol kargo basamakları için Supabase migration 069 çalıştırılmalı (SQL Editor)" : error.message);
+      : error.message.includes("shipping_bands") ? "Trendyol kargo basamakları için Supabase migration 069 çalıştırılmalı (SQL Editor)"
+      : /cargo_carrier|cargo_fast|default_desi/.test(error.message) ? "Trendyol kargo firması için Supabase migration 070 çalıştırılmalı (SQL Editor)" : error.message);
   } else {
     for (const k of BASE_ONLY) delete patch[k];
     const { error } = await db.from("marketplace_settings").upsert({ marketplace: mp, ...patch, updated_at: now });

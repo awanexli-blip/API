@@ -9,6 +9,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
+import { tyShipCfg } from "./core/trendyol-cargo.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
 import { dbInventory, learnFromListings, requeueFixable, processMatchJobs, processSendJobs, type DbCtx } from "./core/db-products.ts";
@@ -114,6 +115,9 @@ async function main() {
   // Kargo: sabit tutar veya desi tarifesi (pazaryeri adaptörü sağlar)
   const byDesi = s.shipping_mode === "desi" && !!mp.shippingCost;
   const defaultDesi = Number(s.default_desi ?? 2);
+  // Trendyol kargo (29.10, kaynaklar/trendyol/kargo): firma seçiliyse barem (Tablo 1 yalnızca "zamanında kargolama" açıkken) + desi tarifesi;
+  // seçili değilse ayardaki sabit basamaklar / kargo ücreti
+  const tyShip = marketplaceId === "trendyol" && s.cargo_carrier ? (d: unknown) => tyShipCfg(d, s.cargo_carrier, s.cargo_fast === true, defaultDesi) : null;
   const defaultVat = Number(s.vat_rate ?? 20) / 100;
   const vatCount: Record<string, number> = {};
   const fx: Record<string, number> = { TL: 1, TRY: 1, USD: Number(s.fx_usd), EUR: Number(s.fx_eur) };
@@ -233,7 +237,7 @@ async function main() {
     // Tedarikçi (XML) fiyatı KDV hariçse: gerçek alış maliyeti = fiyat × (1 + KDV). Formül maliyeti KDV dahil bekler.
     if (s.xml_price_includes_vat === false) cost = cost * (1 + vatRate);
     const desi = Math.max(1, Math.ceil(num(r.desi) || defaultDesi));
-    const base: PricingConfig = { ...cfg, vatRate, ...(byDesi ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {}) };
+    const base: PricingConfig = { ...cfg, vatRate, ...(tyShip?.(r.desi) ?? (byDesi ? { shippingCost: mp.shippingCost!(desi, s.cargo_carrier) } : {})) };
     const { cfg: pcfg, applied } = rules.length ? applyRules(base, rules, { cost, supplier: "bayilik", category, brand: String(r.brand ?? ""), stock: num(r.quantity) }) : { cfg: base, applied: [] as string[] };
     for (const a of applied) ruleCount[a] = (ruleCount[a] ?? 0) + 1;
     const calc = calcPrice(cost, pcfg, comm);
@@ -349,7 +353,7 @@ async function main() {
 
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
   const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, pathMatch, overrides: ovMap, econ: new Map(), skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
-    shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null };
+    shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null, shipCfg: tyShip };
   // Duruma göre marj (dynamic-margin.ts): ayar varsa; rekabet bilgisi listing_buybox'tan (başka satıcı var mı)
   {
     const dm = parseDyn(s.dynamic_margin);

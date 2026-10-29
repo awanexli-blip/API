@@ -2367,3 +2367,8 @@ alter table public.marketplace_listings add column if not exists content_sent js
 
 -- 069_trendyol_shipping_bands.sql
 alter table public.settings add column if not exists shipping_bands jsonb;
+
+-- 070_trendyol_cargo_carrier.sql
+alter table public.settings add column if not exists cargo_carrier text;
+alter table public.settings add column if not exists cargo_fast boolean not null default false;
+alter table public.settings add column if not exists default_desi numeric;

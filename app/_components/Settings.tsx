@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { bandsFrom, breakdown, calcPrice, defaultConfig } from "@/worker/pricing";
 import { tl, type Props, type Row } from "./shared";
 import cargo from "@/worker/data/hepsiburada/cargo.json";
+import { TY_CARRIERS } from "@/worker/data/trendyol/cargo";
+import { tyShipCfg, tyBands, tyDesiCost } from "@/worker/core/trendyol-cargo";
 
 const tariff = cargo as { carriers: string[]; byDesi: Record<string, number[]> };
 // Kargo basamakları metni: "200=43,99; 400=75,99" (sipariş tutarı bu değerin altındaysa satıcının ödediği kargo)
@@ -79,6 +81,9 @@ export default function Settings({ api, notify, marketplace }: Props) {
   };
   const byDesi = f.shipping_mode === "desi";
   if (byDesi) cfg.shippingCost = cargoPrice(simDesi, f.cargo_carrier || "hepsiJET");
+  // Trendyol: firma seçiliyse barem + desi tarifesi (worker ile aynı hesap)
+  const tyCargo = marketplace === "trendyol" && f.cargo_carrier ? tyShipCfg(simDesi, f.cargo_carrier, f.cargo_fast === true, Number(f.default_desi) || 2) : null;
+  if (tyCargo) Object.assign(cfg, tyCargo);
   const label = marketplace === "trendyol" ? "Trendyol" : marketplace === "hepsiburada" ? "Hepsiburada" : marketplace;
   // Yalnızca sayısal alanlar kontrol edilir (true/false ayarlar Number.isFinite'te hep geçersiz sayılıyordu)
   const badFields = FIELDS.filter((x) => !(x.optional && String(f[x.key] ?? "").trim() === "") && !Number.isFinite(num(x.key))).map((x) => x.label);
@@ -96,7 +101,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     }
     for (const [k] of BOOLS) body[k] = f![k];
     // Pazaryerine özel alanlar (yalnızca sunucudan geldiyse gönderilir: migration öncesi kayıt bozulmasın)
-    for (const k of ["commission_plus_vat", "shipping_vat_included", "enabled", "shipping_mode", "cargo_carrier"]) if (k in f!) body[k] = f![k];
+    for (const k of ["commission_plus_vat", "shipping_vat_included", "enabled", "shipping_mode", "cargo_carrier", "cargo_fast"]) if (k in f!) body[k] = f![k];
     if ("shipping_bands_text" in f!) body.shipping_bands = parseBands(String(f!.shipping_bands_text)) || null;
     if ("default_desi" in f!) body.default_desi = Number(String(f!.default_desi).replace(",", "."));
     body.update_prices = true; // fiyat davranışı yalnızca politika seçimiyle belirlenir ("Fiyata dokunma" = keep)
@@ -160,6 +165,18 @@ export default function Settings({ api, notify, marketplace }: Props) {
             </div>}
             <label className="check"><input type="checkbox" checked={f.shipping_vat_included !== false} onChange={(e) => setF({ ...f, shipping_vat_included: e.target.checked })} />Kargo tutarları KDV dahil (Hepsiburada tarifesi KDV hariçtir: işareti kaldır)</label>
           </>}
+            {marketplace === "trendyol" && "cargo_carrier" in f && <>
+              <label className="f" style={{ maxWidth: 520 }}>Kargo firması (Trendyol anlaşmalı)
+                <select value={f.cargo_carrier || ""} onChange={(e) => setF({ ...f, cargo_carrier: e.target.value })}>
+                  <option value="">Seçilmedi: aşağıdaki sabit basamaklar ve kargo ücreti</option>
+                  {TY_CARRIERS.map((c, i) => <option key={c} value={c}>{c} (200 altı {tl(tyBands(i, f.cargo_fast === true)[0].cost)}, 2 desi {tl(tyDesiCost(2, i))})</option>)}
+                </select>
+                <small>Seçilince kargo Trendyol barem ve desi tarifesinden otomatik hesaplanır (KDV dahil): 350 TL altı barem, üstü ve 10 desi üstü paket desiye göre. Kaynak: kaynaklar/trendyol/kargo.</small>
+              </label>
+              {f.cargo_carrier && <label className="check"><input type="checkbox" checked={f.cargo_fast === true} onChange={(e) => setF({ ...f, cargo_fast: e.target.checked })} />
+                Zamanında kargolama: termin 1 gün / Hızlı Teslimat ve siparişler zamanında kargoya veriliyor (barem Tablo 1, daha ucuz). Emin değilsen kapalı bırak (Tablo 2).</label>}
+              {f.cargo_carrier && <label className="f" style={{ maxWidth: 260 }}>Varsayılan desi<input type="text" inputMode="decimal" value={f.default_desi} onChange={(e) => setF({ ...f, default_desi: e.target.value })} /><small>Ürünün desisi yoksa</small></label>}
+            </>}
             {"shipping_bands_text" in f && <label className="f" style={{ maxWidth: 520 }}>Kargo basamakları (barem)
               <input type="text" placeholder="200=43,99; 400=75,99" value={f.shipping_bands_text} onChange={(e) => setF({ ...f, shipping_bands_text: e.target.value })} />
               <small>Sipariş tutarı bu değerin altındaysa satıcının ödediği sabit kargo; son basamağın üstünde desi tarifesi. Doluysa ücretsiz kargo eşiği kullanılmaz. Boş = basamak yok.

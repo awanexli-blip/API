@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-29 (52) — Trendyol kargo: firma + barem + desi tarifesi (resmî tablolar)
+- K'nın verdiği Trendyol anlaşmalı kargo tarifesi (05.10.2026, KDV hariç, desi 0-500) ve Akademi "Kargo Barem Destek" ekranları (10.08.2026): `kaynaklar/trendyol/kargo/` (git dışı, özet `kaynaklar/OKU.md`). Ekim kesintilerinin hepsi tablolarla kuruşu kuruşuna açıklandı (çoğu Sürat + Tablo 2 = geç / termin 1 günden uzun).
+- `worker/data/trendyol/cargo.ts` (desi 0-50 × 7 firma, barem Tablo 1/2), `worker/core/trendyol-cargo.ts` (`tyShipCfg`: 350 altı barem, üstü ve 10 desi üstü paket desi; firma tanımsızsa null = sabit ayar). Sync (XML yolu + veritabanı ürünleri `shipCfg`) ve panel simülasyonu aynı hesap; her tedarikçi için geçerli (pazaryeri ayarı, ürün desisi tedarikçiden, yoksa varsayılan desi). Panel Trendyol fiyat ayarları: kargo firması + "zamanında kargolama". Migration 070 (`settings.cargo_carrier`, `cargo_fast`, `default_desi`; K çalıştıracak; yokken kayıt bozulmaz).
+- Test `trendyol-cargo.test.ts` (17): Ekim'deki 57,99 / 65,49 / 102,49 / 104,49 / 110,99 / 112,49 / 106,76 / 114,66 / 213,52 tablodan birebir. Etki önizlemesi firma senaryolarıyla (`ops/price-impact.json`).
+- Bulgu: tedarikçi desi verisi güvenilmez (18.576 ilanda desi=1); büyük ürünlerde gerçek kargo daha yüksek olabilir. Öneri: gerçek desiyi siparişlerin kargo kesintisinden öğrenmek (yapılmadı).
+
 ## 2026-10-29 (51) — XML içe aktarma 32 saat duruyordu (benim hatam), yedek secret'ları eksik
 - Genel kontrolde: "XML içe aktarma" son 24 saatte 17/17 hata; Toptancım son başarılı 28.10 12:29 (TR). Neden: 28.10 tedarikçi REST API değişikliğinde `lib/supplier-api.ts` üstte `fast-xml-parser` içe aktarıyordu; Actions yalnızca `worker/node_modules` kurar, lib/ dosyasından paket çözülemez → `ERR_MODULE_NOT_FOUND`, betik başlamadan düşüyordu (yerelde kök node_modules olduğu için testler geçmişti). Aynı düzende yeniden üretildi.
 - Düzeltme: ayrıştırıcı çağırandan (`parseXml`) ya da gerektiğinde dinamik yükleme; worker kendi XMLParser'ını verir. Koruma: `worker/test/deps.test.ts` (worker betiklerinin içe aktarma ağacında worker dışı dosyada üstte paket ya da worker'da olmayan paket = hata; düzeltmeden önceki hali yakalıyor).

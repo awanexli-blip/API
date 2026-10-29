@@ -20,6 +20,7 @@ export type DbCtx = {
   pathMatch?: ((supplierCategory: string, title: string) => { categoryId: string; categoryName: string; score: number } | null) | null; // tedarikçi kategori yolundan (HB ağacına benzer)
   clean?: (title: string, description: string) => { title: string; description: string }; // yasaklı kelime / marka eki temizliği
   shipFor?: ((desi: number | null) => number) | null; // desi tarifesi (Hepsiburada): ürünün desisine göre kargo, yoksa cfg.shippingCost
+  shipCfg?: ((desi: unknown) => Partial<PricingConfig> | null) | null; // Trendyol: firma + barem + desi (worker/core/trendyol-cargo.ts); shipFor'dan önce gelir
   overrides?: Map<string, any>; // product_overrides (ilan anahtarı -> elle fiyat / gizle)
   econ?: Map<string, { cost: number; comm: number; pcfg: PricingConfig; price: number }>; // ilan başına maliyet/komisyon (buybox kâr hesabı)
   // Duruma göre marj: ayar + ilan -> başka satıcı var mı (listing_buybox.multiple); active=false ise yalnızca karşılaştırma (stats.marginSim)
@@ -63,7 +64,7 @@ export const listingKeyOf = (source: string, variant: { sku: string; barcode: st
   source === "xml:bayilik" ? `OS13-${variant.sku}` : variant.barcode ?? "";
 
 // Fiyat: tedarikçi maliyeti (döviz çevrilir) + pazaryeri komisyonu + akıllı kâr kuralları
-export function priceFor(ctx: Pick<DbCtx, "fx" | "cfg" | "catMap" | "mp" | "marketplaceId" | "rules" | "shipFor" | "dyn" | "skip">, p: any, v: any, key: string | null, stock: number, catName?: string | null) {
+export function priceFor(ctx: Pick<DbCtx, "fx" | "cfg" | "catMap" | "mp" | "marketplaceId" | "rules" | "shipFor" | "shipCfg" | "dyn" | "skip">, p: any, v: any, key: string | null, stock: number, catName?: string | null) {
   const cost0 = Number(v.cost_price ?? p.cost_price) * (ctx.fx[p.currency ?? "TRY"] ?? 0);
   const cost = Number.isFinite(cost0) && cost0 > 0 ? cost0 : 0;
   // Ürün formunda girilen satış fiyatı (KDV dahil; "Satış fiyatı@hepsiburada" o pazaryerinde ezer): olduğu gibi gider (K, 28.10:
@@ -74,7 +75,7 @@ export function priceFor(ctx: Pick<DbCtx, "fx" | "cfg" | "catMap" | "mp" | "mark
   // Kategori ipucu: pazaryeri kategori adı (gönderimde bulunan) ya da Trendyol'da öğrenilen ad; oran tablosu olan adaptör kullanır (HB EK.4)
   const hintCat = catName ?? (ctx.marketplaceId !== "trendyol" ? String(p.attributes?.["Trendyol kategori adı"] ?? "") : "");
   const comm = ctx.mp.commission(key, p.category ?? "", panelRate != null ? Number(panelRate) : null, ctx.cfg.commissionRate, { category: hintCat, title: p.title }).rate;
-  const base: PricingConfig = { ...ctx.cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(ctx.shipFor ? { shippingCost: ctx.shipFor(p.desi != null ? Number(p.desi) : null) } : {}) };
+  const base: PricingConfig = { ...ctx.cfg, vatRate: Number(p.vat_rate ?? 20) / 100, ...(ctx.shipCfg?.(p.desi) ?? (ctx.shipFor ? { shippingCost: ctx.shipFor(p.desi != null ? Number(p.desi) : null) } : {})) };
   const pcfg = ctx.rules.length ? applyRules(base, ctx.rules, { cost, supplier: supplierOf(p.source), category: p.category, brand: p.brand, stock }).cfg : base;
   if (fixed > 0) {
     const loss = !(cost > 0) || breakdown(fixed, cost, pcfg, comm).net <= 0;
