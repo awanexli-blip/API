@@ -14,6 +14,12 @@ export function tyCarrierIndex(name: unknown): number {
   return TY_CARRIERS.findIndex((c) => n.startsWith(fold(c)));
 }
 
+// Birden fazla firma (dropshipping: tedarikçi hangi firmayla göndereceğini seçiyor, K 29.10): "Aras, Sürat, Kolay Gelsin" -> sütunlar.
+// Hesap her kalemde seçilenlerin EN PAHALISI (hangi firmayla giderse gitsin zarar yok). Tanınmayan ad atlanır.
+export function tyCarrierIndices(list: unknown): number[] {
+  return [...new Set(String(list ?? "").split(/[,;|]/).map(tyCarrierIndex).filter((i) => i >= 0))];
+}
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const desiOf = (d: unknown, def = 2) => { const x = Number(d); return Number.isFinite(x) && x > 0.05 ? Math.ceil(x) : def; };
 
@@ -30,11 +36,13 @@ export function tyBands(ci: number, fast: boolean, vat = 0.2): { below: number; 
   return [{ below: 200, cost: r2(t[200][ci] * (1 + vat)) }, { below: 350, cost: r2(t[350][ci] * (1 + vat)) }];
 }
 
-// Ürün başına fiyat yapılandırması parçası: { shippingCost, shippingBands } (KDV dahil). null = firma tanımsız (ayardaki sabit değerler kalır)
+// Ürün başına fiyat yapılandırması parçası: { shippingCost, shippingBands } (KDV dahil). carrier tek ad ya da virgüllü liste (en pahalısı).
+// null = firma tanımsız (ayardaki sabit değerler kalır)
 export function tyShipCfg(desi: unknown, carrier: unknown, fast: boolean, defaultDesi = 2, vat = 0.2) {
-  const ci = tyCarrierIndex(carrier);
-  if (ci < 0) return null;
+  const idx = tyCarrierIndices(carrier);
+  if (!idx.length) return null;
   const d = desiOf(desi, defaultDesi);
-  const cost = tyDesiCost(d, ci, vat);
-  return { shippingCost: cost, shippingBands: d > TY_BAREM_MAX_DESI ? [{ below: 1e9, cost }] : tyBands(ci, fast, vat), shippingVatIncluded: true };
+  const cost = Math.max(...idx.map((ci) => tyDesiCost(d, ci, vat)));
+  const bands = idx.map((ci) => tyBands(ci, fast, vat));
+  return { shippingCost: cost, shippingBands: d > TY_BAREM_MAX_DESI ? [{ below: 1e9, cost }] : bands[0].map((b, k) => ({ below: b.below, cost: Math.max(...bands.map((x) => x[k].cost)) })), shippingVatIncluded: true };
 }

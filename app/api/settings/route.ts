@@ -84,7 +84,7 @@ export async function PUT(req: NextRequest) {
     if (!["fixed", "desi"].includes(body.shipping_mode)) return bad("Geçersiz kargo hesabı");
     patch.shipping_mode = body.shipping_mode;
   }
-  if ("cargo_carrier" in body) patch.cargo_carrier = String(body.cargo_carrier).slice(0, 50);
+  if ("cargo_carrier" in body) patch.cargo_carrier = String(body.cargo_carrier).slice(0, 200);
   if ("shipping_bands" in body) {
     const b = body.shipping_bands;
     if (b === null || (Array.isArray(b) && b.length === 0)) patch.shipping_bands = null;
@@ -104,7 +104,7 @@ export async function PUT(req: NextRequest) {
   const now = new Date().toISOString();
   if (mp === "trendyol") {
     for (const k of MP_ONLY) if (!["shipping_bands", "cargo_carrier", "default_desi"].includes(k)) delete patch[k];
-    if ("cargo_carrier" in patch) patch.cargo_carrier = String(patch.cargo_carrier || "").trim() || null; // boş = sabit basamaklar
+    if ("cargo_carrier" in patch) patch.cargo_carrier = String(patch.cargo_carrier || "").trim().slice(0, 200) || null; // boş = sabit basamaklar; virgüllü liste = en pahalısı
     let { error } = await db.from("settings").update({ ...patch, updated_at: now }).eq("id", 1);
     // Migration 070 yokken kargo firması alanları kaydı bozmasın: onlarsız tekrar (firma seçilmişse uyarı)
     if (error && /cargo_carrier|cargo_fast|default_desi/.test(error.message) && !patch.cargo_carrier) {

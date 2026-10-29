@@ -35,5 +35,12 @@ const pSlow = calcPrice(80, { ...base, ...tyShipCfg(1, "Sürat", false)! }, 0.15
 check("TEX zamanında < Sürat geç", pFast.ok && pSlow.ok && pFast.price < pSlow.price, { fast: pFast.price, slow: pSlow.price });
 check("200 altı fiyatta da kargo satıcıda", pFast.price < 200 ? pFast.shipping > 0 : true, pFast);
 
+// Birden fazla firma: her kalemde en pahalısı
+const multi = tyShipCfg(1, "Aras, Sürat, Kolay Gelsin", false)!;
+check("çoklu firma: 200 altı en pahalı (Kolay Gelsin 88,33+KDV)", near(multi.shippingBands[0].cost, 106.0), multi);
+check("çoklu firma: 200-350 en pahalı (Kolay Gelsin 93,74+KDV)", near(multi.shippingBands[1].cost, 112.49), multi);
+check("çoklu firma: 0-2 desi en pahalı (Kolay Gelsin 96,59+KDV)", near(multi.shippingCost, 115.91), multi);
+check("çoklu firma: tanınmayan ad atlanır, hiç yoksa null", tyShipCfg(1, "Aras, Horoz", false)!.shippingCost === tyDesiCost(1, ci("Aras")) && tyShipCfg(1, "Horoz", false) === null);
+
 if (fails) { console.log(`\n${fails} Trendyol kargo testi başarısız`); process.exit(1); }
 console.log("\nTrendyol kargo testleri geçti");

@@ -16,24 +16,14 @@
       ]
     },
     {
-      "name": "Sürat geç (Tablo 2)",
-      "carrier": "Sürat",
+      "name": "Aras+Sürat+Kolay Gelsin geç (en pahalı)",
+      "carrier": "Aras, Sürat, Kolay Gelsin",
       "fast": false
     },
     {
-      "name": "Sürat zamanında (Tablo 1)",
-      "carrier": "Sürat",
+      "name": "Aras+Sürat+Kolay Gelsin zamanında (en pahalı)",
+      "carrier": "Aras, Sürat, Kolay Gelsin",
       "fast": true
-    },
-    {
-      "name": "TEX zamanında (Tablo 1)",
-      "carrier": "TEX",
-      "fast": true
-    },
-    {
-      "name": "TEX geç (Tablo 2)",
-      "carrier": "TEX",
-      "fast": false
     }
   ]
 }

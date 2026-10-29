@@ -166,13 +166,16 @@ export default function Settings({ api, notify, marketplace }: Props) {
             <label className="check"><input type="checkbox" checked={f.shipping_vat_included !== false} onChange={(e) => setF({ ...f, shipping_vat_included: e.target.checked })} />Kargo tutarları KDV dahil (Hepsiburada tarifesi KDV hariçtir: işareti kaldır)</label>
           </>}
             {marketplace === "trendyol" && "cargo_carrier" in f && <>
-              <label className="f" style={{ maxWidth: 520 }}>Kargo firması (Trendyol anlaşmalı)
-                <select value={f.cargo_carrier || ""} onChange={(e) => setF({ ...f, cargo_carrier: e.target.value })}>
-                  <option value="">Seçilmedi: aşağıdaki sabit basamaklar ve kargo ücreti</option>
-                  {TY_CARRIERS.map((c, i) => <option key={c} value={c}>{c} (200 altı {tl(tyBands(i, f.cargo_fast === true)[0].cost)}, 2 desi {tl(tyDesiCost(2, i))})</option>)}
-                </select>
-                <small>Seçilince kargo Trendyol barem ve desi tarifesinden otomatik hesaplanır (KDV dahil): 350 TL altı barem, üstü ve 10 desi üstü paket desiye göre. Kaynak: kaynaklar/trendyol/kargo.</small>
-              </label>
+              <div className="f" style={{ maxWidth: 620 }}>Kargo firmaları (Trendyol anlaşmalı; tedarikçinin gönderebileceği hepsi)
+                <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+                  {TY_CARRIERS.map((c) => {
+                    const sel = String(f.cargo_carrier || "").split(",").map((x: string) => x.trim()).filter(Boolean);
+                    return <label key={c} className="check" style={{ margin: 0 }}><input type="checkbox" checked={sel.includes(c)} onChange={(e) => setF({ ...f, cargo_carrier: (e.target.checked ? [...sel, c] : sel.filter((x: string) => x !== c)).join(", ") })} />{c}</label>;
+                  })}
+                </div>
+                <small>Seçilince kargo Trendyol barem ve desi tarifesinden otomatik hesaplanır (KDV dahil), seçilen firmaların <b>en pahalısıyla</b>: hangi firmayla gönderilirse gönderilsin zarar edilmez. 350 TL altı barem, üstü ve 10 desi üstü paket desiye göre. Hiçbiri seçili değilse aşağıdaki sabit basamaklar. Kaynak: kaynaklar/trendyol/kargo.
+                  {tyCargo ? ` Şu an (${simDesi} desi): 200 altı ${tl(tyCargo.shippingBands[0].cost)}, 200-350 ${tl(tyCargo.shippingBands[1]?.cost ?? tyCargo.shippingCost)}, 350 üstü ${tl(tyCargo.shippingCost)}.` : ""}</small>
+              </div>
               {f.cargo_carrier && <label className="check"><input type="checkbox" checked={f.cargo_fast === true} onChange={(e) => setF({ ...f, cargo_fast: e.target.checked })} />
                 Zamanında kargolama: termin 1 gün / Hızlı Teslimat ve siparişler zamanında kargoya veriliyor (barem Tablo 1, daha ucuz). Emin değilsen kapalı bırak (Tablo 2).</label>}
               {f.cargo_carrier && <label className="f" style={{ maxWidth: 260 }}>Varsayılan desi<input type="text" inputMode="decimal" value={f.default_desi} onChange={(e) => setF({ ...f, default_desi: e.target.value })} /><small>Ürünün desisi yoksa</small></label>}
