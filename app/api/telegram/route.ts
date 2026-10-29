@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { admin, guard, unauthorized, bad } from "@/lib/server";
 import { approveAnswer } from "@/lib/inbox";
+import { askAssistant, HELP } from "@/lib/assistant";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120; // asistan cevabı yanıt döndükten sonra (after) üretilir; Gemini yoğunsa yeniden deneme payı
 
 // Telegram bot web kancası: soru bildirimi altındaki "Onayla" / "Yoksay" düğmeleri ve bildirimi "yanıtla" ile yazılan cevap.
 // Doğrulama: Telegram'ın gönderdiği gizli başlık (setWebhook secret_token = TELEGRAM_WEBHOOK_SECRET) + yalnızca TELEGRAM_CHAT_ID sohbeti.
@@ -85,11 +87,26 @@ export async function POST(req: NextRequest) {
   }
 
   const msg = u.message;
-  if (msg && String(msg.chat?.id ?? "") === chat && msg.reply_to_message?.message_id && typeof msg.text === "string") {
-    const { data } = await admin().from("inbox_items").select("id").eq("tg_message_id", msg.reply_to_message.message_id).maybeSingle();
-    if (data) {
-      const r = await approveAnswer(data.id, msg.text, "telegram");
-      await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: "error" in r ? `❗ ${r.error}` : `✅ Cevap onaylandı${r.started ? ", gönderiliyor" : ", sonraki senkronda gönderilecek"}.` });
+  if (msg && String(msg.chat?.id ?? "") === chat && typeof msg.text === "string") {
+    // Soru bildirimine "yanıtla" = müşteriye cevap (insan onayı)
+    if (msg.reply_to_message?.message_id) {
+      const { data } = await admin().from("inbox_items").select("id").eq("tg_message_id", msg.reply_to_message.message_id).maybeSingle();
+      if (data) {
+        const r = await approveAnswer(data.id, msg.text, "telegram");
+        await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: "error" in r ? `❗ ${r.error}` : `✅ Cevap onaylandı${r.started ? ", gönderiliyor" : ", sonraki senkronda gönderilecek"}.` });
+        return NextResponse.json({ ok: true });
+      }
+    }
+    // Diğer mesajlar: durum asistanı (salt okunur). Telegram'a hemen 200 dönülür (yeniden gönderim olmasın), cevap sonra yazılır.
+    const text = msg.text.trim();
+    if (/^\/(start|yardim|yardım|help)/i.test(text) || !text) {
+      await tg("sendMessage", { chat_id: chat, text: HELP });
+    } else {
+      after(async () => {
+        await tg("sendChatAction", { chat_id: chat, action: "typing" });
+        const answer = await askAssistant(text);
+        await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: answer, disable_web_page_preview: true });
+      });
     }
   }
   return NextResponse.json({ ok: true });

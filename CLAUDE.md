@@ -68,6 +68,8 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `.github/workflows/backup.yml`, `ops/db-counts.sql`, `docs/YEDEK.md` | Günlük/haftalık şifreli veritabanı yedeği, geri yükleyerek doğrulama, geri yükleme kılavuzu |
 | `lib/supplier-api.ts`, `docs/TEDARIKCI_API.md` | Tedarikçi REST API okuyucusu (sayfalama, kimlik, `runner: "vps"`), panelden ek link türü "REST API"; anahtarlar `SUPPLIER_SECRETS` / sunucu env |
 | `worker/core/descriptions.ts`, `worker/core/desc-check.ts`, `worker/desc-draft.ts`, `.github/workflows/descriptions.yml`, `app/api/descriptions`, `app/_components/Descriptions.tsx` | Yapay zekâ açıklama düzeltme: taslak + kurallı kontrol + ikinci doğrulama, panelde onay, onaylanan Trendyol ilanına (content-bulk-update) ve yeni gönderimlere (migration 067) |
+| `lib/assistant-core.ts`, `lib/assistant-tools.ts`, `lib/assistant.ts`, `app/api/telegram` | Telegram durum asistanı (Gemini, araç çağırma, salt okunur sabit araçlar, kişisel veri süzgeci); soru bildirimine yanıt = müşteri cevabı |
+| `worker/price-impact.ts`, `ops/price-impact.json` | Kargo/fiyat modeli senaryolarının etki önizlemesi (salt okunur, Actions "Kargo etkisi") |
 | `ops/vps/`, `docs/VPS_KURULUM.md` | Sunucu kurulumu (`setup.sh`), senkron tetikleyici (`dispatch.mjs`, trigger=schedule), systemd zamanlayıcıları |
 | `worker/recover-old.ts`, `.github/workflows/recover-old.yml` | Çöken eski veritabanından eksik satırları kurtarma (check/apply, fiyat alanları kapalı) |
 | `worker/core/util.ts` `readAll` | Supabase tek istekte en fazla 1000 satır verir, fazlası hatasız kesilir: tamamı gereken her okuma `readAll` + `.order(tekil)` ile |
@@ -163,6 +165,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 - **Zamanlı çalışma:** cron UTC'dir. `auto_sync` açıksa 15 dakikada bir gerçekten güncelleme yapar. Önizleme istiyorsan `auto_sync`'i duraklat veya mod olarak `preview` yaz (varsayılan mod `auto`).
 - **Aracı yükleyici:** önceki yükleyici hâlâ senkronize ediyorsa fiyat/stokları ezer. Kullanıcı durdurdu ve secret'ı yeniledi, ama devam ettiğinden şüphelenirsen Trendyol panelindeki son güncelleme tarihlerine bak.
 - **1000 satır sınırı:** Supabase/PostgREST tek istekte en fazla 1000 satır döndürür, `.limit(20000)` de 1000'de kalır ve HATA VERMEZ (28.10: kopya kapatma 4.576'nın 1.000'ini görüyordu). Tamamı gereken okuma `readAll` ile.
+- **Trendyol kargosu (29.10):** 300 TL altı siparişlerde de kargo satıcıdan kesilir; "300 altı alıcı öder" varsayımı zarar ettiriyordu. Trendyol kargo basamakları `settings.shipping_bands` (migration 069), etki önizlemesi `worker/price-impact.ts`.
 - **Hepsiburada stoksuz ilan:** HB stoğu 0 olan ilanı `isSalable=false` döndürür; bu "kapalı" sayılmaz (kapalıya stok gönderilmez, ilan kalıcı kapanırdı).
 - **Node:** worker `node --experimental-strip-types` ile TypeScript'i doğrudan çalıştırır (Node 22+). `worker/` kendi `package.json`'una sahip (`@supabase/supabase-js`, `fast-xml-parser`).
 
@@ -178,7 +181,7 @@ satış = (maliyet + sabit gider [+ kargo]) / (1 - komisyon - hedef_kâr)
 
 **Tedarikçi API anahtarları:** GitHub Secret `SUPPLIER_SECRETS` (her satır `AD=değer`; panelde `auth.secret_env` ile verilen adlar), VPS: `/etc/trentakip/env`.
 
-**Vercel (panel):** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `GH_TOKEN` (fine-grained, bu repo, Actions: Read and write), `GH_REPO` (`awanexli-blip/API`).
+**Vercel (panel):** `GEMINI_API_KEY` (Telegram asistanı; isteğe bağlı `GEMINI_ASSISTANT_MODEL`), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `GH_TOKEN` (fine-grained, bu repo, Actions: Read and write), `GH_REPO` (`awanexli-blip/API`).
 
 ## 9. Yerel çalıştırma
 
