@@ -12,3 +12,6 @@ kaynaklar/
 
 # Kişisel editör ayarları
 .vscode/
+
+# Pazaryeri dökümleri (müşteri/sipariş verisi, depo herkese açık)
+kesintiler/
