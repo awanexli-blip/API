@@ -24,3 +24,4 @@ jobs:
           j=$(curl -sS -m 20 "https://api.telegram.org/bot${TG_TOKEN}/getWebhookInfo")
           echo "$j" | jq -r '.result | "url=\(.url // "-") | bekleyen=\(.pending_update_count // 0) | son_hata=\(if .last_error_date then (.last_error_date|todate) else "-" end) \(.last_error_message // "") | izinli=\(.allowed_updates // [] | join(","))"' > info.txt
           echo "::notice title=Telegram web kancası::$(cat info.txt)"
+# 1793291314
