@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-29 (53) — Tedarikçi taslak kaydı + "yalnızca sunucudan oku"; sunucu yenileme izlemesi
+- K: yeni tedarikçi kaydedilemiyor, tedarikçi bağlantıyı reddediyor (büyük olasılıkla IP izni; Vercel/GitHub IP'leri değişken). Panel kaydı eşleme (model kodu + ürün adı) istiyordu, XML incelenemeyince kayıt olmuyordu.
+- Eşlemesiz kayıt = taslak (pasif, otomatik içe aktarma kapalı); içe aktarma eşlemesi olmayan tedarikçiyi atlar. Yeni ayar "Yalnızca sunucudan oku" (`suppliers.runner = 'vps'`, **migration 071**, K çalıştıracak; yokken kayıt bozulmaz): GitHub atlar, sunucu (sabit IP 89.252.153.145) okur. Panel incelemesi IP izinli XML'i okuyamaz; eşleme sunucu çalışınca.
+- Cenuta 23:00 yeni node sözü: 23:03'te hâlâ eski node (yük 28). `vps-watch.yml` artık SSH ana anahtarı değişince (yeni kurulum) Telegram'a yazar (eski node yavaş ama açık olduğundan "açık mı" yetmiyordu).
+
 ## 2026-10-29 (52) — Trendyol kargo: firma + barem + desi tarifesi (resmî tablolar)
 - K'nın verdiği Trendyol anlaşmalı kargo tarifesi (05.10.2026, KDV hariç, desi 0-500) ve Akademi "Kargo Barem Destek" ekranları (10.08.2026): `kaynaklar/trendyol/kargo/` (git dışı, özet `kaynaklar/OKU.md`). Ekim kesintilerinin hepsi tablolarla kuruşu kuruşuna açıklandı (çoğu Sürat + Tablo 2 = geç / termin 1 günden uzun).
 - `worker/data/trendyol/cargo.ts` (desi 0-50 × 7 firma, barem Tablo 1/2), `worker/core/trendyol-cargo.ts` (`tyShipCfg`: 350 altı barem, üstü ve 10 desi üstü paket desi; firma tanımsızsa null = sabit ayar). Sync (XML yolu + veritabanı ürünleri `shipCfg`) ve panel simülasyonu aynı hesap; her tedarikçi için geçerli (pazaryeri ayarı, ürün desisi tedarikçiden, yoksa varsayılan desi). Panel Trendyol fiyat ayarları: kargo firması + "zamanında kargolama". Migration 070 (`settings.cargo_carrier`, `cargo_fast`, `default_desi`; K çalıştıracak; yokken kayıt bozulmaz).

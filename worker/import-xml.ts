@@ -206,8 +206,10 @@ async function main() {
   // IP izinli tedarikçi API'leri (feeds[].api.runner = "vps") yalnızca sunucudan okunur: GitHub'da atlanır (hata sayılmaz, stok sıfırlanmaz);
   // sunucu "vps" argümanıyla yalnızca bunları çalıştırır (diğerleri GitHub'da kalır, iki kez okunmaz)
   const onVps = process.env.RUNNER === "vps";
-  const needsVps = (s: any) => (Array.isArray(s.feeds) ? s.feeds : []).some((f: any) => f?.type === "api" && f.api?.runner === "vps");
+  const needsVps = (s: any) => s.runner === "vps" || (Array.isArray(s.feeds) ? s.feeds : []).some((f: any) => f?.type === "api" && f.api?.runner === "vps");
+  const mapped = (m: any) => { const v = Object.values(m && typeof m === "object" ? m : {}); return (v.includes("model") || v.includes("variant_sku")) && v.includes("title"); };
   const list = (sups as any[]).filter((s) => {
+    if (!mapped(s.mapping)) { console.log(`${s.name}: eşleme yapılmamış (taslak), atlandı`); return false; }
     if (which === "vps") return needsVps(s);
     if (needsVps(s) && !onVps) { console.log(`${s.name}: yalnızca sunucudan okunur (IP izni), burada atlandı`); return false; }
     return true;

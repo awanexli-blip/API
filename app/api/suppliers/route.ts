@@ -47,6 +47,7 @@ export async function PUT(req: NextRequest) {
     catch { return NextResponse.json({ error: "XML adresi http(s) ile başlamalı" }, { status: 400 }); }
   }
   for (const k of ["active", "nightly", "sku_ascii", "price_includes_vat", "dedupe_code_suffix"]) if (k in b) row[k] = !!b[k];
+  if ("runner" in b) row.runner = b.runner === "vps" ? "vps" : null; // migration 071
   if ("item_path" in b) row.item_path = String(b.item_path ?? "").trim().slice(0, 200) || null;
   if ("sku_prefix" in b) {
     row.sku_prefix = String(b.sku_prefix ?? "").trim();
@@ -67,8 +68,12 @@ export async function PUT(req: NextRequest) {
     const m = b.mapping && typeof b.mapping === "object" ? b.mapping : {};
     row.mapping = Object.fromEntries(Object.entries(m).filter(([k, v]) => typeof k === "string" && k.length <= 200 && FIELDS.includes(String(v))).slice(0, 200));
     const vals = Object.values(row.mapping);
-    if (!vals.includes("model") && !vals.includes("variant_sku")) return NextResponse.json({ error: "Eşlemede \"Model kodu\" alanı seçilmeli" }, { status: 400 });
-    if (!vals.includes("title")) return NextResponse.json({ error: "Eşlemede \"Ürün adı\" alanı seçilmeli" }, { status: 400 });
+    // Eşlemesiz kayıt = taslak (29.10: tedarikçi IP izni yüzünden XML incelenemiyor): pasif ve otomatik içe aktarma kapalı kaydedilir
+    if (!vals.length) { row.active = false; row.nightly = false; }
+    else {
+      if (!vals.includes("model") && !vals.includes("variant_sku")) return NextResponse.json({ error: "Eşlemede \"Model kodu\" alanı seçilmeli" }, { status: 400 });
+      if (!vals.includes("title")) return NextResponse.json({ error: "Eşlemede \"Ürün adı\" alanı seçilmeli" }, { status: 400 });
+    }
   }
   const db = admin();
   // Ek linkler: [{ id?, label, url? (yeni/değişen), sku_prefix, mapping|null, item_path }]; adresi gönderilmeyen link kayıtlı adresini korur
@@ -103,7 +108,12 @@ export async function PUT(req: NextRequest) {
   }
   row.updated_at = new Date().toISOString();
   const q = b.id ? db.from("suppliers").update(row).eq("id", b.id) : db.from("suppliers").insert(row);
-  const { data, error } = await q.select("*").single();
+  let { data, error } = await q.select("*").single();
+  // Migration 071 yoksa "runner" olmadan tekrar (kayıt bozulmasın)
+  if (error && /runner/.test(error.message) && "runner" in row) {
+    const { runner, ...rest } = row;
+    ({ data, error } = await (b.id ? db.from("suppliers").update(rest).eq("id", b.id) : db.from("suppliers").insert(rest)).select("*").single());
+  }
   if (error) return error.code === "23505" ? NextResponse.json({ error: "Bu kısa kod zaten kullanılıyor" }, { status: 409 }) : dbError(error);
   return NextResponse.json(view(data));
 }

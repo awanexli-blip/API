@@ -29,7 +29,7 @@ const apiView = (a: any) => { if (!a) return ""; const auth = Object.fromEntries
 type Draft = {
   feeds: FeedDraft[];
   id?: string; code: string; name: string; xml_url: string; url_masked?: string; url_from_env?: string | null; active: boolean; nightly: boolean;
-  item_path: string; mapping: Record<string, Field>; sku_prefix: string; sku_ascii: boolean; price_includes_vat: boolean; default_vat: number; default_brand: string; currency: string; marketplace_brand: string; default_attributes: string; dedupe_code_suffix: boolean;
+  item_path: string; mapping: Record<string, Field>; sku_prefix: string; sku_ascii: boolean; price_includes_vat: boolean; default_vat: number; default_brand: string; currency: string; marketplace_brand: string; default_attributes: string; dedupe_code_suffix: boolean; runner?: string | null;
 };
 const empty = (): Draft => ({ feeds: [], code: "", name: "", xml_url: "", active: true, nightly: true, item_path: "", mapping: {}, sku_prefix: "", sku_ascii: true, price_includes_vat: true, default_vat: 20, default_brand: "", currency: "TRY", marketplace_brand: "", default_attributes: "", dedupe_code_suffix: false });
 
@@ -139,7 +139,7 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
         feeds.push({ id: f.id, label: f.label, url: f.url || undefined, sku_prefix: f.sku_prefix, mapping: f.own ? f.mapping : null, item_path: f.type === "api" ? "" : f.item_path, type: f.type, api: a.api });
       }
       await api("/api/suppliers", { method: "PUT", body: JSON.stringify({ ...d, feeds, xml_url: d.xml_url || undefined, code: isNew ? d.code : undefined }) });
-      notify("good", `${d.name} kaydedildi. Listeden "İçe aktar" ile ürünleri alabilirsin.`); onClose();
+      notify("good", draft ? `${d.name} taslak olarak kaydedildi (pasif, eşleme yok). XML incelenebilince eşlemeyi yapıp etkinleştir.` : `${d.name} kaydedildi. Listeden "İçe aktar" ile ürünleri alabilirsin.`); onClose();
     } catch (e: any) { notify("err", e.message); }
     finally { setBusy(""); }
   }
@@ -147,7 +147,9 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
   const mappedFields = Object.values(d.mapping);
   const paths: { path: string; fill?: number; samples?: string[] }[] = info?.fields ?? Object.keys(d.mapping).map((path) => ({ path }));
   const feedsOk = d.feeds.every((f) => (f.url || f.id) && (!f.own || (f.mapping && Object.keys(f.mapping).length)));
-  const canSave = d.name.trim() && (isNew ? d.code && (d.xml_url || d.feeds.some((f) => f.type === "api" && f.url)) : true) && mappedFields.some((f) => f === "model" || f === "variant_sku") && mappedFields.includes("title") && feedsOk;
+  // Eşleme yoksa taslak olarak kaydedilir (pasif): tedarikçi IP izni yüzünden XML incelenemiyorsa sonra sunucudan eşlenir
+  const draft = mappedFields.length === 0;
+  const canSave = d.name.trim() && (isNew ? d.code && (d.xml_url || d.feeds.some((f) => f.type === "api" && f.url)) : true) && (draft || (mappedFields.some((f) => f === "model" || f === "variant_sku") && mappedFields.includes("title"))) && feedsOk;
 
   return (
     <>
@@ -273,6 +275,7 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
           <label className="check"><input type="checkbox" checked={d.sku_ascii} onChange={(e) => set("sku_ascii", e.target.checked)} />SKU'dan Türkçe/özel karakterleri at</label>
           <label className="check" title="Ör. Toptancım: aynı ürün ABC, ABC-1, ABC-2... kodlarıyla farklı başlıkla tekrar yayınlanıyor"><input type="checkbox" checked={!!d.dedupe_code_suffix} onChange={(e) => set("dedupe_code_suffix", e.target.checked)} />Kod sonu -1, -2... olan kopyalardan pazaryerine yalnızca stokta olan en ucuzunu gönder</label>
           <label className="check"><input type="checkbox" checked={d.nightly} onChange={(e) => set("nightly", e.target.checked)} />Saatte bir otomatik içe aktar</label>
+          <label className="check" title="Tedarikçi yalnızca izin verdiği IP'den bağlantı kabul ediyorsa: sunucunun IP'sini (89.252.153.145) tedarikçiye bildir"><input type="checkbox" checked={d.runner === "vps"} onChange={(e) => set("runner", e.target.checked ? "vps" : null)} />Yalnızca sunucudan oku (tedarikçi IP izni istiyor; GitHub/panel denemez)</label>
         </div>
       </div>}
 

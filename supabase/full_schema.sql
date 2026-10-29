@@ -2372,3 +2372,6 @@ alter table public.settings add column if not exists shipping_bands jsonb;
 alter table public.settings add column if not exists cargo_carrier text;
 alter table public.settings add column if not exists cargo_fast boolean not null default false;
 alter table public.settings add column if not exists default_desi numeric;
+
+-- 071_supplier_runner.sql
+alter table public.suppliers add column if not exists runner text check (runner is null or runner in ('vps'));
