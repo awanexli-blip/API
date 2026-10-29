@@ -9,7 +9,14 @@
 //
 // Anahtar iki yoldan biriyle: *_env (ortam değişkeni adı: GitHub Secret / VPS .env; panelde görünmez) ya da kayda yazılmış değer
 // (token / pass / client_secret: panelde maskelenir, tarayıcıya gönderilmez).
-import { XMLParser } from "fast-xml-parser";
+// fast-xml-parser burada üstte içe aktarılmaz: worker (GitHub Actions) yalnızca worker/node_modules kurar, lib/ dosyasından paket çözülemez
+// (28.10-29.10: içe aktarma 32 saat "Cannot find package" ile düştü). XML ayrıştırıcıyı çağıran verir (o.parseXml); verilmezse gerektiğinde yüklenir.
+export type XmlParse = (text: string) => any;
+let lazyXml: XmlParse | null = null;
+async function defaultXml(): Promise<XmlParse> {
+  if (!lazyXml) { const { XMLParser } = await import("fast-xml-parser"); const p = new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }); lazyXml = (t) => p.parse(t); }
+  return lazyXml;
+}
 import { safeFetch } from "../worker/core/safe-fetch.ts";
 
 export type ApiAuth = {
@@ -145,9 +152,9 @@ async function request(fetcher: ApiFetcher, url: string, init: Parameters<ApiFet
   }
 }
 
-function parseBody(text: string, contentType: string, format: ApiSource["format"]) {
+async function parseBody(text: string, contentType: string, format: ApiSource["format"], parseXml?: XmlParse) {
   const xml = format === "xml" || (format !== "json" && (/xml/.test(contentType) || /^\s*</.test(text.slice(0, 100))));
-  if (xml) return new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }).parse(text);
+  if (xml) return (parseXml ?? (await defaultXml()))(text);
   try { return JSON.parse(text); } catch { throw new Error(`Yanıt JSON değil: ${text.replace(/\s+/g, " ").slice(0, 120)}`); }
 }
 
@@ -173,7 +180,7 @@ async function authHeaders(src: ApiSource, env: Record<string, string | undefine
 // Tüm sayfaları okur. Durma: boş sayfa, boyuttan kısa sayfa, imleç/sonraki adres yok, toplam sayıya ulaşıldı,
 // aynı sayfa tekrar geldi (API sayfa parametresini yok sayıyorsa sonsuz döngü olmasın), sayfa sınırı.
 // partial: sayfa sınırında hata yerine okunanı döndür (panel denemesi; içe aktarma her zaman tamamını ister)
-export async function fetchApiItems(url: string, src: ApiSource, o: { env?: Record<string, string | undefined>; fetcher?: ApiFetcher; maxPages?: number; label?: string; partial?: boolean } = {}) {
+export async function fetchApiItems(url: string, src: ApiSource, o: { env?: Record<string, string | undefined>; fetcher?: ApiFetcher; maxPages?: number; label?: string; partial?: boolean; parseXml?: XmlParse } = {}) {
   const env = o.env ?? process.env, fetcher = o.fetcher ?? defaultFetcher, label = o.label ?? "API";
   const base = new URL(url);
   if (base.protocol !== "https:" && base.protocol !== "http:") throw new Error(`${label}: adres http(s) olmalı`);
@@ -197,7 +204,7 @@ export async function fetchApiItems(url: string, src: ApiSource, o: { env?: Reco
       method, headers: { Accept: "application/json, application/xml;q=0.9", ...(src.headers ?? {}), ...auth.headers, ...(method === "POST" ? { "Content-Type": "application/json" } : {}) },
       body: method === "POST" ? JSON.stringify(src.body ?? {}) : undefined, timeoutMs: src.timeout_ms ?? 120_000,
     }, `${label} sayfa ${pages + 1}`);
-    const parsed = parseBody(r.text, r.contentType, src.format);
+    const parsed = await parseBody(r.text, r.contentType, src.format, o.parseXml);
     let list: any[];
     if (path) { const v = at(parsed, path); list = Array.isArray(v) ? v : v && typeof v === "object" ? [v] : []; }
     else if (Array.isArray(parsed)) list = parsed;

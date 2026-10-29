@@ -15,6 +15,8 @@ import { notifyOnce } from "./core/notify.ts";
 import { esc } from "./core/telegram.ts";
 import { feedSupplier, findItems, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
 import { fetchApiItems, loadSupplierSecrets } from "../lib/supplier-api.ts";
+// REST API XML yanıtı için worker'ın kendi ayrıştırıcısı (lib/ dosyası paket çözemez: Actions yalnızca worker/node_modules kurar)
+const apiXml = new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false });
 
 const stable = (v: any): string => Array.isArray(v) ? `[${v.map(stable).join(",")}]`
   : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}` : JSON.stringify(v);
@@ -73,7 +75,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
       let built: ReturnType<typeof buildItems>;
       if (feed.type === "api") {
         // REST API: tüm sayfalar okunur (eksik okumada hata: stoklar sıfırlanmaz), ürünler XML ile aynı eşleme hattından geçer
-        const api = await fetchApiItems(feed.url, feed.api ?? {}, { label: name });
+        const api = await fetchApiItems(feed.url, feed.api ?? {}, { label: name, parseXml: (t) => apiXml.parse(t) });
         const body = JSON.stringify(api.items);
         feedHash.update(body);
         built = buildItems({ items: api.items }, { ...feedSupplier(sup, feed), item_path: "items" }, seen, seenSku);

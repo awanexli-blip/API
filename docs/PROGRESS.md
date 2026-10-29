@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-29 (51) — XML içe aktarma 32 saat duruyordu (benim hatam), yedek secret'ları eksik
+- Genel kontrolde: "XML içe aktarma" son 24 saatte 17/17 hata; Toptancım son başarılı 28.10 12:29 (TR). Neden: 28.10 tedarikçi REST API değişikliğinde `lib/supplier-api.ts` üstte `fast-xml-parser` içe aktarıyordu; Actions yalnızca `worker/node_modules` kurar, lib/ dosyasından paket çözülemez → `ERR_MODULE_NOT_FOUND`, betik başlamadan düşüyordu (yerelde kök node_modules olduğu için testler geçmişti). Aynı düzende yeniden üretildi.
+- Düzeltme: ayrıştırıcı çağırandan (`parseXml`) ya da gerektiğinde dinamik yükleme; worker kendi XMLParser'ını verir. Koruma: `worker/test/deps.test.ts` (worker betiklerinin içe aktarma ağacında worker dışı dosyada üstte paket ya da worker'da olmayan paket = hata; düzeltmeden önceki hali yakalıyor).
+- Etkisi: 32 saat Toptancım stok/fiyat güncellenmedi (pazaryerine giden stok/fiyat veritabanındaki son değerle devam etti). İlk içe aktarmadan sonra kontrol edilecek.
+- Yedek: `backup.yml` her gece "SUPABASE_DB_URL2 / BACKUP_PASSPHRASE yok" ile düşüyor (K secret'ları eklemedi).
+
 ## 2026-10-29 (50) — Hepsiburada görsel "erişim problemi"; VPS yeni node
 - HB 29.10 20:07: 16 ilan "İncelenecek" (aynı elle eklenen ürünün varyantları): indirilemeyen görsellerin hepsi WebP (Supabase Storage), JPG'ler sorunsuz. Dönüştürücü (wsrv.nl) şimdi aynı görselleri 0,3 sn'de çeviriyor → geçici: yalnızca ilk görsel önceden ısıtılıyordu, diğerlerini HB ilk kez çekince yetişmedi. `createProducts`: gönderilecek 5 görselin hepsi önceden ısıtılır (en fazla 1.500), hazırlanamayan ek görsel çıkarılır.
 - VPS: Cenuta yükseltme sonrası node aşırı yüklü (2 vCPU'da yük 9, steal %13-31, containerd açılışta zaman aşımı); disk 50 GB (80 değil). Cenuta 29.10 23:00'te yeni node'da sıfırdan açacak. Taşıma (Supabase -> VPS) sağlıklı node doğrulanana dek bekliyor.
