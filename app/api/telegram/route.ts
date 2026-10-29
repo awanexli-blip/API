@@ -14,6 +14,22 @@ async function tg(method: string, body: Record<string, unknown>) {
   await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) }).catch(() => null);
 }
 
+// Bağlantı durumu (yalnızca admin): Telegram bu uca ulaşabiliyor mu (getWebhookInfo). 29.10: kanca 404 alıyordu (gizli başlık
+// uyuşmuyordu), Telegram'dan yazılan cevaplar sessizce kayboluyordu; panel artık uyarır. Jeton/gizli değer döndürülmez.
+export async function GET(req: NextRequest) {
+  if (!(await guard(req))) return unauthorized();
+  if (!process.env.TELEGRAM_BOT_TOKEN) return NextResponse.json({ configured: false });
+  const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+  const j: any = await r?.json().catch(() => null);
+  if (!j?.ok) return NextResponse.json({ configured: true, ok: false, problem: "Telegram'a ulaşılamadı" });
+  const w = j.result ?? {}, want = `${req.nextUrl.origin}/api/telegram`;
+  // Son hata, iletilemeyen mesaj bekliyorsa sorun sayılır (düzeltildikten sonra eski hata kaydı uyarı üretmesin)
+  const lastErr = w.last_error_date && Number(w.pending_update_count ?? 0) > 0 ? String(w.last_error_message ?? "hata").slice(0, 200) : "";
+  const problem = !w.url ? "Bağlı değil" : w.url !== want ? `Başka adrese bağlı (${String(w.url).replace(/\/\/([^/]+).*/, "//$1")})` : lastErr ? `Telegram mesajları iletemiyor: ${lastErr}` : "";
+  return NextResponse.json({ configured: true, ok: !problem, problem: problem || null, pending: Number(w.pending_update_count ?? 0),
+    lastErrorAt: w.last_error_date ? new Date(w.last_error_date * 1000).toISOString() : null });
+}
+
 // Kurulum (yalnızca admin, panelden): Telegram'a bu ucu gizli başlıkla kaydeder
 export async function PUT(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();

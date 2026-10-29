@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-29 (48) — Telegram'dan yazılan cevaplar sisteme ulaşmıyordu
+- K: "Telegram'dan cevaplıyorum, sisteme gitmiyor". Kanıt: 27.10 09:51'den sonra hiçbir soru Telegram onayıyla kaydedilmemiş (7 soru sonradan "başka yerden cevaplandı", 29.10 sorusu "taslak"). Telegram getWebhookInfo (yeni salt okunur iş akışı `telegram-check.yml`): adres doğru, 3 mesaj bekliyor, son hata "Wrong response from the webhook: 404". Rota 404'ü yalnızca gizli başlık uyuşmayınca verir; Vercel'deki üç Telegram değişkeni 22.10'dan beri aynı → kanca Telegram'da gizli değer olmadan/farklı değerle yeniden kaydedilmiş (depoda bunu yapan başka kod yok; kim/ne yaptı bilinmiyor).
+- Çözüm K'da: panel → Sorular → **Telegram'ı bağla** (kancayı doğru gizli değerle yeniden kaydeder; bekleyen 3 mesaj Telegram tarafından yeniden iletilir). Eklendi: `GET /api/telegram` (admin, getWebhookInfo özeti, jeton döndürmez) + Sorular ekranında "Telegram bağlantısı bozuk" uyarısı. Canlıda doğrulanmadı (K bağlayınca `telegram-check` yeniden çalıştırılacak: bekleyen 0, hata yok olmalı).
+- Telegram durum asistanı (Gemini) görevi alındı (K'nın GOREV_TELEGRAM_ASISTAN.md), sırada.
+
 ## 2026-10-28 (47) — Yayındaki ürünü yeniden gönderme = güncelleme; aynı ürünü eklerken sor
 - K: "neyi değiştirirsem onu güncellesin"; "aynı ürün varsa sor, onaylarsam güncellensin".
 - Gönderim (`lib/listings-send.ts`): yayındaki ilan artık "zaten yayında" diye reddedilmez, iş kuyruğuna güncelleme olarak girer (ilan "yayında" kalır). Çift tıklama koruması ürünün düzenlenme zamanını da içerir (düzenleyip yeniden gönderim yeni iş).

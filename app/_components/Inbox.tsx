@@ -19,6 +19,10 @@ export default function Inbox({ api, notify }: { api: Api; notify: Notify }) {
   const [tone, setTone] = useState<string | null>(null);
   const load = useCallback(() => api(`/api/inbox?status=${filter}`).then((x) => { setD(x); setTone((t) => t ?? x.tone ?? ""); }).catch((e) => notify("err", e.message)), [api, notify, filter]);
   useEffect(() => { load(); }, [load]);
+  // Telegram bağlantı durumu: bozuksa Telegram'dan yazılan cevaplar sisteme ulaşmaz (uyarı + yeniden bağla)
+  const [tgs, setTgs] = useState<{ configured?: boolean; ok?: boolean; problem?: string | null; pending?: number; lastErrorAt?: string | null } | null>(null);
+  const loadTg = useCallback(() => api("/api/telegram").then(setTgs).catch(() => setTgs(null)), [api]);
+  useEffect(() => { loadTg(); }, [loadTg]);
 
   async function act(it: Row, action: "approve" | "ignore") {
     if (action === "approve" && !confirm("Bu cevap müşteriye pazaryerinde gönderilecek. Onaylıyor musun?")) return;
@@ -30,7 +34,7 @@ export default function Inbox({ api, notify }: { api: Api; notify: Notify }) {
     } catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function connectTelegram() {
-    try { await api("/api/telegram", { method: "PUT" }); notify("good", "Telegram bağlandı; bota bir deneme mesajı gönderildi."); } catch (e: any) { notify("err", e.message); }
+    try { await api("/api/telegram", { method: "PUT" }); notify("good", "Telegram bağlandı; bota bir deneme mesajı gönderildi. Bekleyen Telegram cevapları şimdi işlenir."); setTimeout(loadTg, 4000); } catch (e: any) { notify("err", e.message); }
   }
   async function saveTone() {
     try { await api("/api/inbox", { method: "PUT", body: JSON.stringify({ tone: tone ?? "" }) }); notify("good", "Ton kaydedildi; yeni taslaklarda kullanılır."); } catch (e: any) { notify("err", e.message); }
@@ -99,6 +103,12 @@ export default function Inbox({ api, notify }: { api: Api; notify: Notify }) {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Telegram</h3>
+        {tgs?.configured && tgs.ok === false && (
+          <p style={{ color: "var(--bad)", fontSize: 13, marginTop: 0 }}>
+            <b>Telegram bağlantısı bozuk:</b> {tgs.problem}{tgs.pending ? ` · ${tgs.pending} mesaj iletilemeden bekliyor` : ""}. Telegram'dan yazdığın cevaplar sisteme ulaşmıyor; aşağıdaki <b>Telegram'ı bağla</b> düğmesine bas.
+          </p>
+        )}
+        {tgs?.configured && tgs.ok && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>✅ Telegram bağlantısı çalışıyor.</p>}
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
           Yeni sipariş ve sorular telefonuna gelir; soruyu oradan <b>Onayla</b> ile gönderebilir ya da mesajı yanıtlayıp kendi cevabını yazabilirsin.
           Kurulum: @BotFather'dan bot aç, jetonu ve sohbet numaranı GitHub Secrets (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) ve Vercel'e (aynı ikisi + TELEGRAM_WEBHOOK_SECRET) gir, sonra aşağıdaki düğmeye bas.
