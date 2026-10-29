@@ -2,6 +2,10 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-29 (50) — Hepsiburada görsel "erişim problemi"; VPS yeni node
+- HB 29.10 20:07: 16 ilan "İncelenecek" (aynı elle eklenen ürünün varyantları): indirilemeyen görsellerin hepsi WebP (Supabase Storage), JPG'ler sorunsuz. Dönüştürücü (wsrv.nl) şimdi aynı görselleri 0,3 sn'de çeviriyor → geçici: yalnızca ilk görsel önceden ısıtılıyordu, diğerlerini HB ilk kez çekince yetişmedi. `createProducts`: gönderilecek 5 görselin hepsi önceden ısıtılır (en fazla 1.500), hazırlanamayan ek görsel çıkarılır.
+- VPS: Cenuta yükseltme sonrası node aşırı yüklü (2 vCPU'da yük 9, steal %13-31, containerd açılışta zaman aşımı); disk 50 GB (80 değil). Cenuta 29.10 23:00'te yeni node'da sıfırdan açacak. Taşıma (Supabase -> VPS) sağlıklı node doğrulanana dek bekliyor.
+
 ## 2026-10-29 (49) — Trendyol kargo modeli düzeltildi; Telegram durum asistanı
 - **Kargo (K: "kargo formülünü tamamen değiştiriyoruz, daha da zarar etmeyelim"):** Ekim kesinti dökümü (18 dosya, 81 sipariş, `kesintiler/`, depo dışı): Trendyol 300 TL altı 25 siparişin hepsinde kargo kesmiş (139-199 TL: 58-65 / 104 TL; 200-300 TL: 102-112 TL; üstü 107-115 TL). Eski kural "300 altı alıcı öder" yanlıştı: maliyeti bilinen 40 siparişin 8'i KDV sonrası zararda; ceza 450 TL (2 tedarik edememe iptali, 2 büyük olasılıkla geç kargo), satıcı indirimi 899 TL. Web kaynakları çelişkili (barem 200/350, Mart 2026); değerler kendi dökümümüzden.
   Migration 069 (`settings.shipping_bands`), panel Trendyol fiyat ayarlarında "Kargo basamakları" alanı, `worker/price-impact.ts` + `price-impact.yml` (salt okunur etki önizlemesi; ilan maliyeti ürün kaydından). Önizleme: 21.765 yayındaki ilanın 2.063'ü bugünkü fiyatla gerçek kargoda zararda; yeni modelde 7.493 artış (medyan %5, 2.063'ünde %20+), sonrasında zararda 0. **K onayıyla canlıda:** `shipping_cost=115`, basamaklar 200 altı 105, 200-350 113 (SQL Editor). İlk senkron sonucu kontrol edilecek.

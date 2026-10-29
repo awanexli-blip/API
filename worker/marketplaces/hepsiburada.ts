@@ -287,11 +287,13 @@ export function createHepsiburada(): Marketplace {
       }
       const used = new Set<string>();
       const payloads: any[] = [];
-      // Her ürünün ilk görseli gönderimden önce dönüştürücüden geçirilir (önbelleğe alınır, hata varsa ürün bu turda gönderilmez)
+      // Gönderilecek görseller (ürün başına ilk 5) gönderimden önce dönüştürücüden geçirilir: önbelleğe alınır, HB çekerken hazır olur.
+      // 29.10: yalnızca ilk görsel ısıtılıyordu; diğer WebP'leri HB ilk kez kendisi çekince "erişim problemi" (16 varyant İncelenecek).
+      // İlk görsel hazırlanamazsa ürün bu turda gönderilmez; diğerlerinden hazırlanamayan listeden çıkarılır. Dönüştürücü sınırı için en fazla 1.500.
       const imgOk = new Map<string, boolean>();
-      const firstImgs = [...new Set(list.map((p) => p.images[0]).filter((u): u is string => !!u && jpgUrl(u) !== u))];
-      for (let i = 0; i < firstImgs.length; i += 8) {
-        await Promise.all(firstImgs.slice(i, i + 8).map(async (u) => {
+      const toWarm = [...new Set(list.flatMap((p) => p.images.slice(0, 5)).filter((u): u is string => !!u && jpgUrl(u) !== u))].slice(0, 1500);
+      for (let i = 0; i < toWarm.length; i += 8) {
+        await Promise.all(toWarm.slice(i, i + 8).map(async (u) => {
           for (let t = 0; t < 2 && !imgOk.get(u); t++) {
             try { const r = await fetch(jpgUrl(u), { signal: AbortSignal.timeout(45000) }); imgOk.set(u, r.ok); await r.body?.cancel().catch(() => {}); } catch { imgOk.set(u, false); }
           }
@@ -303,7 +305,7 @@ export function createHepsiburada(): Marketplace {
         if (imgOk.get(p.images[0]) === false) { no("görsel hazırlanamadı (JPG dönüştürücü)"); continue; }
         if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
         used.add(p.id);
-        const imgs = p.images.map((u) => jpgUrl(u)); // WebP -> JPG (HB WebP göstermiyor)
+        const imgs = p.images.slice(0, 5).filter((u, i) => i === 0 || imgOk.get(u) !== false).map((u) => jpgUrl(u)); // WebP -> JPG (HB WebP göstermiyor)
         let extra: Record<string, unknown> = {};
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
