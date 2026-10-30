@@ -39,9 +39,15 @@ export class EarsivClient {
     this.token = String(j.token);
   }
 
+  // Portal aynı kullanıcıyla tek oturuma izin verir ("birden fazla kişi giriş yapamaz"): çıkış yapılmazsa K portala giremez.
+  // 30.10: f/fatura'daki "anologin" çıkışı oturumu kapatmadı; önce "logout", olmazsa "anologin" denenir.
   async logout() {
     if (!this.token) return;
-    await this.f(`${this.base}/earsiv-services/assos-login`, { method: "POST", headers: HEADERS, body: new URLSearchParams({ assoscmd: this.env === "PROD" ? "anologin" : "logout", rtype: "json", token: this.token }).toString() }).catch(() => null);
+    for (const assoscmd of ["logout", "anologin"]) {
+      const r = await this.f(`${this.base}/earsiv-services/assos-login`, { method: "POST", headers: HEADERS, body: new URLSearchParams({ assoscmd, rtype: "json", token: this.token }).toString() }).catch(() => null);
+      const t = r ? await r.text().catch(() => "") : "";
+      if (r && r.status < 400 && !/"error"\s*:\s*"[^0]/.test(t)) break;
+    }
     this.token = "";
   }
 
