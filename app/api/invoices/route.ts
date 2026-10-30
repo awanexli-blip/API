@@ -69,36 +69,53 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Portal listesi GÜN GÜN (30.10: 60 günlük aralık boş döndü, 84 taslak yanlışlıkla "silindi" sayıldı). Günler: son 14 gün + kayıtların oluşturulduğu günler.
+  const listDays = async (extra: (string | null | undefined)[]) => {
+    const days = new Set<string>();
+    for (let i = 0; i < 14; i++) days.add(trDateTime(new Date(Date.now() - i * 86400000)).date);
+    for (const t of extra) if (t && Date.now() - Date.parse(t) < 60 * 86400000) days.add(trDateTime(new Date(t)).date);
+    const out = new Map<string, any>();
+    for (const day of days) for (const d of await gib.list(day, day)) if (d.ettn) out.set(d.ettn, d);
+    return [...out.values()];
+  };
+
   if (b.action === "sync") {
-    // Sistemin taslakları + portalda elle kesilenler (son 60 gün): elle kesilen imzalı belge, alıcı adıyla tek faturasız siparişe bağlanır
+    // Sistemin taslakları + portalda elle kesilenler: elle kesilen imzalı belge, alıcı adıyla tek faturasız siparişe bağlanır
     const { data: all, error } = await db.from("order_invoices").select("order_id, ettn, status, created_at");
     if (error) return bad(error.message);
     const drafts = (all ?? []).filter((d: any) => d.status === "draft" && d.ettn);
-    const from = trDateTime(new Date(Date.now() - 60 * 86400000)).date, to = trDateTime(new Date()).date;
     try {
       await login();
-      const list = await gib.list(from, to);
+      const list = await listDays(drafts.map((d: any) => d.created_at));
       const docs = new Map(list.map((d) => [d.ettn, d]));
-      let signed = 0, deleted = 0, waiting = 0;
+      let signed = 0, deleted = 0, waiting = 0, missing = 0;
       const gone = new Set<string>(); // taslağı silinen siparişler: elle kesilen fatura bunlara bağlanabilir
       for (const d of drafts as any[]) {
         const doc = docs.get(d.ettn);
         if (doc && isSigned(doc)) { signed++; await db.from("order_invoices").update({ status: "signed", belge_no: doc.belgeNumarasi ?? null, signed_at: now, updated_at: now }).eq("order_id", d.order_id); }
-        else if (!doc || isDeleted(doc)) { deleted++; gone.add(d.order_id); await db.from("order_invoices").update({ status: "deleted", error: doc ? "Taslak portalda silinmiş" : "Taslak portalda bulunamadı", updated_at: now }).eq("order_id", d.order_id); }
+        // Yalnızca portal "silinmiş" derse silindi; listede yoksa dokunma (liste eksik dönebilir)
+        else if (doc && isDeleted(doc)) { deleted++; gone.add(d.order_id); await db.from("order_invoices").update({ status: "deleted", error: "Taslak portalda silinmiş", updated_at: now }).eq("order_id", d.order_id); }
+        else if (!doc) missing++;
         else waiting++;
       }
-      // Mükerrer: bizim imzalanmamış taslağımızın siparişi için portalda (bizim olmayan) imzalı fatura var (aynı alıcı, sipariş sonrası tarih)
+      // Mükerrer: bizim imzalanmamış taslağımızın siparişi için portalda (bizim olmayan) imzalı ya da elle oluşturulmuş taslak var (aynı alıcı, sipariş sonrası tarih)
       const ours = new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean));
-      const manualSigned = list.filter((d) => isSigned(d) && !ours.has(d.ettn));
+      const manual = list.filter((d) => !ours.has(d.ettn) && !isDeleted(d));
       const waitingRows = (drafts as any[]).filter((d) => { const doc = docs.get(d.ettn); return doc && !isSigned(doc) && !isDeleted(doc); });
       let duplicate = 0;
-      if (waitingRows.length && manualSigned.length) {
+      if (waitingRows.length && manual.length) {
         const { data: od } = await db.from("orders").select("id, customer_name, ordered_at").in("id", waitingRows.map((d) => d.order_id));
         const norm = (x: unknown) => String(x ?? "").toLocaleUpperCase("tr").replace(/[^A-ZÇĞİÖŞÜ]/g, "");
         for (const o of od ?? []) {
           const n = norm(o.customer_name);
-          const hit = n.length >= 4 && manualSigned.find((d) => norm(docName(d)) === n && (docTime(d) ?? Infinity) >= Date.parse(o.ordered_at ?? "") - 86400000);
-          if (hit) { duplicate++; await db.from("order_invoices").update({ error: `MÜKERRER: portalda bu sipariş için imzalı fatura var (${hit.belgeNumarasi ?? hit.ettn}); taslağı imzalama, sil`, updated_at: now }).eq("order_id", o.id); }
+          const hits = n.length >= 4 ? manual.filter((d) => norm(docName(d)) === n && (docTime(d) ?? Infinity) >= Date.parse(o.ordered_at ?? "") - 86400000) : [];
+          const hit = hits.find(isSigned) ?? hits[0];
+          if (hit) {
+            duplicate++;
+            const msg = isSigned(hit) ? `MÜKERRER: portalda bu sipariş için imzalı fatura var (${hit.belgeNumarasi ?? hit.ettn}); taslağı imzalama, sil`
+              : `MÜKERRER: portalda bu sipariş için elle oluşturulmuş taslak var (${hit.belgeNumarasi ?? hit.ettn}); ikisinden yalnızca birini imzala`;
+            await db.from("order_invoices").update({ error: msg, updated_at: now }).eq("order_id", o.id);
+          }
         }
       }
       // Elle kesilenler: faturası olmayan açık siparişlerle ad + tarih eşleşmesi
@@ -108,7 +125,7 @@ export async function POST(req: NextRequest) {
         .gte("ordered_at", new Date(Date.now() - 60 * 86400000).toISOString());
       const m = matchManualInvoices(list, (cand ?? []).filter((o: any) => !has.has(o.id)), new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean)));
       for (const l of m.links) await db.from("order_invoices").upsert({ order_id: l.order_id, status: "signed", ettn: l.ettn, belge_no: l.belge_no, error: null, created_by: "portal (elle)", signed_at: now, updated_at: now }, { onConflict: "order_id" });
-      return NextResponse.json({ signed, deleted, waiting, duplicate, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
+      return NextResponse.json({ signed, deleted, waiting, missing, duplicate, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
     finally { await logout(); }
   }
@@ -120,8 +137,7 @@ export async function POST(req: NextRequest) {
     if (!rows?.length) return NextResponse.json({ deleted: 0 });
     try {
       await login();
-      const from = trDateTime(new Date(Math.min(...rows.map((r: any) => Date.parse(r.created_at))) - 86400000)).date, to = trDateTime(new Date()).date;
-      const docs = new Map((await gib.list(from, to)).map((d) => [d.ettn, d]));
+      const docs = new Map((await listDays(rows.map((r: any) => r.created_at))).map((d) => [d.ettn, d]));
       let deleted = 0;
       for (const r of rows as any[]) {
         const doc = docs.get(r.ettn);

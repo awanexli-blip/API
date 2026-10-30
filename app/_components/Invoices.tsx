@@ -38,7 +38,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   }
   async function sync() {
     setBusy("Portal okunuyor...");
-    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }), timeoutMs: 120000 } as any); notify(r.duplicate ? "err" : "good", `${r.duplicate ? `⚠️ ${r.duplicate} taslak MÜKERRER (o siparişlerin faturasını portalda zaten kesmişsin): imzalama, "Mükerrer taslakları sil"e bas. ` : ""}İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş/bulunamayan: ${r.deleted}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`); load(); }
+    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }), timeoutMs: 120000 } as any); notify(r.duplicate ? "err" : "good", `${r.duplicate ? `⚠️ ${r.duplicate} taslak MÜKERRER (o siparişler için portalda elle kesilmiş/oluşturulmuş belge var): ikisini birden imzalama. ` : ""}İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş: ${r.deleted}` : ""}${r.missing ? `, portal listesinde görünmeyen (dokunulmadı): ${r.missing}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`); load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function delDup() {
