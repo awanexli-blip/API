@@ -55,10 +55,14 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   }
   async function upload(mode: "dry" | "apply") {
     const u = d?.upload;
-    if (mode === "apply" && !confirm(`Son denemede uygun çıkan ${u?.ok ?? 0} fatura Trendyol'a yüklenecek (kontroller yeniden yapılır, tutmayan atlanır). Trendyol aynı pakete ikinci faturayı kabul etmez. Devam?`)) return;
+    // İlk gerçek yükleme tek fatura: K Trendyol panelinde doğru pakette doğru PDF'i görünce kalanlar gider
+    const first = mode === "apply" && !(c.uploaded ?? 0);
+    const count = first ? 1 : 200;
+    if (mode === "apply" && !confirm(first ? "İLK yükleme: yalnızca 1 fatura Trendyol'a yüklenecek. Trendyol panelinde o siparişte faturanın doğru göründüğünü kontrol et, sonra bu düğmeyle kalanları yükle. Devam?"
+      : `Son denemede uygun çıkan ${u?.ok ?? 0} fatura Trendyol'a yüklenecek (kontroller yeniden yapılır, tutmayan atlanır). Trendyol aynı pakete ikinci faturayı kabul etmez. Devam?`)) return;
     setBusy(mode === "dry" ? "Deneme başlatılıyor..." : "Yükleme başlatılıyor...");
     try {
-      await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "upload", mode }) });
+      await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "upload", mode, count }) });
       notify("good", `${mode === "dry" ? "Deneme" : "Yükleme"} başladı (GitHub Actions, 2-5 dk). Bu sırada e-Arşiv portalından çıkış yap (tek oturum). Bitince "Raporu yenile".`);
     } catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
