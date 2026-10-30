@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-30 (57) — Trendyol'a fatura yükleme, elle değişiklik koruması, yeni tedarikçi hazırlığı
+- **Fatura yükleme** (`worker/invoice-upload.ts`, `.github/workflows/invoice-upload.yml`, `lib/invoice-verify.ts`): deneme -> yükle. Kontrol: GİB belgesinde ETTN + belge no + sipariş no + alıcı adı + ödenecek tutar, Trendyol paketi/durum/tutar canlı. İlk deneme 78/78 reddetti (GİB şablonu &Ouml; gibi adlı varlıklar), düzeltildi, ikinci deneme 78/78 uygun. İlk gerçek yükleme 1 fatura (GIB2026000000020, sipariş 11724731585) Trendyol kabul etti, K PDF'i kontrol etti ("çok güzel"). Kalan 77: K deneme + yükle yapacak. GitHub Secrets GIB_PORTAL_USER/PASS eklendi.
+- **Fatura ürün adı** (`invoiceItemName`): Trendyol satır adındaki model kodu + ", beden" atılır, kayıtlı ilan başlığı öncelikli. Yalnızca yeni taslaklar (imzalı 84 değişmez).
+- **Fatura PDF**: panelde "Faturayı aç / PDF" (GİB görünümü, yazdır -> PDF, dosya adı alıcı adı ASCII küçük harf), "Hepsiburada faturaları" filtresi (HB 6 faturayı K elle indirecek).
+- **Elle değişiklik koruması** (migration 074, `worker/core/holds.ts`, `lib/holds.ts`, `app/api/holds`, `Holds.tsx`, Telegram `hl:a|p|s:<id>`): senkron gönderdiğini saklar (sent_price/sent_qty/pushed_at); pazaryerinde elle değişen/eklenen ilan bekletilir, Telegram'dan sorulur (hepsi kalsın / fiyat kalsın stok sistemden / eşitle). Sıfırlamalar (zero_missing/zero_unlinked) da süzülür. Testler `worker/test/holds.test.ts`. **Migration 074 K çalıştıracak**, yoksa koruma kapalı (senkron eskisi gibi). Canlıda denenmedi.
+- **Yeni tedarikçi (31.10 K XML + REST API verecek)**: sunucuda `worker/supplier-probe.ts <kod> [sayfa]` (XML+API, alan/doluluk/önerilen eşleme, yazmaz; toptancim ile denendi: 20.757 ürün, 42,9 MB, 17 sn). Sunucu tedarikçi zamanlayıcısı açıldı (15 dk). Koşullar: tedarikçi `runner=vps` ("Yalnızca sunucudan oku") **ve nightly açık** olmalı (import-xml vps yalnızca nightly okur), eşleme yapılmalı; API anahtarı `/etc/trentakip/env` (SUPPLIER_SECRETS ya da auth.secret_env adı).
+- **Supabase yeri RİSKİ**: 299 MB / 500; 28 bin ürün = 155 MB ürün tabloları -> 40 bin ürün ~+220 MB = sınırı aşar. Yarın: önce yalnızca inceleme; içe aktarma ya tek XML ile (ölç) ya da VPS geçişi öne alınarak.
+
 ## 2026-10-30 (56) — e-Arşiv: ilk toplu kesim tamam (84 fatura)
 - 84 açık siparişin (78 Trendyol + 6 HB) faturası sistem taslağıyla kesildi, K portalda imzaladı; "İmzalananları kontrol et" 84'ü `signed` yaptı, faturasız açık sipariş 0.
 - Hata: sync 60 günlük portal listesi boş döndüğü için 84 taslağı "bulunamadı/silindi" işaretlemişti (SQL ile geri alındı). Düzeltme b535edd: liste gün gün (son 14 gün + kayıt günleri), listede olmayan taslağa dokunulmaz (yalnızca portal "silinmiş" derse), elle oluşturulmuş imzasız taslak da MÜKERRER işaretlenir.
