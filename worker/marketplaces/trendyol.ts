@@ -581,6 +581,28 @@ export function createTrendyol(): Marketplace {
       await tg(`/order/sellers/${SELLER_ID}/shipment-packages/${packageId}/tracking-details`, { method: "PUT", body: JSON.stringify({ cargoSenderNumber: trackingNo, providerCode }) });
     },
 
+    async orderPackages(orderNo: string) {
+      if (!/^\d{1,20}$/.test(orderNo)) throw new Error("Geçersiz sipariş numarası");
+      const q = `?orderNumber=${orderNo}&size=50`;
+      const r = await tg(`/order/sellers/${SELLER_ID}/v2/orders${q}`).catch(() => tg(`/order/sellers/${SELLER_ID}/orders${q}`));
+      const num = (x: any) => (x != null && x !== "" && Number.isFinite(Number(x)) ? Number(x) : null);
+      return (r.content ?? []).filter((o: any) => String(o.orderNumber ?? "") === orderNo)
+        .map((o: any) => ({ packageId: String(o.shipmentPackageId ?? o.id ?? ""), status: String(o.shipmentPackageStatus ?? o.status ?? ""), total: num(o.packageTotalPrice ?? o.totalPrice) }));
+    },
+
+    // Fatura dosyası (seller-invoice-file, multipart: shipmentPackageId + file [+ invoiceNumber]). Tekrarlanmaz (çift yükleme yerine 409 döner).
+    async uploadInvoice(packageId: string, pdf: Uint8Array, invoiceNumber: string) {
+      if (!/^\d{1,20}$/.test(packageId)) throw new Error("Geçersiz paket numarası");
+      const form = new FormData();
+      form.append("shipmentPackageId", packageId);
+      if (/^[A-Za-z0-9]{3}20[2-9]\d{10}$/.test(invoiceNumber)) form.append("invoiceNumber", invoiceNumber);
+      form.append("file", new Blob([pdf], { type: "application/pdf" }), `${invoiceNumber || packageId}.pdf`);
+      const { "Content-Type": _ct, ...h } = HEADERS; // sınır (boundary) fetch tarafından eklenir
+      const res = await fetch(`https://apigw.trendyol.com/integration/sellers/${SELLER_ID}/seller-invoice-file`, { method: "POST", headers: h, body: form, signal: AbortSignal.timeout(120_000) });
+      const text = await res.text().catch(() => "");
+      return { ok: res.ok, already: res.status === 409, status: res.status, message: res.ok ? undefined : (errReason(text) || text.slice(0, 200)) };
+    },
+
     // Müşteri soruları (QnA; uç ve alanlar dokümandan, canlıda doğrulanmadı). Müşteri adı alınmaz.
     async fetchQuestions(): Promise<QuestionIn[]> {
       const out: QuestionIn[] = [];

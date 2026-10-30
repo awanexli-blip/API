@@ -53,6 +53,15 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "logout" }), timeoutMs: 60000 } as any); notify(r.ok ? "good" : "err", r.message); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
+  async function upload(mode: "dry" | "apply") {
+    const u = d?.upload;
+    if (mode === "apply" && !confirm(`Son denemede uygun çıkan ${u?.ok ?? 0} fatura Trendyol'a yüklenecek (kontroller yeniden yapılır, tutmayan atlanır). Trendyol aynı pakete ikinci faturayı kabul etmez. Devam?`)) return;
+    setBusy(mode === "dry" ? "Deneme başlatılıyor..." : "Yükleme başlatılıyor...");
+    try {
+      await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "upload", mode }) });
+      notify("good", `${mode === "dry" ? "Deneme" : "Yükleme"} başladı (GitHub Actions, 2-5 dk). Bu sırada e-Arşiv portalından çıkış yap (tek oturum). Bitince "Raporu yenile".`);
+    } catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+  }
   async function reset(id: string) {
     try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "reset", order_id: id }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
@@ -71,13 +80,31 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
           Alıcı adı/adresi 30 günden eski siparişlerde silinmiş olur, onlar seçilemez.
         </p>
         <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
-          <span className="muted">Kesilmedi: {c.none ?? 0} · Taslak: {c.draft ?? 0} · Kesildi: {(c.signed ?? 0) + (c.uploaded ?? 0)} · Hata: {c.error ?? 0}</span>
+          <span className="muted">Kesilmedi: {c.none ?? 0} · Taslak: {c.draft ?? 0} · Kesildi: {(c.signed ?? 0) + (c.uploaded ?? 0)} (Trendyol'a yüklenen {c.uploaded ?? 0}) · Hata: {c.error ?? 0}</span>
           <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="all">Tümü (60 gün)</option></select>
           <button className="btn" disabled={!!busy || !sel.size || !d.configured} onClick={draft}>Seçilenlere taslak oluştur ({sel.size})</button>
           <button className="btn ghost" disabled={!!busy || !d.configured} onClick={sync}>İmzalananları kontrol et</button>
           {(d.rows ?? []).some((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "")) && <button className="btn" disabled={!!busy} onClick={delDup}>Mükerrer taslakları sil</button>}
           <button className="btn ghost" disabled={!!busy || !d.configured} onClick={logoutGib} title="Portal aynı anda tek oturuma izin veriyor: 'birden fazla kişi giriş yapamaz' diyorsa bas">e-Arşiv oturumunu kapat</button>
           {busy && <span className="muted">{busy}</span>}
+        </div>
+        <div style={{ borderTop: "1px solid var(--line)", padding: "8px 0", margin: "8px 0" }}>
+          <b>Trendyol'a yükle</b>
+          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>
+            Önce <b>deneme</b>: her imzalı faturada GİB belgesindeki ETTN, belge no, sipariş no, alıcı adı ve tutar sistemle; Trendyol'daki paket, durum ve tutar canlı olarak karşılaştırılır. Hiçbir şey yüklenmez.
+            Sonra <b>yükle</b> yalnızca denemede uygun çıkanları gönderir. Çalışırken e-Arşiv portalında oturum açık olmasın. Hepsiburada faturaları burada yüklenmez.
+          </p>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn ghost" disabled={!!busy || !c.signed} onClick={() => upload("dry")}>Deneme (yüklemeden kontrol)</button>
+            <button className="btn" disabled={!!busy || !(d.upload?.mode === "dry" && d.upload?.ok && Date.now() - Date.parse(d.upload.at) < 24 * 3600000)} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload?.mode === "dry" ? d.upload.ok : 0})</button>
+            <button className="btn ghost" disabled={!!busy} onClick={load}>Raporu yenile</button>
+          </div>
+          {d.upload && <div style={{ fontSize: 13, marginTop: 6 }}>
+            <span className="muted">Son {d.upload.mode === "dry" ? "deneme" : "yükleme"}: {when(d.upload.at)} · toplam {d.upload.total} · uygun {d.upload.ok}{d.upload.mode === "apply" ? ` · yüklendi ${d.upload.uploaded} · zaten vardı ${d.upload.already}` : ""} · atlanan {d.upload.failed}</span>
+            {(d.upload.rows ?? []).filter((x: Row) => !x.ok).length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {(d.upload.rows ?? []).filter((x: Row) => !x.ok).map((x: Row) => <li key={x.belge_no}>{x.belge_no} / {x.order_no}: <span style={{ color: "var(--bad)" }}>{x.reason}</span></li>)}
+            </ul>}
+          </div>}
         </div>
         <div className="scroll"><table className="cards">
           <thead><tr>

@@ -134,6 +134,10 @@ export interface Marketplace {
   fetchSettlements?(fromMs: number, toMs: number): Promise<SettlementIn[]>;
   /** Takip kodunu pazaryerine bildir (yalnızca paneldeki onaylı kuyruktan, worker/core/orders.ts pushTracking) */
   updateTracking?(packageId: string, providerCode: string, trackingNo: string): Promise<void>;
+  // Sipariş numarasına ait paketler (canlı; fatura yüklemeden önce eşleşme kontrolü)
+  orderPackages?(orderNo: string): Promise<{ packageId: string; status: string; total: number | null }[]>;
+  // Pakete fatura dosyası (PDF). already = pakette zaten fatura var (409)
+  uploadInvoice?(packageId: string, pdf: Uint8Array, invoiceNumber: string): Promise<{ ok: boolean; already?: boolean; status: number; message?: string }>;
   /** Buybox / rakip fiyatı (Trendyol Ürün Buybox Kontrol, istek başına en fazla 10 barkod) */
   buybox?(ids: string[]): Promise<BuyboxInfo[]>;
   /** Sipariş uçlarının teşhisi (hangi uç çalıştı, alan adları; kişisel veri yok) */

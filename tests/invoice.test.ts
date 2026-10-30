@@ -107,3 +107,21 @@ test("taslak silme: yalnızca imzalanmamış belge gönderilir, imzalı asla", a
   assert.equal(await c.deleteDrafts([{ ettn: "t1", onayDurumu: "Onaylanmadı" }, { ettn: "imzali", onayDurumu: "Onaylandı" }], "Mükerrer"), 1);
   assert.deepEqual(sent[0].silinecekler.map((d: any) => d.ettn), ["t1"]);
 });
+
+import { verifyInvoice, parseMoney, htmlText } from "../lib/invoice-verify.ts";
+test("Trendyol'a yükleme öncesi: GİB belgesi sistemle birebir tutmalı", () => {
+  const html = `<html><body><table><tr><td>SAYIN</td><td>AYŞE&nbsp;NUR YILMAZ</td></tr><tr><td>ETTN:</td><td>ab12-cd34</td></tr>
+    <tr><td>Fatura No:</td><td>GIB2026000000033</td></tr><tr><td>Sipariş No</td><td>11765608195</td></tr>
+    <tr><td>Ödenecek Tutar</td><td>1.968,00 TL</td></tr></table></body></html>`;
+  const base = { html, ettn: "AB12-CD34", belgeNo: "GIB2026000000033", orderNo: "11765608195", amount: 1968, customerName: "Ayşe Nur Yılmaz" };
+  assert.deepEqual(verifyInvoice(base).problems, []);
+  assert.match(verifyInvoice({ ...base, amount: 1967.5 }).problems.join(), /tutar farklı/);
+  assert.match(verifyInvoice({ ...base, orderNo: "1176560819" }).problems.join(), /sipariş no/, "eksik haneli sipariş no eşleşmez");
+  assert.match(verifyInvoice({ ...base, customerName: "Mehmet Kaya" }).problems.join(), /alıcı adı/);
+  assert.match(verifyInvoice({ ...base, belgeNo: "GIB2026000000034" }).problems.join(), /belge no/);
+  assert.match(verifyInvoice({ ...base, ettn: "zz" }).problems.join(), /ETTN/);
+  assert.match(verifyInvoice({ ...base, html: html.replace("Ödenecek Tutar", "Toplam") }).problems.join(), /okunamadı/, "tutar bulunamazsa yüklenmez");
+  assert.ok(!verifyInvoice({ ...base, customerName: "" }).ok);
+  assert.equal(parseMoney("1.968,00"), 1968); assert.equal(parseMoney("1968.50"), 1968.5); assert.equal(parseMoney("1,968.05"), 1968.05); assert.equal(parseMoney("269,9"), 2699, "tek haneli kuruş belirsiz okunur: tutar tutmaz, yüklenmez");
+  assert.equal(htmlText("<b>a</b>&amp;<i>b</i>"), "a & b");
+});

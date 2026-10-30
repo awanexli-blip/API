@@ -1,5 +1,5 @@
 // GİB e-Arşiv portalı istemcisi (resmî API yok; portalın kendi arayüzünün kullandığı uçlar, açık kaynak f/fatura MIT, Ağustos 2026'dan).
-// Yalnızca: giriş, taslak oluşturma, taslak/fatura listesi, çıkış. İMZALAMA YOK: K taslakları portalda toplu seçip tek SMS ile imzalar
+// Yalnızca: giriş, taslak oluşturma, taslak/fatura listesi, belge görünümü (HTML), çıkış. İMZALAMA YOK: K taslakları portalda toplu seçip tek SMS ile imzalar
 // (yasal onay kullanıcıda kalır). Kimlik: GIB_PORTAL_USER / GIB_PORTAL_PASS (Vercel, Sensitive); loglanmaz, hata mesajına girmez.
 // GİB komut adlarını değiştirebilir (2026'da değiştirdi): hata metni panelde gösterilir, elle kesmeye devam edilebilir.
 
@@ -64,6 +64,14 @@ export class EarsivClient {
   async list(from: string, to: string): Promise<EarsivDoc[]> {
     const j = await this.dispatch("EARSIV_PORTAL_TASLAKLARI_GETIR", "RG_BASITTASLAKLAR", { baslangic: from, bitis: to, hangiTip: "5000/30000", table: [] });
     return Array.isArray(j?.data) ? j.data : [];
+  }
+
+  // Belgenin portal görünümü (HTML; GİB'in kendi şablonu). Trendyol'a yüklenecek PDF bundan basılır. imzalı = "Onaylandı"
+  async invoiceHtml(ettn: string, signed = true): Promise<string> {
+    const j = await this.dispatch("EARSIV_PORTAL_FATURA_GOSTER", "RG_BASITTASLAKLAR", { ettn, onayDurumu: signed ? "Onaylandı" : "Onaylanmadı" });
+    const html = typeof j === "string" ? j : j?.data;
+    if (typeof html !== "string" || !/<html|<table|<div/i.test(html)) throw new Error("GİB fatura görüntüsü alınamadı");
+    return html;
   }
 
   // İMZALANMAMIŞ taslakları sil (mükerrer taslak; K onayıyla). İmzalı belge silinemez (GİB iptal süreci ayrı)

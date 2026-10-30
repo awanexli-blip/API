@@ -10,6 +10,7 @@ export const maxDuration = 300;
 // Sipariş faturaları (GİB e-Arşiv portalı, migration 072). Sistem yalnızca TASLAK oluşturur ve durum okur; imza K'da (portalda toplu, tek SMS).
 // GET: faturası kesilmemiş siparişler (son 60 gün, iptal/iade hariç) + fatura durumları.
 // POST { action: "draft", order_ids } (en fazla 25, sırayla): taslak oluştur. POST { action: "sync" }: imzalananları işaretle.
+// POST { action: "upload", mode: "dry" | "apply", count }: Trendyol'a fatura yükleme işini (Actions) başlat; rapor GET.upload'da.
 // POST { action: "reset", order_id }: hatalı / silinmiş kaydı yeniden denenebilir yap. Alıcı bilgisi loglanmaz.
 const OPEN = ["new", "ready", "sent_to_supplier", "shipped", "delivered", "problem"];
 
@@ -17,9 +18,10 @@ export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
   const db = admin();
   const since = new Date(Date.now() - 60 * 86400000).toISOString();
-  const [{ data: orders, error }, inv] = await Promise.all([
+  const [{ data: orders, error }, inv, rep] = await Promise.all([
     db.from("orders").select("id, marketplace, order_no, status, total, ordered_at, customer_name, order_lines(title, qty)").in("status", OPEN).gte("ordered_at", since).order("ordered_at", { ascending: true }).limit(1000),
     db.from("order_invoices").select("order_id, status, ettn, belge_no, amount, error, updated_at"),
+    db.from("app_state").select("value").eq("key", "invoice_upload_report").maybeSingle().then((r: any) => r, () => ({ data: null })),
   ]);
   if (error) return bad(error.message);
   if (inv.error) return bad(/order_invoices/.test(inv.error.message) ? "Supabase migration 072 çalıştırılmamış (SQL Editor)" : inv.error.message);
@@ -31,7 +33,9 @@ export async function GET(req: NextRequest) {
       invoice: i ? { status: i.status, ettn: i.ettn, belge_no: i.belge_no, amount: i.amount, error: i.error, updated_at: i.updated_at } : null };
   });
   const counts = rows.reduce((c: Record<string, number>, r) => { const k = r.invoice?.status ?? "none"; c[k] = (c[k] ?? 0) + 1; return c; }, {});
-  return NextResponse.json({ rows, counts, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS) });
+  let upload: any = null;
+  try { upload = rep?.data?.value ? JSON.parse(rep.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
+  return NextResponse.json({ rows, counts, upload, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS) });
 }
 
 export async function POST(req: NextRequest) {
@@ -44,6 +48,26 @@ export async function POST(req: NextRequest) {
     if (typeof b.order_id !== "string") return bad("order_id gerekli");
     const { error } = await db.from("order_invoices").delete().eq("order_id", b.order_id).in("status", ["error", "deleted", "creating"]);
     return error ? bad(error.message) : NextResponse.json({ ok: true });
+  }
+
+  // Trendyol'a fatura yükleme: GitHub Actions (invoice-upload.yml; PDF için tarayıcı gerekir). dry = deneme, apply = son denemede uygun çıkanlar
+  if (b.action === "upload") {
+    const mode = b.mode === "apply" ? "apply" : "dry";
+    const count = String(Math.max(1, Math.min(200, Number(b.count) || 200)));
+    if (mode === "apply") {
+      const { data: st } = await db.from("app_state").select("value").eq("key", "invoice_upload_report").maybeSingle();
+      const prev = st?.value ? JSON.parse(st.value) : null;
+      if (!prev || prev.mode !== "dry" || Date.now() - Date.parse(prev.at) > 24 * 3600000) return bad("Önce deneme çalıştır (son 24 saatte deneme yok)");
+      if (!prev.ok) return bad("Son denemede yüklemeye uygun fatura yok");
+    }
+    if (!process.env.GH_TOKEN || !process.env.GH_REPO) return bad("GH_TOKEN veya GH_REPO ayarlı değil");
+    const res = await fetch(`https://api.github.com/repos/${process.env.GH_REPO}/actions/workflows/invoice-upload.yml/dispatches`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      body: JSON.stringify({ ref: "main", inputs: { mode, count } }),
+    });
+    if (res.status !== 204) return bad(`GitHub ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return NextResponse.json({ ok: true, mode });
   }
 
   const gib = new EarsivClient(process.env.GIB_PORTAL_USER ?? "", process.env.GIB_PORTAL_PASS ?? "", process.env.GIB_PORTAL_ENV === "TEST" ? "TEST" : "PROD");

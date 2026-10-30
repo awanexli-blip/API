@@ -1,0 +1,45 @@
+name: Fatura yükleme (Trendyol)
+
+# İmzalı e-Arşiv faturalarını Trendyol paketlerine yükler (worker/invoice-upload.ts). Yalnızca elle / panelden tetiklenir.
+# dry = deneme (hiçbir şey yüklemez, kontrol raporu), apply = son denemede uygun çıkanları yükler.
+# Depo herkese açık: PDF artifact olarak YÜKLENMEZ, günlüğe alıcı bilgisi yazılmaz.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry (deneme) | apply (yükle)"
+        default: "dry"
+      count:
+        description: "En fazla kaç fatura (1-200)"
+        default: "200"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: invoice-upload
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix worker
+      - name: Yükle
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
+          TRENDYOL_SELLER_ID: ${{ secrets.TRENDYOL_SELLER_ID }}
+          TRENDYOL_API_KEY: ${{ secrets.TRENDYOL_API_KEY }}
+          TRENDYOL_API_SECRET: ${{ secrets.TRENDYOL_API_SECRET }}
+          TRENDYOL_STOREFRONT: ${{ vars.TRENDYOL_STOREFRONT }}
+          GIB_PORTAL_USER: ${{ secrets.GIB_PORTAL_USER }}
+          GIB_PORTAL_PASS: ${{ secrets.GIB_PORTAL_PASS }}
+          MODE: ${{ github.event.inputs.mode == 'apply' && 'apply' || 'dry' }}
+          COUNT: ${{ github.event.inputs.count || '200' }}
+        run: node --experimental-strip-types worker/invoice-upload.ts "$MODE" "$COUNT"
