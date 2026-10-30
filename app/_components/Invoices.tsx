@@ -25,10 +25,11 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     if (!ids.length) return;
     if (!confirm(`${ids.length} sipariş için GİB e-Arşiv portalında TASLAK fatura oluşturulacak (imzalanmaz). Sonra portalda taslakları kontrol edip toplu imzalayacaksın. Devam?`)) return;
     let ok = 0; const errs: string[] = [];
-    for (let i = 0; i < ids.length; i += 25) {
-      setBusy(`Taslaklar oluşturuluyor (${Math.min(i + 25, ids.length)}/${ids.length})...`);
+    // 5'erli: her taslak portalda 3 istek; 30.10'da 25'lik istek panelin 25 sn bekleme süresini aştı (sunucu arka planda bitirdi)
+    for (let i = 0; i < ids.length; i += 5) {
+      setBusy(`Taslaklar oluşturuluyor (${Math.min(i + 5, ids.length)}/${ids.length})...`);
       try {
-        const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "draft", order_ids: ids.slice(i, i + 25) }) });
+        const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "draft", order_ids: ids.slice(i, i + 5) }), timeoutMs: 120000 } as any);
         ok += r.created; for (const x of r.results ?? []) if (!x.ok) errs.push(`${x.order_no ?? ""}: ${x.error}`);
       } catch (e: any) { errs.push(e.message); break; }
     }
@@ -37,12 +38,19 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   }
   async function sync() {
     setBusy("Portal okunuyor...");
-    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }) }); notify("good", `İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş/bulunamayan: ${r.deleted}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`); load(); }
+    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }), timeoutMs: 120000 } as any); notify(r.duplicate ? "err" : "good", `${r.duplicate ? `⚠️ ${r.duplicate} taslak MÜKERRER (o siparişlerin faturasını portalda zaten kesmişsin): imzalama, "Mükerrer taslakları sil"e bas. ` : ""}İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş/bulunamayan: ${r.deleted}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`); load(); }
+    catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+  }
+  async function delDup() {
+    const n = (d?.rows ?? []).filter((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "")).length;
+    if (!n || !confirm(`${n} mükerrer TASLAK portaldan silinecek (yalnızca imzalanmamış taslaklar; senin kestiğin faturalara dokunulmaz). Devam?`)) return;
+    setBusy("Mükerrer taslaklar siliniyor...");
+    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "delete_duplicates" }), timeoutMs: 120000 } as any); notify("good", `${r.deleted} mükerrer taslak silindi. Şimdi "İmzalananları kontrol et" ile elle kestiklerin siparişlere bağlanır.`); load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function logoutGib() {
     setBusy("e-Arşiv oturumu kapatılıyor...");
-    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "logout" }) }); notify(r.ok ? "good" : "err", r.message); }
+    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "logout" }), timeoutMs: 60000 } as any); notify(r.ok ? "good" : "err", r.message); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function reset(id: string) {
@@ -67,6 +75,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
           <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="all">Tümü (60 gün)</option></select>
           <button className="btn" disabled={!!busy || !sel.size || !d.configured} onClick={draft}>Seçilenlere taslak oluştur ({sel.size})</button>
           <button className="btn ghost" disabled={!!busy || !d.configured} onClick={sync}>İmzalananları kontrol et</button>
+          {(d.rows ?? []).some((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "")) && <button className="btn" disabled={!!busy} onClick={delDup}>Mükerrer taslakları sil</button>}
           <button className="btn ghost" disabled={!!busy || !d.configured} onClick={logoutGib} title="Portal aynı anda tek oturuma izin veriyor: 'birden fazla kişi giriş yapamaz' diyorsa bas">e-Arşiv oturumunu kapat</button>
           {busy && <span className="muted">{busy}</span>}
         </div>
@@ -87,7 +96,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                 <td data-label="Fatura"><span className={`pill ${st[1]}`}>{st[0]}</span>
                   {!r.has_customer && !r.invoice && <div className="muted" style={{ fontSize: 12 }}>alıcı bilgisi yok: elle kes</div>}
                   {r.invoice?.error && <div style={{ color: "var(--bad)", fontSize: 12 }}>{r.invoice.error}</div>}
-                  {["error", "deleted"].includes(r.invoice?.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => reset(r.id)}>Yeniden dene</button>}
+                  {["error", "deleted", "creating"].includes(r.invoice?.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => reset(r.id)}>Yeniden dene</button>}
                 </td>
               </tr>
             );

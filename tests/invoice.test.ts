@@ -91,3 +91,19 @@ test("elle kesilen faturalar: ad + tarih ile tek siparişe bağlanır; belirsiz/
   assert.equal(r.ambiguous, 1, "aynı adla iki sipariş");
   assert.equal(r.unmatched, 1, "sipariş faturadan sonra");
 });
+
+test("taslak silme: yalnızca imzalanmamış belge gönderilir, imzalı asla", async () => {
+  const sent: any[] = [];
+  const f: EarsivFetch = async (url, init) => {
+    const form = new URLSearchParams(init.body);
+    if (new URL(url).pathname.endsWith("assos-login")) return { status: 200, text: async () => JSON.stringify({ token: "T" }) };
+    if (form.get("cmd") === "EARSIV_PORTAL_FATURA_SIL") sent.push(JSON.parse(form.get("jp")!));
+    return { status: 200, text: async () => JSON.stringify({ data: "silindi" }) };
+  };
+  const c = new EarsivClient("k", "p", "PROD", f);
+  await c.login();
+  assert.equal(await c.deleteDrafts([{ ettn: "imzali", onayDurumu: "Onaylandı" }], "x"), 0);
+  assert.equal(sent.length, 0, "imzalı belge için silme isteği hiç gitmez");
+  assert.equal(await c.deleteDrafts([{ ettn: "t1", onayDurumu: "Onaylanmadı" }, { ettn: "imzali", onayDurumu: "Onaylandı" }], "Mükerrer"), 1);
+  assert.deepEqual(sent[0].silinecekler.map((d: any) => d.ettn), ["t1"]);
+});

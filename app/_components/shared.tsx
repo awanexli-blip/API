@@ -16,7 +16,8 @@ export function useApi(token: string): Api {
   return useCallback(
     async (path: string, init?: RequestInit) => {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 25000);
+      // Uzun süren işlem (ör. e-Arşiv taslakları) kendi süresini verebilir: init.timeoutMs
+      const timer = setTimeout(() => ctrl.abort(), Number((init as any)?.timeoutMs) || 25000);
       try {
         const res = await fetch(path, {
           ...init,

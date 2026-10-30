@@ -66,6 +66,14 @@ export class EarsivClient {
     return Array.isArray(j?.data) ? j.data : [];
   }
 
+  // İMZALANMAMIŞ taslakları sil (mükerrer taslak; K onayıyla). İmzalı belge silinemez (GİB iptal süreci ayrı)
+  async deleteDrafts(docs: EarsivDoc[], reason: string) {
+    const drafts = docs.filter((d) => !isSigned(d));
+    if (!drafts.length) return 0;
+    await this.dispatch("EARSIV_PORTAL_FATURA_SIL", "RG_BASITTASLAKLAR", { silinecekler: drafts, aciklama: reason.slice(0, 200) });
+    return drafts.length;
+  }
+
   // Taslak oluşturur; ETTN'yi GİB verir: aynı günün listesi önce/sonra karşılaştırılır
   async createDraft(invoice: Record<string, unknown>): Promise<EarsivDoc> {
     const day = String(invoice.faturaTarihi);

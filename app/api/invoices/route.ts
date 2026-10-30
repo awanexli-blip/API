@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { admin, guard, unauthorized, bad } from "@/lib/server";
 import { EarsivClient, isDeleted, isSigned } from "@/lib/earsiv";
 import { buildInvoice, trDateTime } from "@/lib/invoice-build";
-import { matchManualInvoices } from "@/lib/invoice-match";
+import { matchManualInvoices, docName, docTime } from "@/lib/invoice-match";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   if (b.action === "reset") {
     if (typeof b.order_id !== "string") return bad("order_id gerekli");
-    const { error } = await db.from("order_invoices").delete().eq("order_id", b.order_id).in("status", ["error", "deleted"]);
+    const { error } = await db.from("order_invoices").delete().eq("order_id", b.order_id).in("status", ["error", "deleted", "creating"]);
     return error ? bad(error.message) : NextResponse.json({ ok: true });
   }
 
@@ -87,6 +87,20 @@ export async function POST(req: NextRequest) {
         else if (!doc || isDeleted(doc)) { deleted++; gone.add(d.order_id); await db.from("order_invoices").update({ status: "deleted", error: doc ? "Taslak portalda silinmiş" : "Taslak portalda bulunamadı", updated_at: now }).eq("order_id", d.order_id); }
         else waiting++;
       }
+      // Mükerrer: bizim imzalanmamış taslağımızın siparişi için portalda (bizim olmayan) imzalı fatura var (aynı alıcı, sipariş sonrası tarih)
+      const ours = new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean));
+      const manualSigned = list.filter((d) => isSigned(d) && !ours.has(d.ettn));
+      const waitingRows = (drafts as any[]).filter((d) => { const doc = docs.get(d.ettn); return doc && !isSigned(doc) && !isDeleted(doc); });
+      let duplicate = 0;
+      if (waitingRows.length && manualSigned.length) {
+        const { data: od } = await db.from("orders").select("id, customer_name, ordered_at").in("id", waitingRows.map((d) => d.order_id));
+        const norm = (x: unknown) => String(x ?? "").toLocaleUpperCase("tr").replace(/[^A-ZÇĞİÖŞÜ]/g, "");
+        for (const o of od ?? []) {
+          const n = norm(o.customer_name);
+          const hit = n.length >= 4 && manualSigned.find((d) => norm(docName(d)) === n && (docTime(d) ?? Infinity) >= Date.parse(o.ordered_at ?? "") - 86400000);
+          if (hit) { duplicate++; await db.from("order_invoices").update({ error: `MÜKERRER: portalda bu sipariş için imzalı fatura var (${hit.belgeNumarasi ?? hit.ettn}); taslağı imzalama, sil`, updated_at: now }).eq("order_id", o.id); }
+        }
+      }
       // Elle kesilenler: faturası olmayan açık siparişlerle ad + tarih eşleşmesi
       // Faturası olan siparişler (hatalı / silinmiş taslak sayılmaz: 30.10 K aynı siparişi elle kesip bizim taslağı sildi)
       const has = new Set((all ?? []).filter((d: any) => !["deleted", "error"].includes(d.status) && !gone.has(d.order_id)).map((d: any) => d.order_id));
@@ -94,7 +108,29 @@ export async function POST(req: NextRequest) {
         .gte("ordered_at", new Date(Date.now() - 60 * 86400000).toISOString());
       const m = matchManualInvoices(list, (cand ?? []).filter((o: any) => !has.has(o.id)), new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean)));
       for (const l of m.links) await db.from("order_invoices").upsert({ order_id: l.order_id, status: "signed", ettn: l.ettn, belge_no: l.belge_no, error: null, created_by: "portal (elle)", signed_at: now, updated_at: now }, { onConflict: "order_id" });
-      return NextResponse.json({ signed, deleted, waiting, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
+      return NextResponse.json({ signed, deleted, waiting, duplicate, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
+    } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
+    finally { await logout(); }
+  }
+
+  // Mükerrer taslakları sil (yalnızca imzalanmamış ve "MÜKERRER" işaretli; K onayıyla). Sonraki kontrol elle kesileni siparişe bağlar.
+  if (b.action === "delete_duplicates") {
+    const { data: rows, error } = await db.from("order_invoices").select("order_id, ettn, created_at").eq("status", "draft").like("error", "MÜKERRER%");
+    if (error) return bad(error.message);
+    if (!rows?.length) return NextResponse.json({ deleted: 0 });
+    try {
+      await login();
+      const from = trDateTime(new Date(Math.min(...rows.map((r: any) => Date.parse(r.created_at))) - 86400000)).date, to = trDateTime(new Date()).date;
+      const docs = new Map((await gib.list(from, to)).map((d) => [d.ettn, d]));
+      let deleted = 0;
+      for (const r of rows as any[]) {
+        const doc = docs.get(r.ettn);
+        if (!doc || isSigned(doc)) continue; // imzalanmış ya da yok: dokunma
+        await gib.deleteDrafts([doc], "Mükerrer taslak (sipariş için fatura elle kesilmiş)");
+        await db.from("order_invoices").update({ status: "deleted", error: "Mükerrer taslak silindi", updated_at: new Date().toISOString() }).eq("order_id", r.order_id);
+        deleted++;
+      }
+      return NextResponse.json({ deleted });
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
     finally { await logout(); }
   }
