@@ -26,6 +26,7 @@ import AttrFix from "./_components/AttrFix";
 import Competition from "./_components/Competition";
 import Opportunities from "./_components/Opportunities";
 import Orders from "./_components/Orders";
+import Invoices from "./_components/Invoices";
 import Inbox from "./_components/Inbox";
 import SalesReport from "./_components/SalesReport";
 import Descriptions from "./_components/Descriptions";
@@ -167,7 +168,7 @@ function Panel({ token, email }: { token: string; email: string }) {
   if (!role) page = <div className="card"><div className="skeleton" style={{ width: "40%", marginBottom: 10 }} /><div className="skeleton" style={{ width: "70%" }} /></div>;
   else if (section === "panel") page = <Dashboard api={api} notify={notify} role={role} go={nav} />;
   else if (section === "satis" && canEdit) page = <SalesReport api={api} notify={notify} go={nav} />;
-  else if (section === "siparisler" && canEdit) page = <Orders api={api} notify={notify} />;
+  else if (section === "siparisler" && canEdit) page = <>{isAdmin && <Invoices api={api} notify={notify} />}<Orders api={api} notify={notify} /></>;
   else if (section === "sorular" && canEdit) page = <Inbox api={api} notify={notify} />;
   else if (section === "urunler") page = <Products api={api} notify={notify} />;
   else if (section === "aciklamalar" && canEdit) page = <Descriptions api={api} notify={notify} isAdmin={isAdmin} />;

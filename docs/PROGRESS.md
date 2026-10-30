@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-30 (55) — e-Arşiv fatura taslakları (GİB portalı)
+- K ~50 faturayı GİB e-Arşiv portalından tek tek kesiyordu (e-imza yok, SMS onaylı). Yeni: panel Siparişler → "Faturalar (e-Arşiv)" (yalnızca admin): son 60 gün açık siparişler, seçilenlere portalda TASLAK (25'erli, sırayla), K portalda taslakları seçip tek SMS ile toplu imzalar, "İmzalananları kontrol et" durumu okur. **Sistem imzalamaz** (SMS/HSM komutu yok, testte doğrulanır).
+- `lib/invoice-build.ts` (saf: tutar = satış geliri = müşteri + Trendyol indirimi, KDV ürün oranıyla içinden, alıcı TC 11111111111 (K onayı), ad/soyad, adres, sipariş no/tarih, yazıyla tutar), `lib/earsiv.ts` (giriş anologin, dispatch, EARSIV_PORTAL_FATURA_OLUSTUR / RG_BASITFATURA, ETTN önce/sonra listesi farkından, liste, çıkış; biçimler açık kaynak f/fatura MIT Ağustos 2026'dan), `app/api/invoices` (kilit: order_invoices birincil anahtarı, çift taslak yok), `app/_components/Invoices.tsx`. **Migration 072** `order_invoices` (K çalıştıracak). Vercel: `GIB_PORTAL_USER`, `GIB_PORTAL_PASS` (K ekledi, doğrulandı; isteğe bağlı `GIB_PORTAL_ENV=TEST`).
+- Test `tests/invoice.test.ts` (4; sahte portal). **Canlıda denenmedi**: ilk deneme 1 siparişle, taslak portalda kontrol edilecek (imzalanmamış taslak yasal fatura değil, silinebilir). 30 günden eski siparişte alıcı bilgisi silinmiş (KVKK) → elle. Trendyol'a fatura yükleme sonraki adım.
+
 ## 2026-10-30 (54) — Zararına satış: Trendyol "Komisyon Tarifeleri" fiyatı
 - K'nın ekranı: TCXBY230070 (Duplo plaka) Trendyol fiyat geçmişinde 30.10 15:39 "Ürün Komisyon Tarifeleri sayfasından ... zamanlanmış fiyat 405,37 (01.11 08:00'e kadar)", komisyon %2,70, Buybox 1. Sistemimizin fiyatı 1.279,90 (dokunmadı; kodda tarife/kampanya ucu yok). Maliyet 903,60. Siparişlerde: 405,37 ve 380,37 (Duplo) + TCXBY100960 1.191,60 (maliyet 2.236,80), toplam ~2.200 TL zarar, hepsi "ready".
 - Trendyol herkese açık API'sinde komisyon tarifesi / zamanlanmış fiyatı listeleyen ya da kaldıran uç yok (developers.trendyol.com, llms.txt dahil tarandı). K panelden kaldıracak; elle kim girdi K'ya soruldu (aracı kişi riski: kullanıcı yönetimi / entegrasyonlar kontrol).

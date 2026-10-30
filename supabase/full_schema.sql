@@ -2375,3 +2375,21 @@ alter table public.settings add column if not exists default_desi numeric;
 
 -- 071_supplier_runner.sql
 alter table public.suppliers add column if not exists runner text check (runner is null or runner in ('vps'));
+
+-- 072_order_invoices.sql: bkz. supabase/migrations/072_order_invoices.sql
+create table if not exists public.order_invoices (
+  order_id uuid primary key references public.orders(id) on delete cascade,
+  status text not null check (status in ('creating', 'draft', 'signed', 'uploaded', 'error', 'deleted')),
+  ettn text,
+  belge_no text,
+  amount numeric,
+  vat numeric,
+  error text,
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  signed_at timestamptz,
+  uploaded_at timestamptz
+);
+create index if not exists order_invoices_status_idx on public.order_invoices (status);
+alter table public.order_invoices enable row level security;
