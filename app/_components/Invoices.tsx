@@ -37,7 +37,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   }
   async function sync() {
     setBusy("Portal okunuyor...");
-    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }) }); notify("good", `İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş/bulunamayan: ${r.deleted}` : ""}`); load(); }
+    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }) }); notify("good", `İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş/bulunamayan: ${r.deleted}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`); load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function logoutGib() {

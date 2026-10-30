@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { admin, guard, unauthorized, bad } from "@/lib/server";
 import { EarsivClient, isDeleted, isSigned } from "@/lib/earsiv";
 import { buildInvoice, trDateTime } from "@/lib/invoice-build";
+import { matchManualInvoices } from "@/lib/invoice-match";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -69,13 +70,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (b.action === "sync") {
-    const { data: drafts, error } = await db.from("order_invoices").select("order_id, ettn, created_at").eq("status", "draft").not("ettn", "is", null);
+    // Sistemin taslakları + portalda elle kesilenler (son 60 gün): elle kesilen imzalı belge, alıcı adıyla tek faturasız siparişe bağlanır
+    const { data: all, error } = await db.from("order_invoices").select("order_id, ettn, status, created_at");
     if (error) return bad(error.message);
-    if (!drafts?.length) return NextResponse.json({ signed: 0, deleted: 0, waiting: 0 });
-    const from = trDateTime(new Date(Math.min(...drafts.map((d: any) => Date.parse(d.created_at))) - 86400000)).date, to = trDateTime(new Date()).date;
+    const drafts = (all ?? []).filter((d: any) => d.status === "draft" && d.ettn);
+    const from = trDateTime(new Date(Date.now() - 60 * 86400000)).date, to = trDateTime(new Date()).date;
     try {
       await login();
-      const docs = new Map((await gib.list(from, to)).map((d) => [d.ettn, d]));
+      const list = await gib.list(from, to);
+      const docs = new Map(list.map((d) => [d.ettn, d]));
       let signed = 0, deleted = 0, waiting = 0;
       for (const d of drafts as any[]) {
         const doc = docs.get(d.ettn);
@@ -83,7 +86,13 @@ export async function POST(req: NextRequest) {
         else if (!doc || isDeleted(doc)) { deleted++; await db.from("order_invoices").update({ status: "deleted", error: doc ? "Taslak portalda silinmiş" : "Taslak portalda bulunamadı", updated_at: now }).eq("order_id", d.order_id); }
         else waiting++;
       }
-      return NextResponse.json({ signed, deleted, waiting });
+      // Elle kesilenler: faturası olmayan açık siparişlerle ad + tarih eşleşmesi
+      const has = new Set((all ?? []).map((d: any) => d.order_id));
+      const { data: cand } = await db.from("orders").select("id, customer_name, ordered_at").in("status", OPEN).not("customer_name", "is", null)
+        .gte("ordered_at", new Date(Date.now() - 60 * 86400000).toISOString());
+      const m = matchManualInvoices(list, (cand ?? []).filter((o: any) => !has.has(o.id)), new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean)));
+      for (const l of m.links) await db.from("order_invoices").insert({ order_id: l.order_id, status: "signed", ettn: l.ettn, belge_no: l.belge_no, created_by: "portal (elle)", signed_at: now, updated_at: now });
+      return NextResponse.json({ signed, deleted, waiting, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
     finally { await logout(); }
   }

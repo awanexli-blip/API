@@ -70,3 +70,24 @@ test("portal: hatalı giriş ve başarısız oluşturma açık hata verir", asyn
   const { _ozet, ...payload } = buildInvoice(order);
   await assert.rejects(c.createDraft(payload), /Taslak oluşturulamadı: Ettn ya eksik/);
 });
+
+import { matchManualInvoices } from "../lib/invoice-match.ts";
+test("elle kesilen faturalar: ad + tarih ile tek siparişe bağlanır; belirsiz/eşleşmeyen bağlanmaz", () => {
+  const orders = [
+    { id: "o1", customer_name: "Ayşe Yılmaz", ordered_at: "2026-10-28T10:00:00Z" },
+    { id: "o2", customer_name: "Mehmet Kaya", ordered_at: "2026-10-27T10:00:00Z" },
+    { id: "o3", customer_name: "Mehmet Kaya", ordered_at: "2026-10-29T10:00:00Z" },
+    { id: "o4", customer_name: "Ali Veli", ordered_at: "2026-11-05T10:00:00Z" },
+  ];
+  const docs = [
+    { ettn: "e1", onayDurumu: "Onaylandı", aliciUnvanAdSoyad: "AYŞE YILMAZ", belgeTarihi: "30-10-2026", belgeNumarasi: "GIB2026000000001" },
+    { ettn: "e2", onayDurumu: "Onaylandı", aliciUnvanAdSoyad: "Mehmet KAYA", belgeTarihi: "30-10-2026" },
+    { ettn: "e3", onayDurumu: "Onaylandı", aliciUnvanAdSoyad: "Ali Veli", belgeTarihi: "30-10-2026" },
+    { ettn: "e4", onayDurumu: "Onaylanmadı", aliciUnvanAdSoyad: "Ayşe Yılmaz", belgeTarihi: "30-10-2026" },
+    { ettn: "bilinen", onayDurumu: "Onaylandı", aliciUnvanAdSoyad: "Ali Veli", belgeTarihi: "06-11-2026" },
+  ];
+  const r = matchManualInvoices(docs as any, orders, new Set(["bilinen"]));
+  assert.deepEqual(r.links, [{ order_id: "o1", ettn: "e1", belge_no: "GIB2026000000001" }]);
+  assert.equal(r.ambiguous, 1, "aynı adla iki sipariş");
+  assert.equal(r.unmatched, 1, "sipariş faturadan sonra");
+});
