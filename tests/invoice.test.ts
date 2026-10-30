@@ -108,7 +108,7 @@ test("taslak silme: yalnızca imzalanmamış belge gönderilir, imzalı asla", a
   assert.deepEqual(sent[0].silinecekler.map((d: any) => d.ettn), ["t1"]);
 });
 
-import { verifyInvoice, parseMoney, htmlText } from "../lib/invoice-verify.ts";
+import { verifyInvoice, parseMoney, htmlText, invoiceDiag } from "../lib/invoice-verify.ts";
 test("Trendyol'a yükleme öncesi: GİB belgesi sistemle birebir tutmalı", () => {
   const html = `<html><body><table><tr><td>SAYIN</td><td>AYŞE&nbsp;NUR YILMAZ</td></tr><tr><td>ETTN:</td><td>ab12-cd34</td></tr>
     <tr><td>Fatura No:</td><td>GIB2026000000033</td></tr><tr><td>Sipariş No</td><td>11765608195</td></tr>
@@ -124,4 +124,16 @@ test("Trendyol'a yükleme öncesi: GİB belgesi sistemle birebir tutmalı", () =
   assert.ok(!verifyInvoice({ ...base, customerName: "" }).ok);
   assert.equal(parseMoney("1.968,00"), 1968); assert.equal(parseMoney("1968.50"), 1968.5); assert.equal(parseMoney("1,968.05"), 1968.05); assert.equal(parseMoney("269,9"), 2699, "tek haneli kuruş belirsiz okunur: tutar tutmaz, yüklenmez");
   assert.equal(htmlText("<b>a</b>&amp;<i>b</i>"), "a & b");
+});
+
+test("GİB şablonu: adlı varlıklar (&Ouml;) ve büyük harf İ/I farkı", () => {
+  const html = `<table><tr><td>SAYIN</td><td>ALI DEVRIM &Scedil;ENGEL</td></tr><tr><td>ETTN</td><td>e-1</td></tr><tr><td>GIB2026000000034</td></tr>
+    <tr><td>Sipari&#351; No:</td><td>11000000001</td></tr><tr><td>&Ouml;denecek Tutar</td><td>269,90 TL</td></tr></table>`;
+  const r = verifyInvoice({ html, ettn: "e-1", belgeNo: "GIB2026000000034", orderNo: "11000000001", amount: 269.9, customerName: "Ali Devrim Şengel" });
+  assert.deepEqual(r.problems, []);
+  assert.equal(r.paid, 269.9);
+  const ubl = verifyInvoice({ html: html.replace("&Ouml;denecek Tutar", "x") + `<cbc:PayableAmount currencyID="TRY">269.90</cbc:PayableAmount>`, ettn: "e-1", belgeNo: "GIB2026000000034", orderNo: "11000000001", amount: 269.9, customerName: "Ali Devrim Şengel" });
+  assert.equal(ubl.paid, 269.9, "etiket yoksa UBL PayableAmount");
+  const d = invoiceDiag(html, "Ali Devrim Şengel");
+  assert.ok(!JSON.stringify(d).match(/DEVRIM|ŞENGEL|SENGEL/i), "tanıda alıcı adı yok");
 });

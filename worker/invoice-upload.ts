@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { env, sleep } from "./core/util.ts";
 import { createTrendyol } from "./marketplaces/trendyol.ts";
 import { EarsivClient } from "../lib/earsiv.ts";
-import { verifyInvoice } from "../lib/invoice-verify.ts";
+import { invoiceDiag, verifyInvoice } from "../lib/invoice-verify.ts";
 
 const mode = process.argv[2] === "apply" ? "apply" : "dry";
 const limit = Math.max(1, Math.min(200, Number(process.argv[3] ?? 200) || 200));
@@ -23,7 +23,7 @@ const CHROME = process.env.CHROME_BIN || "google-chrome";
 const BAD_STATUS = /cancel|unsupplied|unpacked/i;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-type Out = { belge_no: string | null; order_no: string | null; ok: boolean; reason?: string; result?: string };
+type Out = { belge_no: string | null; order_no: string | null; ok: boolean; reason?: string; result?: string; diag?: unknown };
 const report: Out[] = [];
 
 const { data: rows, error } = await db.from("order_invoices")
@@ -70,6 +70,8 @@ try {
       // 2) GİB belgesi
       const html = await gib.invoiceHtml(r.ettn, true);
       const v = verifyInvoice({ html, ettn: r.ettn, belgeNo: r.belge_no, orderNo: o.order_no ?? "", amount: Number(r.amount), customerName: o.customer_name });
+      // Tanı yalnızca rapora (veritabanı; günlüğe yazılmaz), ilk 3 başarısız belge
+      if (!v.ok && report.filter((x) => x.diag).length < 3) out.diag = invoiceDiag(html, o.customer_name);
       if (!v.ok) throw new Error(`GİB belgesi: ${v.problems.join(", ")}`);
       // 3) Trendyol paketi (canlı)
       const pk = await ty.orderPackages!(String(o.order_no));
