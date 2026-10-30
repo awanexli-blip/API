@@ -12,11 +12,11 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState("");
-  const [filter, setFilter] = useState<"todo" | "all">("todo");
+  const [filter, setFilter] = useState<"todo" | "all" | "hb">("todo");
   const load = useCallback(() => api("/api/invoices").then(setD).catch((e) => notify("err", e.message)), [api, notify]);
   useEffect(() => { if (open) load(); }, [open, load]);
 
-  const rows: Row[] = (d?.rows ?? []).filter((r: Row) => filter === "all" || !r.invoice || ["error", "deleted", "draft", "creating"].includes(r.invoice.status));
+  const rows: Row[] = (d?.rows ?? []).filter((r: Row) => filter === "all" || (filter === "hb" ? r.marketplace === "hepsiburada" && ["signed", "uploaded"].includes(r.invoice?.status) : !r.invoice || ["error", "deleted", "draft", "creating"].includes(r.invoice.status)));
   const selectable = (r: Row) => r.has_customer && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
   const c = d?.counts ?? {};
 
@@ -66,6 +66,20 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
       notify("good", `${mode === "dry" ? "Deneme" : "Yükleme"} başladı (GitHub Actions, 2-5 dk). Bu sırada e-Arşiv portalından çıkış yap (tek oturum). Bitince "Raporu yenile".`);
     } catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
+  // İmzalı faturayı yeni pencerede aç ve yazdır (PDF olarak kaydet); pencere başlığı = dosya adı (alıcı adı, ör. "kamil kilic")
+  async function openPdf(id: string) {
+    const w = window.open("", "_blank"); // tıklama anında açılmalı (açılır pencere engeli)
+    if (!w) return notify("err", "Tarayıcı yeni pencereyi engelledi: bu site için açılır pencereye izin ver");
+    w.document.write("<p style='font-family:sans-serif'>Fatura GİB'den alınıyor...</p>");
+    try {
+      const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "html", order_id: id }), timeoutMs: 60000 } as any);
+      const title = `<title>${String(r.name).replace(/[<>&]/g, "")}</title>`;
+      const html = /<title>[\s\S]*?<\/title>/i.test(r.html) ? r.html.replace(/<title>[\s\S]*?<\/title>/i, title) : /<head[^>]*>/i.test(r.html) ? r.html.replace(/<head[^>]*>/i, (m: string) => m + title) : title + r.html;
+      w.document.open(); w.document.write(html); w.document.close();
+      w.document.title = r.name;
+      setTimeout(() => { try { w.focus(); w.print(); } catch { /* elle Ctrl+P */ } }, 600);
+    } catch (e: any) { w.close(); notify("err", e.message); }
+  }
   async function reset(id: string) {
     try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "reset", order_id: id }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
@@ -85,7 +99,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
         </p>
         <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
           <span className="muted">Kesilmedi: {c.none ?? 0} · Taslak: {c.draft ?? 0} · Kesildi: {(c.signed ?? 0) + (c.uploaded ?? 0)} (Trendyol'a yüklenen {c.uploaded ?? 0}) · Hata: {c.error ?? 0}</span>
-          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="all">Tümü (60 gün)</option></select>
+          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="all">Tümü (60 gün)</option><option value="hb">Hepsiburada faturaları</option></select>
           <button className="btn" disabled={!!busy || !sel.size || !d.configured} onClick={draft}>Seçilenlere taslak oluştur ({sel.size})</button>
           <button className="btn ghost" disabled={!!busy || !d.configured} onClick={sync}>İmzalananları kontrol et</button>
           {(d.rows ?? []).some((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "")) && <button className="btn" disabled={!!busy} onClick={delDup}>Mükerrer taslakları sil</button>}
@@ -127,6 +141,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                 <td data-label="Fatura"><span className={`pill ${st[1]}`}>{st[0]}</span>
                   {!r.has_customer && !r.invoice && <div className="muted" style={{ fontSize: 12 }}>alıcı bilgisi yok: elle kes</div>}
                   {r.invoice?.error && <div style={{ color: "var(--bad)", fontSize: 12 }}>{r.invoice.error}</div>}
+                  {["signed", "uploaded"].includes(r.invoice?.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openPdf(r.id)} title="Yazdır penceresinde 'PDF olarak kaydet' seç">Faturayı aç / PDF</button>}
                   {["error", "deleted", "creating"].includes(r.invoice?.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => reset(r.id)}>Yeniden dene</button>}
                 </td>
               </tr>

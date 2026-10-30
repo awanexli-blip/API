@@ -10,6 +10,7 @@ export const maxDuration = 300;
 // Sipariş faturaları (GİB e-Arşiv portalı, migration 072). Sistem yalnızca TASLAK oluşturur ve durum okur; imza K'da (portalda toplu, tek SMS).
 // GET: faturası kesilmemiş siparişler (son 60 gün, iptal/iade hariç) + fatura durumları.
 // POST { action: "draft", order_ids } (en fazla 25, sırayla): taslak oluştur. POST { action: "sync" }: imzalananları işaretle.
+// POST { action: "html", order_id }: imzalı faturanın görünümü (PDF olarak kaydetmek için).
 // POST { action: "upload", mode: "dry" | "apply", count }: Trendyol'a fatura yükleme işini (Actions) başlat; rapor GET.upload'da.
 // POST { action: "reset", order_id }: hatalı / silinmiş kaydı yeniden denenebilir yap. Alıcı bilgisi loglanmaz.
 const OPEN = ["new", "ready", "sent_to_supplier", "shipped", "delivered", "problem"];
@@ -77,6 +78,22 @@ export async function POST(req: NextRequest) {
   const logout = async () => { await gib.logout(); await saveToken(null); };
 
   // Sistemin portal oturumunu kapat (portal tek oturuma izin veriyor; K giriş yapamıyorsa): giriş + hemen çıkış
+  // İmzalı faturanın GİB görünümü (panelde açılır, K tarayıcıdan PDF kaydeder; dosya adı = alıcı adı). Belge yalnızca isteyen admin'e döner, saklanmaz/loglanmaz.
+  if (b.action === "html") {
+    if (typeof b.order_id !== "string") return bad("order_id gerekli");
+    const { data: row } = await db.from("order_invoices").select("ettn, status, belge_no, orders(customer_name, order_no)").eq("order_id", b.order_id).maybeSingle();
+    if (!row?.ettn || !["signed", "uploaded"].includes(row.status)) return bad("Bu siparişin imzalı faturası yok");
+    try {
+      await login();
+      const html = await gib.invoiceHtml(row.ettn, true);
+      const o: any = row.orders;
+      const name = String(o?.customer_name ?? row.belge_no ?? "fatura").normalize("NFC").replace(/[İIı]/g, "i").replace(/[Şş]/g, "s").replace(/[Ğğ]/g, "g").replace(/[Üü]/g, "u").replace(/[Öö]/g, "o").replace(/[Çç]/g, "c")
+        .toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim() || String(row.belge_no ?? "fatura");
+      return NextResponse.json({ html, name, belge_no: row.belge_no });
+    } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
+    finally { await logout(); }
+  }
+
   if (b.action === "logout") {
     // Önce saklı oturum anahtarıyla çıkış (yarıda kalan oturum), sonra giriş + çıkış
     const { data: st } = await db.from("app_state").select("value").eq("key", "gib_token").maybeSingle().then((r: any) => r, () => ({ data: null }));
