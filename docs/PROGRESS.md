@@ -5,7 +5,7 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 ## 2026-10-30 (56) — e-Arşiv: ilk toplu kesim tamam (84 fatura)
 - 84 açık siparişin (78 Trendyol + 6 HB) faturası sistem taslağıyla kesildi, K portalda imzaladı; "İmzalananları kontrol et" 84'ü `signed` yaptı, faturasız açık sipariş 0.
 - Hata: sync 60 günlük portal listesi boş döndüğü için 84 taslağı "bulunamadı/silindi" işaretlemişti (SQL ile geri alındı). Düzeltme b535edd: liste gün gün (son 14 gün + kayıt günleri), listede olmayan taslağa dokunulmaz (yalnızca portal "silinmiş" derse), elle oluşturulmuş imzasız taslak da MÜKERRER işaretlenir.
-- K'nın elle açtığı 7 taslak (012-018) bizim taslaklarla aynı siparişlerdi; K indirimi hesaplamamıştı, bizimkiler (satıcı indirimi düşülmüş) kullanıldı, K kendininkileri sildi.
+- K'nın elle açtığı 7 taslak (012-018) bizim taslaklarla aynı siparişlerdi; K indirimi hesaplamamıştı, bizimkiler (satıcı indirimi düşülmüş) kullanıldı; K kendi 7 taslağını silecek (silindiği doğrulanmadı).
 - Sıradaki: imzalı faturaları Trendyol'a yükleme (PDF + seller-invoice-file, önce dry-run, K onayı).
 
 ## 2026-10-30 (55) — e-Arşiv fatura taslakları (GİB portalı)
