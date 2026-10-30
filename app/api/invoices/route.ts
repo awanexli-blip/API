@@ -178,11 +178,15 @@ export async function POST(req: NextRequest) {
   if (b.action !== "draft") return bad("Geçersiz işlem");
   const ids: string[] = [...new Set<string>((Array.isArray(b.order_ids) ? b.order_ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 25);
   if (!ids.length) return bad("Sipariş seç (en fazla 25)");
-  const { data: orders, error } = await db.from("orders").select("id, order_no, status, ordered_at, customer_name, address, city, order_lines(title, qty, unit_price, ty_discount, product_id)").in("id", ids);
+  const { data: orders, error } = await db.from("orders").select("id, marketplace, order_no, status, ordered_at, customer_name, address, city, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key)").in("id", ids);
   if (error) return bad(error.message);
   const pids = [...new Set((orders ?? []).flatMap((o: any) => (o.order_lines ?? []).map((l: any) => l.product_id)).filter(Boolean))];
   const vat = new Map<string, number>();
-  if (pids.length) { const { data } = await db.from("products").select("id, vat_rate").in("id", pids); for (const p of data ?? []) vat.set(p.id, Number(p.vat_rate ?? 20)); }
+  const ptitle = new Map<string, string>(), ltitle = new Map<string, string>();
+  if (pids.length) { const { data } = await db.from("products").select("id, vat_rate, title").in("id", pids); for (const p of data ?? []) { vat.set(p.id, Number(p.vat_rate ?? 20)); if (p.title) ptitle.set(p.id, p.title); } }
+  // Faturadaki ürün adı: kayıtlı ilan başlığı (Trendyol satır adındaki model kodu / beden eki atılır, invoiceItemName)
+  const keys = [...new Set((orders ?? []).flatMap((o: any) => (o.order_lines ?? []).map((l: any) => l.listing_key)).filter(Boolean))];
+  if (keys.length) { const { data } = await db.from("marketplace_listings").select("marketplace, listing_key, title").in("listing_key", keys); for (const x of data ?? []) if (x.title) ltitle.set(`${x.marketplace}|${x.listing_key}`, x.title); }
 
   const results: { order_id: string; order_no: string | null; ok: boolean; error?: string; amount?: number }[] = [];
   try {
@@ -194,7 +198,7 @@ export async function POST(req: NextRequest) {
       const claim = await db.from("order_invoices").insert({ order_id: o.id, status: "creating", created_by: "panel", updated_at: now });
       if (claim.error) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: claim.error.code === "23505" ? "Bu sipariş için zaten taslak/fatura var" : claim.error.message }); continue; }
       try {
-        const inv = buildInvoice({ ...o, lines: (o.order_lines ?? []).map((l: any) => ({ ...l, vat_rate: vat.get(l.product_id) ?? 20 })) });
+        const inv = buildInvoice({ ...o, lines: (o.order_lines ?? []).map((l: any) => ({ ...l, vat_rate: vat.get(l.product_id) ?? 20, known: [ltitle.get(`${o.marketplace}|${l.listing_key}`), ptitle.get(l.product_id)] })) });
         const { _ozet, ...payload } = inv;
         const doc = await gib.createDraft(payload);
         await db.from("order_invoices").update({ status: "draft", ettn: doc.ettn, belge_no: doc.belgeNumarasi ?? null, amount: _ozet.total, vat: _ozet.kdv, error: null, updated_at: new Date().toISOString() }).eq("order_id", o.id);

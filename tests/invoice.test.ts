@@ -137,3 +137,27 @@ test("GİB şablonu: adlı varlıklar (&Ouml;) ve büyük harf İ/I farkı", () 
   const d = invoiceDiag(html, "Ali Devrim Şengel");
   assert.ok(!JSON.stringify(d).match(/DEVRIM|ŞENGEL|SENGEL/i), "tanıda alıcı adı yok");
 });
+
+import { invoiceItemName } from "../lib/invoice-build.ts";
+test("faturadaki ürün adı: Trendyol model kodu ve beden eki atılır", () => {
+  const priz = "Antrasit Renk İkili Topraklı Priz – Modern Sıva Üstü Duvar Prizi, Lüks Dekoratif Elektrik Priz Çift";
+  assert.equal(invoiceItemName(`${priz} xmlbayilik8945254158164, one size`), priz);
+  assert.equal(invoiceItemName(`${priz} xmlbayilik8945254158164, one size`, [null, priz]), priz, "kayıtlı başlık");
+  assert.equal(invoiceItemName("Kadın Bot Siyah 10221.00, 44"), "Kadın Bot Siyah");
+  assert.equal(invoiceItemName("Lavabo Sifonu UM76-BX-GENEL-DUS-SIFON-KOKU-006, one size"), "Lavabo Sifonu");
+  assert.equal(invoiceItemName("Kupa Çekme Seti Vücut Bakım Yorğunluk, one size"), "Kupa Çekme Seti Vücut Bakım Yorğunluk", "kod yoksa yalnızca beden eki");
+  assert.equal(invoiceItemName("Saç Kurutma Cihazı Seti"), "Saç Kurutma Cihazı Seti", "Hepsiburada adı aynen");
+  assert.equal(invoiceItemName("Bardak Set 2"), "Bardak Set 2", "beden eki yoksa rakama dokunulmaz");
+  assert.equal(invoiceItemName("Anten (5690) 5690Gok111593, one size"), "Anten (5690)");
+  assert.equal(buildInvoice({ ...order, lines: [{ title: `${priz} xmlbayilik1, one size`, qty: 1, unit_price: 100 }] }).malHizmetTable[0].malHizmet, priz);
+});
+
+test("ürün adı: gerçek sipariş satırlarından uç durumlar", () => {
+  assert.equal(invoiceItemName("Kısa Küt Mavi Renk Parti Peruğu 30 Cm Yetişkinler İçin SKY70657716 TCXBY-803236, one size"), "Kısa Küt Mavi Renk Parti Peruğu 30 Cm Yetişkinler İçin");
+  assert.equal(invoiceItemName("Kullanımı Kolay Klasik Steteskop - MPTAMT4ND5361, one size", ["Kullanımı Kolay Klasik Steteskop -"]), "Kullanımı Kolay Klasik Steteskop");
+  assert.equal(invoiceItemName("Katı Sabun Velvet Glow 100 Gr, 012, "), "Katı Sabun Velvet Glow 100 Gr");
+  assert.equal(invoiceItemName("Cilt 055, 40", ["Cilt"]), "Cilt");
+  assert.equal(invoiceItemName("Dijital Mutfak Termometresi -50 Derecec Bx40 ÖS13-KRTL4887Gok111906, one size"), "Dijital Mutfak Termometresi -50 Derecec Bx40");
+  assert.equal(invoiceItemName("® DUPLO® Yeşil Yapım Plakası 10460 - 1½+ Oyuncak Yapım Seti (1 Parça) 10460, one size"), "® DUPLO® Yeşil Yapım Plakası 10460 - 1½+ Oyuncak Yapım Seti (1 Parça)");
+  assert.equal(invoiceItemName("TCX Gezer Merdane Islak Zemin Açık Eva Terlik Siyah"), "TCX Gezer Merdane Islak Zemin Açık Eva Terlik Siyah");
+});

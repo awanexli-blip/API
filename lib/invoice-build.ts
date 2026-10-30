@@ -3,7 +3,7 @@
 // tarih GG/AA/YYYY, saat SS:DD:ss; faturaUuid boş (ETTN'yi GİB verir).
 // Tutar: satıcının geliri = müşterinin ödediği + Trendyol'un karşıladığı indirim (orders.ts "revenue" ile aynı); KDV içinden ayrılır.
 
-export type InvLine = { title: string; qty: number; unit_price: number; ty_discount?: number | null; vat_rate?: number | null };
+export type InvLine = { title: string; qty: number; unit_price: number; ty_discount?: number | null; vat_rate?: number | null; known?: (string | null)[] };
 export type InvOrder = { order_no: string | null; ordered_at: string | null; customer_name: string | null;
   address: { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string } | null; city?: string | null; lines: InvLine[] };
 
@@ -45,6 +45,28 @@ export function amountInWords(total: number) {
   return `Yalnız${words(lira)}TürkLirası${kurus ? words(kurus) + "Kuruş" : ""}`;
 }
 
+// Faturadaki ürün adı (K, 30.10): Trendyol sipariş satırı adı "Başlık MODELKODU, beden" biçiminde (ör. "... Priz Çift xmlbayilik894..., one size").
+// 1) Kayıtlı ilan/ürün başlığı satır adının başıysa o kullanılır. 2) Yoksa son ", ..." (beden/renk) ve ondan önceki rakamlı kod atılır.
+export function invoiceItemName(lineTitle: string, known: (string | null | undefined)[] = []) {
+  const sp = (x: unknown) => String(x ?? "").replace(/\s+/g, " ").trim();
+  const t = sp(lineTitle);
+  const low = t.toLocaleLowerCase("tr");
+  const tidy = (x: string) => x.replace(/\s*\S*(xmlbayilik|bayilikxml)\S*/gi, "").replace(/[\s,–-]+$/, "").trim();
+  for (const k of known.map(sp)) if (k.length >= 5 && low.startsWith(k.toLocaleLowerCase("tr")) && tidy(k).length >= 5) return tidy(k);
+  let base = t.replace(/,\s*[^,]{0,30}$/, "");
+  // Kod yalnızca Trendyol biçiminde (", beden" eki varken) atılır: "Set 2" gibi adlar bozulmasın
+  if (base !== t) {
+    const words = base.split(" ");
+    const last = words[words.length - 1] ?? "";
+    if (words.length > 1 && (/\d/.test(last) || /xmlbayilik|bayilikxml/i.test(last))) words.pop();
+    // ikinci kod (ör. "… SKY70657716 TCXBY-803236"): yalnızca büyük harf/rakam, rakamlı, en az 6 karakter
+    const prev = words[words.length - 1] ?? "";
+    if (words.length > 1 && /\d/.test(prev) && prev.length >= 6 && /^[A-Z0-9ÇĞİÖŞÜ._\-/]+$/.test(prev)) words.pop();
+    base = words.join(" ");
+  }
+  return tidy(base) || t;
+}
+
 export function buildInvoice(o: InvOrder, now = new Date()) {
   if (!o.lines.length) throw new Error("Sipariş satırı yok");
   const { date, time } = trDateTime(now);
@@ -55,7 +77,7 @@ export function buildInvoice(o: InvOrder, now = new Date()) {
     const gross = r2(Number(l.unit_price) * qty + (Number(l.ty_discount) || 0)); // KDV dahil satır tutarı
     const unitNet = r2(gross / (1 + vat / 100) / qty);
     const net = r2(unitNet * qty), kdv = r2(gross - net);
-    return { qty, vat, gross, unitNet, net, kdv, name: String(l.title ?? "Ürün").replace(/\s+/g, " ").trim().slice(0, 200) || "Ürün" };
+    return { qty, vat, gross, unitNet, net, kdv, name: (invoiceItemName(String(l.title ?? ""), l.known ?? []) || "Ürün").slice(0, 200) };
   });
   const matrah = r2(rows.reduce((t, r) => t + r.net, 0)), kdv = r2(rows.reduce((t, r) => t + r.kdv, 0)), total = r2(matrah + kdv);
   const { ad, soyad } = splitName(o.customer_name);
