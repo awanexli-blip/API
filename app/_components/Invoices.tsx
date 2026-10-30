@@ -40,6 +40,11 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }) }); notify("good", `İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş/bulunamayan: ${r.deleted}` : ""}`); load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
+  async function logoutGib() {
+    setBusy("e-Arşiv oturumu kapatılıyor...");
+    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "logout" }) }); notify(r.ok ? "good" : "err", r.message); }
+    catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+  }
   async function reset(id: string) {
     try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "reset", order_id: id }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
@@ -62,6 +67,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
           <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="all">Tümü (60 gün)</option></select>
           <button className="btn" disabled={!!busy || !sel.size || !d.configured} onClick={draft}>Seçilenlere taslak oluştur ({sel.size})</button>
           <button className="btn ghost" disabled={!!busy || !d.configured} onClick={sync}>İmzalananları kontrol et</button>
+          <button className="btn ghost" disabled={!!busy || !d.configured} onClick={logoutGib} title="Portal aynı anda tek oturuma izin veriyor: 'birden fazla kişi giriş yapamaz' diyorsa bas">e-Arşiv oturumunu kapat</button>
           {busy && <span className="muted">{busy}</span>}
         </div>
         <div className="scroll"><table className="cards">

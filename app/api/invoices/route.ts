@@ -47,6 +47,20 @@ export async function POST(req: NextRequest) {
 
   const gib = new EarsivClient(process.env.GIB_PORTAL_USER ?? "", process.env.GIB_PORTAL_PASS ?? "", process.env.GIB_PORTAL_ENV === "TEST" ? "TEST" : "PROD");
 
+  // Sistemin portal oturumunu kapat (portal tek oturuma izin veriyor; K giriş yapamıyorsa): giriş + hemen çıkış
+  if (b.action === "logout") {
+    try {
+      await gib.login();
+      await gib.logout();
+      return NextResponse.json({ ok: true, message: "Sistem e-Arşiv portalından çıkış yaptı. Şimdi portala giriş yapabilirsin." });
+    } catch (e: any) {
+      const m = String(e?.message ?? e);
+      return NextResponse.json({ ok: false, message: /birden|fazla|oturum|aktif/i.test(m)
+        ? `Portal açık bir oturum var diyor (${m.slice(0, 120)}). Eski oturum GİB tarafında birkaç dakika içinde kendiliğinden kapanır; 10-15 dk sonra tekrar dene.`
+        : `Çıkış yapılamadı: ${m.slice(0, 200)}` });
+    }
+  }
+
   if (b.action === "sync") {
     const { data: drafts, error } = await db.from("order_invoices").select("order_id, ettn, created_at").eq("status", "draft").not("ettn", "is", null);
     if (error) return bad(error.message);
