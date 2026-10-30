@@ -32,6 +32,10 @@ export class EarsivClient {
     return j ?? text;
   }
 
+  // Oturum anahtarı dışarıda saklanabilsin (portal tek oturum; yarıda kalan iş sonra kapatılabilsin)
+  get sessionToken() { return this.token; }
+  useToken(t: string) { this.token = t; }
+
   async login() {
     if (!this.user || !this.pass) throw new Error("GİB portal kullanıcı kodu / şifresi tanımlı değil (Vercel: GIB_PORTAL_USER, GIB_PORTAL_PASS)");
     const j = await this.post("/earsiv-services/assos-login", { assoscmd: this.env === "PROD" ? "anologin" : "login", rtype: "json", userid: this.user, sifre: this.pass, sifre2: this.pass, parola: "1" });

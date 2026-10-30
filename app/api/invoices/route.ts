@@ -46,12 +46,19 @@ export async function POST(req: NextRequest) {
   }
 
   const gib = new EarsivClient(process.env.GIB_PORTAL_USER ?? "", process.env.GIB_PORTAL_PASS ?? "", process.env.GIB_PORTAL_ENV === "TEST" ? "TEST" : "PROD");
+  // Oturum anahtarı app_state'e (migration 073; yoksa sessizce atlanır): giriş sonrası yazılır, çıkış sonrası silinir
+  const saveToken = (t: string | null) => db.from("app_state").upsert({ key: "gib_token", value: t, updated_at: new Date().toISOString() }).then(() => null, () => null);
+  const login = async () => { await gib.login(); await saveToken(gib.sessionToken); };
+  const logout = async () => { await gib.logout(); await saveToken(null); };
 
   // Sistemin portal oturumunu kapat (portal tek oturuma izin veriyor; K giriş yapamıyorsa): giriş + hemen çıkış
   if (b.action === "logout") {
+    // Önce saklı oturum anahtarıyla çıkış (yarıda kalan oturum), sonra giriş + çıkış
+    const { data: st } = await db.from("app_state").select("value").eq("key", "gib_token").maybeSingle().then((r: any) => r, () => ({ data: null }));
+    if (st?.value) { gib.useToken(st.value); await logout(); }
     try {
-      await gib.login();
-      await gib.logout();
+      await login();
+      await logout();
       return NextResponse.json({ ok: true, message: "Sistem e-Arşiv portalından çıkış yaptı. Şimdi portala giriş yapabilirsin." });
     } catch (e: any) {
       const m = String(e?.message ?? e);
@@ -67,7 +74,7 @@ export async function POST(req: NextRequest) {
     if (!drafts?.length) return NextResponse.json({ signed: 0, deleted: 0, waiting: 0 });
     const from = trDateTime(new Date(Math.min(...drafts.map((d: any) => Date.parse(d.created_at))) - 86400000)).date, to = trDateTime(new Date()).date;
     try {
-      await gib.login();
+      await login();
       const docs = new Map((await gib.list(from, to)).map((d) => [d.ettn, d]));
       let signed = 0, deleted = 0, waiting = 0;
       for (const d of drafts as any[]) {
@@ -78,7 +85,7 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ signed, deleted, waiting });
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
-    finally { await gib.logout(); }
+    finally { await logout(); }
   }
 
   if (b.action !== "draft") return bad("Geçersiz işlem");
@@ -92,7 +99,7 @@ export async function POST(req: NextRequest) {
 
   const results: { order_id: string; order_no: string | null; ok: boolean; error?: string; amount?: number }[] = [];
   try {
-    await gib.login();
+    await login();
     for (const o of (orders ?? []) as any[]) {
       if (!OPEN.includes(o.status)) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: "Sipariş iptal/iade: fatura kesilmez" }); continue; }
       if (!o.customer_name) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: "Alıcı bilgisi yok (30 gün sonra silinir): portalda elle kes" }); continue; }
@@ -113,6 +120,6 @@ export async function POST(req: NextRequest) {
     }
   } catch (e: any) {
     return bad(String(e?.message ?? e).slice(0, 300));
-  } finally { await gib.logout(); }
+  } finally { await logout(); }
   return NextResponse.json({ created: results.filter((r) => r.ok).length, results });
 }

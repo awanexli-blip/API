@@ -2393,3 +2393,7 @@ create table if not exists public.order_invoices (
 );
 create index if not exists order_invoices_status_idx on public.order_invoices (status);
 alter table public.order_invoices enable row level security;
+
+-- 073_app_state.sql
+create table if not exists public.app_state (key text primary key, value text, updated_at timestamptz not null default now());
+alter table public.app_state enable row level security;
