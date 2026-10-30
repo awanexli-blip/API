@@ -80,18 +80,20 @@ export async function POST(req: NextRequest) {
       const list = await gib.list(from, to);
       const docs = new Map(list.map((d) => [d.ettn, d]));
       let signed = 0, deleted = 0, waiting = 0;
+      const gone = new Set<string>(); // taslağı silinen siparişler: elle kesilen fatura bunlara bağlanabilir
       for (const d of drafts as any[]) {
         const doc = docs.get(d.ettn);
         if (doc && isSigned(doc)) { signed++; await db.from("order_invoices").update({ status: "signed", belge_no: doc.belgeNumarasi ?? null, signed_at: now, updated_at: now }).eq("order_id", d.order_id); }
-        else if (!doc || isDeleted(doc)) { deleted++; await db.from("order_invoices").update({ status: "deleted", error: doc ? "Taslak portalda silinmiş" : "Taslak portalda bulunamadı", updated_at: now }).eq("order_id", d.order_id); }
+        else if (!doc || isDeleted(doc)) { deleted++; gone.add(d.order_id); await db.from("order_invoices").update({ status: "deleted", error: doc ? "Taslak portalda silinmiş" : "Taslak portalda bulunamadı", updated_at: now }).eq("order_id", d.order_id); }
         else waiting++;
       }
       // Elle kesilenler: faturası olmayan açık siparişlerle ad + tarih eşleşmesi
-      const has = new Set((all ?? []).map((d: any) => d.order_id));
+      // Faturası olan siparişler (hatalı / silinmiş taslak sayılmaz: 30.10 K aynı siparişi elle kesip bizim taslağı sildi)
+      const has = new Set((all ?? []).filter((d: any) => !["deleted", "error"].includes(d.status) && !gone.has(d.order_id)).map((d: any) => d.order_id));
       const { data: cand } = await db.from("orders").select("id, customer_name, ordered_at").in("status", OPEN).not("customer_name", "is", null)
         .gte("ordered_at", new Date(Date.now() - 60 * 86400000).toISOString());
       const m = matchManualInvoices(list, (cand ?? []).filter((o: any) => !has.has(o.id)), new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean)));
-      for (const l of m.links) await db.from("order_invoices").insert({ order_id: l.order_id, status: "signed", ettn: l.ettn, belge_no: l.belge_no, created_by: "portal (elle)", signed_at: now, updated_at: now });
+      for (const l of m.links) await db.from("order_invoices").upsert({ order_id: l.order_id, status: "signed", ettn: l.ettn, belge_no: l.belge_no, error: null, created_by: "portal (elle)", signed_at: now, updated_at: now }, { onConflict: "order_id" });
       return NextResponse.json({ signed, deleted, waiting, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
     finally { await logout(); }
