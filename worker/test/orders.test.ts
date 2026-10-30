@@ -57,5 +57,13 @@ const m1 = mm.get("H1");
 check("HB: aynı sipariş açık + paketli listede tek kayıt, son durum ve kargo kodu", mm.size === 1 && m1.status === "Packaged" && m1.lines.length === 1 && m1.tracking === "HJ123" && m1.customer.name === "Ad", m1);
 check("durum: HB Packaged -> ready, Cancelled -> cancelled", mapOrderStatus("hepsiburada", "Packaged").status === "ready" && mapOrderStatus("hepsiburada", "CancelledByMerchant").status === "cancelled");
 
+// Zararına satış (30.10 Duplo: komisyon tarifesi fiyatı 405,37, maliyet 903,60): dikkat + neden; kârlı siparişte uyarı yok
+const lossRefs = new Map([["TCX-1", { product_id: null, variant_id: null, commission: 0.027, cost: 903.6 }]]);
+const loss = orderRow("trendyol", { ...o, total: 405.37, lines: [{ lineNo: 1, key: "TCX-1", title: "Duplo", qty: 1, unitPrice: 405.37 }] }, lossRefs, cfg);
+check("zararına satış: dikkat + ZARARINA SATIŞ nedeni", loss.needs_attention && /ZARARINA SATIŞ/.test(loss.attention_reason ?? "") && (loss.est_net ?? 0) < 0, loss);
+check("kârlı siparişte zarar uyarısı yok", !/ZARARINA/.test(r.attention_reason ?? ""), r.attention_reason);
+const lossCancelled = orderRow("trendyol", { ...o, status: "Cancelled", total: 405.37, lines: [{ lineNo: 1, key: "TCX-1", title: "Duplo", qty: 1, unitPrice: 405.37 }] }, lossRefs, cfg);
+check("iptal edilen zararlı siparişte uyarı yok", !/ZARARINA/.test(lossCancelled.attention_reason ?? ""), lossCancelled.attention_reason);
+
 if (fails) { console.log(`\n${fails} sipariş testi başarısız`); process.exit(1); }
 console.log("\nSipariş testleri geçti");

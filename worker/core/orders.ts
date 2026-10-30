@@ -42,7 +42,12 @@ export function orderRow(marketplace: string, o: OrderIn, refs: Map<string, Ref>
   // Maliyeti bilinmeyen satır = ürün tedarikçi XML'inde yok (kalkmış ya da sistem dışında açılmış): tedarikçide olmayabilir, elle bakılmalı
   const open = !/^(cancelled|returned|delivered)$/.test(st.status);
   const late = open && st.status !== "shipped" && o.deadline != null && o.deadline < Date.now() ? "Kargoya verme süresi geçti" : null;
-  const attention = st.attention ?? (missing.length && open ? `Tedarikçi XML'inde yok / maliyeti bilinmiyor: ${missing.map((l) => l.title || l.listing_key).slice(0, 3).join(", ")}` : late);
+  // Zararına satış (30.10: Trendyol "Komisyon Tarifeleri" sayfasından elle girilen fiyat maliyetin altındaydı, 3 sipariş ~2.200 TL zarar):
+  // net kâr eksiyse sipariş dikkat listesine girer ve Telegram'da ayrı uyarı olur (inbox.ts notifyOrders)
+  const lossMsg = open && net != null && net < 0
+    ? `ZARARINA SATIŞ: ${Math.abs(net).toFixed(0)} TL zarar (satış ${revenue.toFixed(2)} TL, maliyet ${Number(cost).toFixed(2)} TL); pazaryerinde kampanya / komisyon tarifesi fiyatı olabilir`
+    : null;
+  const attention = st.attention ?? lossMsg ?? (missing.length && open ? `Tedarikçi XML'inde yok / maliyeti bilinmiyor: ${missing.map((l) => l.title || l.listing_key).slice(0, 3).join(", ")}` : late);
   return {
     marketplace, package_id: o.packageId, order_no: o.orderNo || null, status: st.status, marketplace_status: o.status, total: o.total, currency: o.currency,
     ordered_at: o.orderedAt ? new Date(o.orderedAt).toISOString() : null, ship_deadline: o.deadline ? new Date(o.deadline).toISOString() : null,

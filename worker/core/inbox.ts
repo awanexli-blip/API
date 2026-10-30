@@ -93,7 +93,8 @@ export async function notifyOrders(db: any, mp: Marketplace, since: string) {
   const { data } = await db.from("orders").select("id, order_no, total, est_net, status, created_at, needs_attention, attention_reason, order_lines(title, qty)").eq("marketplace", mp.id).gte("created_at", since).order("created_at").limit(20);
   for (const o of data ?? []) {
     const lines = (o.order_lines ?? []).map((l: any) => `${l.qty} × ${esc(l.title)}`).join("\n");
-    await tgSend(`🛒 <b>Yeni sipariş</b> (${esc(mp.label)}) ${esc(o.order_no ?? "")}\n${lines}\n<b>Tutar:</b> ${Number(o.total ?? 0).toFixed(2)} TL${o.est_net != null ? ` · tahmini net ${Number(o.est_net).toFixed(2)} TL` : ""}${o.needs_attention ? `\n⚠️ ${esc(o.attention_reason ?? "dikkat")}` : ""}`);
+    const loss = o.est_net != null && Number(o.est_net) < 0;
+    await tgSend(`${loss ? "🚨 <b>ZARARINA SİPARİŞ</b>" : "🛒 <b>Yeni sipariş</b>"} (${esc(mp.label)}) ${esc(o.order_no ?? "")}\n${lines}\n<b>Tutar:</b> ${Number(o.total ?? 0).toFixed(2)} TL${o.est_net != null ? ` · tahmini net ${Number(o.est_net).toFixed(2)} TL` : ""}${o.needs_attention ? `\n⚠️ ${esc(o.attention_reason ?? "dikkat")}` : ""}`);
   }
   return (data ?? []).length;
 }

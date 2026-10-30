@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-30 (54) — Zararına satış: Trendyol "Komisyon Tarifeleri" fiyatı
+- K'nın ekranı: TCXBY230070 (Duplo plaka) Trendyol fiyat geçmişinde 30.10 15:39 "Ürün Komisyon Tarifeleri sayfasından ... zamanlanmış fiyat 405,37 (01.11 08:00'e kadar)", komisyon %2,70, Buybox 1. Sistemimizin fiyatı 1.279,90 (dokunmadı; kodda tarife/kampanya ucu yok). Maliyet 903,60. Siparişlerde: 405,37 ve 380,37 (Duplo) + TCXBY100960 1.191,60 (maliyet 2.236,80), toplam ~2.200 TL zarar, hepsi "ready".
+- Trendyol herkese açık API'sinde komisyon tarifesi / zamanlanmış fiyatı listeleyen ya da kaldıran uç yok (developers.trendyol.com, llms.txt dahil tarandı). K panelden kaldıracak; elle kim girdi K'ya soruldu (aracı kişi riski: kullanıcı yönetimi / entegrasyonlar kontrol).
+- Koruma: sipariş net kârı eksiyse `attention_reason` "ZARARINA SATIŞ ..." ve Telegram'da "🚨 ZARARINA SİPARİŞ" başlığı (önceden sıradan "Yeni sipariş" içinde tahmini net yazıyordu). Test orders.test.ts (+3).
+- Buybox verisinden etkilenen ürün çıkarılamadı: listing_buybox 27-28.10 (kargo güncellemesinden önce), güncel değil.
+- Sunucu: 30.10 19:37 hâlâ eski kurulum, SSH cevap yok; Cenuta 23:00 yeni node sözünü tutmadı.
+
 ## 2026-10-29 (53) — Tedarikçi taslak kaydı + "yalnızca sunucudan oku"; sunucu yenileme izlemesi
 - K: yeni tedarikçi kaydedilemiyor, tedarikçi bağlantıyı reddediyor (büyük olasılıkla IP izni; Vercel/GitHub IP'leri değişken). Panel kaydı eşleme (model kodu + ürün adı) istiyordu, XML incelenemeyince kayıt olmuyordu.
 - Eşlemesiz kayıt = taslak (pasif, otomatik içe aktarma kapalı); içe aktarma eşlemesi olmayan tedarikçiyi atlar. Yeni ayar "Yalnızca sunucudan oku" (`suppliers.runner = 'vps'`, **migration 071**, K çalıştıracak; yokken kayıt bozulmaz): GitHub atlar, sunucu (sabit IP 89.252.153.145) okur. Panel incelemesi IP izinli XML'i okuyamaz; eşleme sunucu çalışınca.
