@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
+import Holds from "./Holds";
 import { statusTr, when, type Api, type Notify, type Row } from "./shared";
 
 const MP: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada", amazon: "Amazon TR" };
@@ -127,6 +128,8 @@ export default function Dashboard({ api, notify, role, go }: { api: Api; notify:
               ))}
             </div>
           </div>
+
+          {isAdmin && <Holds api={api} notify={notify} />}
 
           {isAdmin && <SalesCard rows={d.sales ?? []} api={api} notify={notify} />}
 

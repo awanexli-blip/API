@@ -1,3 +1,4 @@
+import { decideHold, HOLD_LABEL, HOLD_STATUS } from "@/lib/holds";
 import { NextRequest, NextResponse, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { admin, guard, unauthorized, bad } from "@/lib/server";
@@ -69,7 +70,17 @@ export async function POST(req: NextRequest) {
   if (cb) {
     if (String(cb.message?.chat?.id ?? "") !== chat) return NextResponse.json({ ok: true });
     const m = /^qa:(ok|no):([0-9a-f-]{36})$/.exec(String(cb.data ?? ""));
+    const hm = /^hl:(a|p|s):([0-9a-f-]{36})$/.exec(String(cb.data ?? ""));
     let note = "Geçersiz işlem";
+    // Elle değişen ilan kararı (worker/core/holds.ts)
+    if (hm) {
+      const r = await decideHold(hm[2], HOLD_STATUS[hm[1] as "a" | "p" | "s"], "telegram");
+      note = "error" in r ? String(r.error) : `${HOLD_LABEL[HOLD_STATUS[hm[1] as "a" | "p" | "s"]]}${r.started ? ", senkron başladı" : ""}`;
+      if (!("error" in r)) {
+        await tg("editMessageReplyMarkup", { chat_id: chat, message_id: cb.message?.message_id, reply_markup: { inline_keyboard: [] } });
+        await tg("sendMessage", { chat_id: chat, reply_to_message_id: cb.message?.message_id, text: `✅ ${note}` });
+      }
+    }
     if (m) {
       const db = admin();
       if (m[1] === "ok") {

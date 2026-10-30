@@ -6,6 +6,7 @@
 // Pazaryeri: 2. argüman veya MARKETPLACE ortam değişkeni (varsayılan trendyol).
 // Pazaryerine özgü her şey worker/marketplaces/<ad>.ts içindedir.
 
+import { loadGuard, type Guard } from "./core/holds.ts";
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
@@ -201,6 +202,12 @@ async function main() {
   const q = csvCell;
 
   const toUpdate: InventoryItem[] = [];
+
+  // Bu çalışmada pazaryerine gönderilen fiyat/stok (elle değişiklik algılaması için saklanır) ve koruma
+
+  const sentBy = new Map<string, { price: number | null; qty: number }>();
+
+  let guard: Guard | null = null;
   const toCreate: NewProduct[] = [];
   const unmapped = new Map<string, number>();
   // XML kategorisi -> tahmin edilen pazaryeri kategorileri (panelde öneri)
@@ -481,7 +488,13 @@ async function main() {
       for (const it of toUpdate) { const q = resv.get(it.id); if (q && it.quantity > 0) { it.quantity = Math.max(0, it.quantity - q); n++; } }
       summary.reserved = { listings: n, products: res.byProduct.size + res.byKey.size };
     }
-    const r = await mp.pushInventory(toUpdate);
+    // Elle değişiklik koruması (migration 074): pazaryerinde elle düzenlenen/eklenen ilan K karar verene kadar ezilmez (worker/core/holds.ts)
+    const gl = await loadGuard(db, marketplaceId, lsBy).catch((e: any) => ({ off: `elle değişiklik koruması hata: ${String(e?.message ?? e).slice(0, 150)}` }) as const);
+    guard = gl.off ? null : (gl as Guard);
+    if (gl.off) summary.manualGuard = gl.off;
+    const pushList = guard ? guard.filter(toUpdate) : toUpdate;
+    const r = await mp.pushInventory(pushList);
+    for (const it of pushList) sentBy.set(it.id, { price: it.price, qty: it.quantity });
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
     noteErrors(summary, r);
     // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
@@ -491,8 +504,10 @@ async function main() {
     if (s.zero_missing) {
       if (existing.size && matched / existing.size >= 0.5) {
         // Yalnızca satıştaki ilanlar: kapalı/onay bekleyen ilana stok gönderilemez (Trendyol hata verir)
-        const gone = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && !(l.quantity === 0)).map((l) => l.id);
+        const gone0 = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && !(l.quantity === 0)).map((l) => l.id);
+        const gone = guard ? guard.filterZero(gone0) : gone0;
         const z = await mp.zeroStock(gone);
+        for (const id of gone) sentBy.set(id, { price: null, qty: 0 });
         summary.zeroed += z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds); noteErrors(summary, z);
       } else {
         summary.zeroMissingSkipped = `${mp.label} ilanlarının yarısından azı XML ile eşleşti, güvenlik için çalıştırılmadı`;
@@ -505,8 +520,13 @@ async function main() {
       const loose = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && Number(l.quantity) > 0).map((l) => l.id);
       const dbOk = !(dbInv.stats as any).error && Number((dbInv.stats as any).listings ?? 0) > 0;
       if (!dbOk || loose.length > listings.length * 0.2) summary.unlinkedZeroSkipped = `${loose.length} bağsız ilan; güvenlik için stok sıfırlanmadı`;
-      else if (loose.length) { const z = await mp.zeroStock(loose); summary.unlinkedZeroed = z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds); noteErrors(summary, z); }
+      else if (loose.length) {
+        const ids = guard ? guard.filterZero(loose) : loose;
+        const z = await mp.zeroStock(ids); summary.unlinkedZeroed = z.ok; summary.failedBatches += z.failed; summary.batchIds.push(...z.batchIds); noteErrors(summary, z);
+        for (const id of ids) sentBy.set(id, { price: null, qty: 0 });
+      }
     }
+    if (guard) summary.manualGuard = await guard.finish(mp.label).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
   }
 
   const weakMatch = existing.size > 1000 && matched / existing.size < 0.5;
@@ -557,7 +577,7 @@ async function main() {
   if (marketplaceId === "hepsiburada" && mode !== "preview") summary.statusRefresh = await refreshBatches(db, mp).catch((e: any) => ({ error: String(e?.message ?? e) }));
   summary.batchIds = summary.batchIds.slice(0, 20);
   // Faz 3: ilan tablosu (pazaryerinin gördüğü durum, ürün veritabanına bağlantı)
-  if (listings.length) summary.listingsTable = await snapshotListings(db, marketplaceId, listings, calcBy).catch((e: any) => ({ error: String(e?.message ?? e) }));
+  if (listings.length) summary.listingsTable = await snapshotListings(db, marketplaceId, listings, calcBy, sentBy).catch((e: any) => ({ error: String(e?.message ?? e) }));
   return summary;
 }
 

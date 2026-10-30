@@ -22,12 +22,22 @@ export function listingRows(marketplace: string, listings: Listing[], now: strin
 }
 
 // Yaz, bağla, kaybolanları işaretle. Hata senkronu durdurmaz (tablo yoksa / ağ hatası): özete not düşülür.
-export async function snapshotListings(db: any, marketplace: string, listings: Listing[], calc?: Map<string, ListingCalc>): Promise<Record<string, unknown>> {
+// sent: bu çalışmada gönderilen fiyat/stok (migration 074; elle değişiklik algılaması). Fiyat gönderilmediyse (null) son gönderilen korunur.
+export async function snapshotListings(db: any, marketplace: string, listings: Listing[], calc?: Map<string, ListingCalc>, sent?: Map<string, { price: number | null; qty: number }>): Promise<Record<string, unknown>> {
   const now = new Date().toISOString();
-  const rows = listingRows(marketplace, listings, now, calc);
+  const rows: Record<string, unknown>[] = listingRows(marketplace, listings, now, calc);
+  if (sent?.size) for (const r of rows) {
+    const x = sent.get(r.listing_key as string);
+    if (x) Object.assign(r, { sent_qty: x.qty, pushed_at: now }, x.price != null ? { sent_price: x.price } : {});
+  }
+  // Toplu upsert'te satırda olmayan kolon NULL yazılır: kolon kümesi aynı olan satırlar birlikte gönderilir
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const r of rows) { const k = Object.keys(r).sort().join(","); (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
   let written = 0;
-  for (const part of chunk(rows, 500)) {
-    const { error } = await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
+  for (const g of groups.values()) for (const part of chunk(g, 500)) {
+    let { error } = await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
+    // migration 074 öncesi: gönderim kolonları yok, onlarsız yaz
+    if (error && /sent_|pushed_at/.test(error.message)) ({ error } = await db.from("marketplace_listings").upsert(part.map(({ sent_price, sent_qty, pushed_at, ...rest }: any) => rest), { onConflict: "marketplace,listing_key" }));
     if (error) return { error: error.message, written };
     written += part.length;
   }
