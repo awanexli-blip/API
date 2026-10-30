@@ -275,7 +275,7 @@ function Editor({ api, notify, initial, onClose }: { api: Api; notify: Notify; i
           <label className="check"><input type="checkbox" checked={d.sku_ascii} onChange={(e) => set("sku_ascii", e.target.checked)} />SKU'dan Türkçe/özel karakterleri at</label>
           <label className="check" title="Ör. Toptancım: aynı ürün ABC, ABC-1, ABC-2... kodlarıyla farklı başlıkla tekrar yayınlanıyor"><input type="checkbox" checked={!!d.dedupe_code_suffix} onChange={(e) => set("dedupe_code_suffix", e.target.checked)} />Kod sonu -1, -2... olan kopyalardan pazaryerine yalnızca stokta olan en ucuzunu gönder</label>
           <label className="check"><input type="checkbox" checked={d.nightly} onChange={(e) => set("nightly", e.target.checked)} />Saatte bir otomatik içe aktar</label>
-          <label className="check" title="Tedarikçi yalnızca izin verdiği IP'den bağlantı kabul ediyorsa: sunucunun IP'sini (89.252.153.145) tedarikçiye bildir"><input type="checkbox" checked={d.runner === "vps"} onChange={(e) => set("runner", e.target.checked ? "vps" : null)} />Yalnızca sunucudan oku (tedarikçi IP izni istiyor; GitHub/panel denemez)</label>
+          <label className="check" title="Tedarikçi yalnızca izin verdiği IP'den bağlantı kabul ediyorsa: sunucunun IP'sini (89.252.153.187) tedarikçiye bildir"><input type="checkbox" checked={d.runner === "vps"} onChange={(e) => set("runner", e.target.checked ? "vps" : null)} />Yalnızca sunucudan oku (tedarikçi IP izni istiyor; GitHub/panel denemez)</label>
         </div>
       </div>}
 
