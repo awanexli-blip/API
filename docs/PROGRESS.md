@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-10-30 (56) — e-Arşiv: ilk toplu kesim tamam (84 fatura)
+- 84 açık siparişin (78 Trendyol + 6 HB) faturası sistem taslağıyla kesildi, K portalda imzaladı; "İmzalananları kontrol et" 84'ü `signed` yaptı, faturasız açık sipariş 0.
+- Hata: sync 60 günlük portal listesi boş döndüğü için 84 taslağı "bulunamadı/silindi" işaretlemişti (SQL ile geri alındı). Düzeltme b535edd: liste gün gün (son 14 gün + kayıt günleri), listede olmayan taslağa dokunulmaz (yalnızca portal "silinmiş" derse), elle oluşturulmuş imzasız taslak da MÜKERRER işaretlenir.
+- K'nın elle açtığı 7 taslak (012-018) bizim taslaklarla aynı siparişlerdi; K indirimi hesaplamamıştı, bizimkiler (satıcı indirimi düşülmüş) kullanıldı, K kendininkileri sildi.
+- Sıradaki: imzalı faturaları Trendyol'a yükleme (PDF + seller-invoice-file, önce dry-run, K onayı).
+
 ## 2026-10-30 (55) — e-Arşiv fatura taslakları (GİB portalı)
 - K ~50 faturayı GİB e-Arşiv portalından tek tek kesiyordu (e-imza yok, SMS onaylı). Yeni: panel Siparişler → "Faturalar (e-Arşiv)" (yalnızca admin): son 60 gün açık siparişler, seçilenlere portalda TASLAK (25'erli, sırayla), K portalda taslakları seçip tek SMS ile toplu imzalar, "İmzalananları kontrol et" durumu okur. **Sistem imzalamaz** (SMS/HSM komutu yok, testte doğrulanır).
 - `lib/invoice-build.ts` (saf: tutar = satış geliri = müşteri + Trendyol indirimi, KDV ürün oranıyla içinden, alıcı TC 11111111111 (K onayı), ad/soyad, adres, sipariş no/tarih, yazıyla tutar), `lib/earsiv.ts` (giriş anologin, dispatch, EARSIV_PORTAL_FATURA_OLUSTUR / RG_BASITFATURA, ETTN önce/sonra listesi farkından, liste, çıkış; biçimler açık kaynak f/fatura MIT Ağustos 2026'dan), `app/api/invoices` (kilit: order_invoices birincil anahtarı, çift taslak yok), `app/_components/Invoices.tsx`. **Migration 072** `order_invoices` (K çalıştıracak). Vercel: `GIB_PORTAL_USER`, `GIB_PORTAL_PASS` (K ekledi, doğrulandı; isteğe bağlı `GIB_PORTAL_ENV=TEST`).
