@@ -7,7 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 import { calcPrice, cfgFromSettings } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
-import { loadBrandMatcher } from "./core/brand-risk.ts";
+import { loadBrandMatcher, neutralizeCompat } from "./core/brand-risk.ts";
+import { inScope } from "../lib/scope.ts";
 import { env, chunk, normFull, arg, SUPPLIER_ARG, readAll } from "./core/util.ts";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -82,9 +83,10 @@ async function main() {
       const comm = pred?.commission ?? cfg.commissionRate;
       const pcfg = applyRules(cfg, rules, { cost, supplier: code, category: p.category, brand: p.brand, stock }).cfg;
       const price = cost > 0 ? calcPrice(cost, pcfg, comm) : null;
-      const risky = brandRisk?.(p.title, p.description ?? "");
+      const risky = brandRisk?.(neutralizeCompat(p.title), neutralizeCompat(p.description ?? "")); // gönderimdeki gibi: "Android ve iOS" -> "Akıllı Telefon"
+      const scope = inScope({ cat: p.category, title: p.title }); // faaliyet kapsamı (lib/scope.ts)
       const brandOk = ownBrand(String(p.brand ?? ""));
-      const excluded = p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < 10 ? "stok az (10'dan az)" : !images ? "görsel yok"
+      const excluded = !scope.ok ? `faaliyet kapsamı dışında (${scope.reason})` : p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < 10 ? "stok az (10'dan az)" : !images ? "görsel yok"
         : titles.has(normFull(p.title)) ? "mağazada aynı başlık var" : risky ? `marka riski (${risky})` : !price?.ok ? `fiyat: ${price?.reason ?? "hesaplanamadı"}` : null;
       const net = price?.ok ? price.netProfit : 0, margin = price?.ok ? price.profitRate : 0;
       const sc = scoreOf({ net, margin, stock, sold7: sold.get(p.id) ?? 0, price: price?.ok ? price.price : 0, images, descLen: String(p.description ?? "").length, level: pred?.level ?? null, brandOk, variants });
