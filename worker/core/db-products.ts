@@ -11,6 +11,7 @@ import { contentChanges, fpOf, type ContentFp } from "./content-diff.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
+import { inScope } from "../../lib/scope.ts";
 
 export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
@@ -25,6 +26,8 @@ export type DbCtx = {
   econ?: Map<string, { cost: number; comm: number; pcfg: PricingConfig; price: number }>; // ilan başına maliyet/komisyon (buybox kâr hesabı)
   // Duruma göre marj: ayar + ilan -> başka satıcı var mı (listing_buybox.multiple); active=false ise yalnızca karşılaştırma (stats.marginSim)
   dyn?: { cfg: DynMargin; active: boolean; comp: Map<string, boolean> } | null;
+  scopeText?: Map<string, { cat: string; title: string }>; // ilan -> tedarikçi kategori yolu + başlık (faaliyet kapsamı)
+  scopeActive?: boolean; // app_state.scope_filter = "on": kapsam dışı ürün gönderilmez
 };
 
 // Görsel adının kök kısmı (tedarikçi CDN'i: "...-model-1-12345-sw1024sh1024.webp" -> "...-model")
@@ -119,6 +122,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       if (!p || !v || p.source === "xml:bayilik") continue; // BayilikXML ilanları XML akışında
       stats.listings++;
       ctx.linked.add(key); // "XML'den kalkan" sayılıp stoğu sıfırlanmasın
+      ctx.scopeText?.set(key, { cat: p.category ?? "", title: p.title ?? "" }); // faaliyet kapsamı (lib/scope.ts): pazaryeri kategorisi yoksa tedarikçi yolu
       const ls = ctx.lsBy.get(key);
       if (!ls || (ls.status ?? "active") !== "active") { stats.notLive++; continue; } // onay bekleyen / kapalı ilana gönderilemez
       const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
@@ -348,6 +352,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           // Varyantın (rengin) kendi görselleri varsa onlar, yoksa ürünün görselleri (migration 063)
           const vImages: string[] = Array.isArray(v.images) && v.images.length ? v.images : images;
           if (!vImages.length) { fail(key, p, v, "Görsel yok"); continue; }
+          // Faaliyet kapsamı (K, 31.10): vergi dairesi faaliyet kodları dışındaki ürün hiçbir pazaryerine gönderilmez
+          if (ctx.scopeActive) { const sc = inScope({ cat: catName || p.category, title: p.title }); if (!sc.ok) { fail(key, p, v, `Faaliyet kapsamı dışında: ${sc.reason} (izinli: ev aleti, dış giyim, ayakkabı)`); continue; } }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           // Tahmin güveni düşükse otomatik seçilmez; en iyi tahmin "öneri" olarak yazılır (panel → Gönderilemeyenler tek tıkla seçer)

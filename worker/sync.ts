@@ -7,6 +7,7 @@
 // Pazaryerine özgü her şey worker/marketplaces/<ad>.ts içindedir.
 
 import { loadGuard, type Guard } from "./core/holds.ts";
+import { inScope } from "../lib/scope.ts";
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
@@ -31,11 +32,23 @@ import { retireLegacy } from "./core/retire.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
 import { buildLeafMatcher, buildPathMatcher } from "./core/category-tree.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
-import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
+import type { InventoryItem, Listing, NewProduct } from "./marketplaces/types.ts";
 
 const mode = arg(process.argv[2], "preview", MODES, "mod");
 const marketplaceId = arg(process.argv[3] ?? process.env.MARKETPLACE, "trendyol", MARKETPLACES, "pazaryeri");
 const sendOnly = process.env.SEND_ONLY === "1";
+// Gönderilecek ilanlardan faaliyet kapsamı dışında olanlar (pazaryeri kategorisi > tedarikçi kategori yolu > başlık)
+function scopeStats(items: InventoryItem[], lsBy: Map<string, Listing>, text: Map<string, { cat: string; title: string }>) {
+  const out = new Set<string>(); const stats: Record<string, number> = { checked: 0, inScope: 0, outOfScope: 0, outWithStock: 0 };
+  for (const it of items) {
+    const ls = lsBy.get(it.id), t = text.get(it.id);
+    const r = inScope(ls?.categoryName ? { cat: ls.categoryName, title: ls.title } : t ?? { cat: "", title: ls?.title ?? "" });
+    stats.checked++;
+    if (r.ok) { stats.inScope++; stats[r.group!] = (stats[r.group!] ?? 0) + 1; }
+    else { out.add(it.id); stats.outOfScope++; if (it.quantity > 0) stats.outWithStock++; }
+  }
+  return { out, stats };
+}
 const trigger = process.env.TRIGGER ?? "manual";
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 // Trendyol dosya adı eskisi gibi kalır (panel/CLAUDE.md buna atıfta bulunuyor)
@@ -363,7 +376,13 @@ async function main() {
 
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
   const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, pathMatch, overrides: ovMap, econ: new Map(), skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
-    shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null, shipCfg: tyShip };
+    shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null, shipCfg: tyShip,
+    scopeText: new Map(), scopeActive: false };
+  // Faaliyet kapsamı (lib/scope.ts; K, 31.10): app_state.scope_filter = "on" iken kapsam dışı ilan stoğu 0, yeni gönderim yok. Kapalıyken yalnızca sayılır.
+  {
+    const { data } = await db.from("app_state").select("value").eq("key", "scope_filter").maybeSingle().then((r: any) => r, () => ({ data: null }));
+    dbCtx.scopeActive = data?.value === "on";
+  }
   // Duruma göre marj (dynamic-margin.ts): ayar varsa; rekabet bilgisi listing_buybox'tan (başka satıcı var mı)
   {
     const dm = parseDyn(s.dynamic_margin);
@@ -461,6 +480,7 @@ async function main() {
   summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
   summary.dbProducts = dbInv.stats;
+  if (!doUpdate) summary.scope = { active: dbCtx.scopeActive, ...scopeStats([...toUpdate, ...dbInv.items], lsBy, dbCtx.scopeText!).stats }; // deneme: kaç ilan kapanır
   if (doUpdate) toUpdate.push(...dbInv.items);
   for (const it of dbInv.items) if (!calcBy.has(it.id)) calcBy.set(it.id, { cost: null, price: it.price, net: null, note: "ürün veritabanından yönetiliyor" });
   summary.update = toUpdate.length;
@@ -490,6 +510,12 @@ async function main() {
       let n = 0;
       for (const it of toUpdate) { const q = resv.get(it.id); if (q && it.quantity > 0) { it.quantity = Math.max(0, it.quantity - q); n++; } }
       summary.reserved = { listings: n, products: res.byProduct.size + res.byKey.size };
+    }
+    // Faaliyet kapsamı: kapsam dışı ilan stoğu 0 (fiyat ve ilan durur; kural kapanınca sonraki senkronda stok geri gelir)
+    {
+      const st = scopeStats(toUpdate, lsBy, dbCtx.scopeText!);
+      summary.scope = { active: dbCtx.scopeActive, ...st.stats };
+      if (dbCtx.scopeActive) for (const it of toUpdate) if (st.out.has(it.id)) it.quantity = 0;
     }
     // Elle değişiklik koruması (migration 074): pazaryerinde elle düzenlenen/eklenen ilan K karar verene kadar ezilmez (worker/core/holds.ts)
     const gl = await loadGuard(db, marketplaceId, lsBy).catch((e: any) => ({ off: `elle değişiklik koruması hata: ${String(e?.message ?? e).slice(0, 150)}` }) as const);
