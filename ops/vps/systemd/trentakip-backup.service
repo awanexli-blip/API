@@ -1,0 +1,8 @@
+[Unit]
+Description=Trentakip: sunucu veritabanı gece yedeği (şifreli, 7 gün)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/trentakip/ops/vps/backup.sh
+Nice=10
