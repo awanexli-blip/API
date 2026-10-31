@@ -210,6 +210,9 @@ async function main() {
   const mapped = (m: any) => { const v = Object.values(m && typeof m === "object" ? m : {}); return (v.includes("model") || v.includes("variant_sku")) && v.includes("title"); };
   const list = (sups as any[]).filter((s) => {
     if (!mapped(s.mapping)) { console.log(`${s.name}: eşleme yapılmamış (taslak), atlandı`); return false; }
+    // Tedarikçinin istediği en kısa okuma aralığı (ör. Hepsibayi: saatte en çok 1; migration 075 suppliers.min_interval_min). Elle/zorlamalı çalışmada uygulanmaz.
+    const minI = Number(s.min_interval_min ?? 0);
+    if (minI > 0 && !process.env.FORCE_IMPORT && s.last_run_at && Date.now() - Date.parse(s.last_run_at) < minI * 60_000) { console.log(`${s.name}: ${minI} dk dolmadı, atlandı`); return false; }
     if (which === "vps") return needsVps(s);
     if (needsVps(s) && !onVps) { console.log(`${s.name}: yalnızca sunucudan okunur (IP izni), burada atlandı`); return false; }
     return true;

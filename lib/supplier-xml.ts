@@ -137,7 +137,8 @@ export function itemsToGroups(items: any[], mapping: Record<string, Field>): Gro
       for (const [path, field] of entries) {
         const v = flat[path];
         if (v == null) continue;
-        if (field === "images") images.push(...(Array.isArray(v) ? v : v.split(/[\s|,;]+/)).filter((u) => /^https?:\/\//i.test(u)));
+        // "Hata:" içeren adres tedarikçinin indiremediği görsel (Hepsibayi dokümanı: ".../Hata: Görsel indirilemedi."): atlanır
+        if (field === "images") { const list = Array.isArray(v) ? v : /Hata:/i.test(v) ? [] : v.split(/[\s|,;]+/); images.push(...list.filter((u) => /^https?:\/\//i.test(u) && !/Hata:/i.test(u))); }
         else if (values[field] == null) values[field] = Array.isArray(v) ? v[0] : v;
       }
       if (el) { const pv = pairValues(el); if (pv.color && values.color == null) values.color = pv.color; if (pv.size && values.size == null) values.size = pv.size; }
@@ -163,7 +164,8 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
   p.sku = cleanSku(p.sku, sup);
   if (!SKU_RE.test(p.sku)) return { error: `geçersiz ürün kodu: ${g.model}` };
   if (!p.title || String(p.title).trim().length < 2) return { error: "ürün adı yok" };
-  p.title = String(p.title).replace(/\s+/g, " ").trim().slice(0, 300);
+  // Sondaki depo/tedarikçi kodu atılır: "... HDMI KABLO (4767)", "... Kalemlik-(5775)" (yalnızca parantez içinde 3-6 rakam, başlık sonunda)
+  p.title = String(p.title).replace(/\s+/g, " ").trim().replace(/\s*-?\s*\(\d{3,6}\)$/, "").trim().slice(0, 300);
   if (p.description) p.description = String(p.description).slice(0, 30000);
   if (p.category) p.category = String(p.category).slice(0, 200);
   if (sup.default_brand) p.brand = sup.default_brand; // tedarikçi markası pazaryerinde yoksa sabit marka
