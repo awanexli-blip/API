@@ -23,5 +23,7 @@ test("kapsam dışı: oyuncak, bijuteri, elektronik, spor ayakkabı, düzenleyic
   assert.ok(!ok("Blender", "Ergonomik El Blenderı Paslanmaz Çelik Metal Blender Ayağı"), "blender ayağı");
   assert.ok(!ok("Tüy Toplayıcı", "Evcil Hayvan Tüyü ve Tiftik Temizleyici Top"), "elektriksiz tüy topu");
   assert.ok(!ok("Bluetooth Hoparlör", "Saç Kurutma Makinesi Görünümlü Hoparlör"), "dışlama önce gelir değil: kategori hoparlör");
+  for (const [c, t] of [["Çamaşır Makinesi Dolabı", "Çamaşır Makinesi Rafı Metal"], ["Kahve & Baharat Öğütücü", "Tuz ve Karabiber Değirmeni"], ["Kemer", "12 Parça Kamp ve Hayatta Kalma Seti"], ["Tost Makinesi", "Granit Tost Makinesi İç/Dış 25"]])
+    assert.ok(!ok(c, t), t);
   assert.ok(!ok("", ""), "boş");
 });
