@@ -1,0 +1,6 @@
+[Unit]
+Description=Trentakip: sunucu iç izleme (disk, bellek, servisler, API, panel) -> Telegram
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/trentakip/ops/vps/monitor.sh

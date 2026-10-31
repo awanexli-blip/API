@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip iç izleme (5 dakikada bir)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
