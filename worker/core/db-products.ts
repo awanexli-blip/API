@@ -160,7 +160,13 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       if (pr.cost > 0) ctx.econ?.set(key, { cost: pr.cost, comm: pr.comm, pcfg: pr.pcfg, price: sendPrice ?? Number(ls.price) }); // maliyetsiz elle fiyat: rekabet önerisi yok
       const dup = dupLosers.has(key);
       if (dup) stats.duplicateClosed = (stats.duplicateClosed ?? 0) + 1;
-      const qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
+      let qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
+      // Faaliyet kapsamı (lib/scope.ts): "değişmedi" denetiminden ÖNCE (Hepsiburada yalnızca değişeni gönderir; yoksa kapsam dışı stok hiç sıfırlanmazdı)
+      if (ctx.scopeText) {
+        const sc = inScope(ls.categoryName ? { cat: ls.categoryName, title: ls.title } : { cat: p.category ?? "", title: p.title ?? "" });
+        if (!sc.ok) { stats.scopeOut = (stats.scopeOut ?? 0) + 1; if (qty > 0) stats.scopeOutWithStock = (stats.scopeOutWithStock ?? 0) + 1; if (ctx.scopeActive) qty = 0; }
+        else stats.scopeIn = (stats.scopeIn ?? 0) + 1;
+      }
       // Değişmeyen ilan gönderilmez (pushOnlyChanged pazaryerleri)
       if (ctx.mp.pushOnlyChanged && Number(ls.quantity) === qty && (sendPrice == null || Math.abs(Number(ls.price) - sendPrice) < 0.01)) { stats.unchanged = (stats.unchanged ?? 0) + 1; continue; }
       items.push({ id: key, price: sendPrice, quantity: qty });
