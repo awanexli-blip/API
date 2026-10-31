@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry (deneme) | apply (yükle)"
+        description: "dry (deneme) | apply (yükle) | audit (mükerrer fatura denetimi, salt okunur)"
         default: "dry"
       count:
         description: "En fazla kaç fatura (1-200)"
@@ -40,6 +40,9 @@ jobs:
           TRENDYOL_STOREFRONT: ${{ vars.TRENDYOL_STOREFRONT }}
           GIB_PORTAL_USER: ${{ secrets.GIB_PORTAL_USER }}
           GIB_PORTAL_PASS: ${{ secrets.GIB_PORTAL_PASS }}
-          MODE: ${{ github.event.inputs.mode == 'apply' && 'apply' || 'dry' }}
+          MODE: ${{ github.event.inputs.mode == 'apply' && 'apply' || github.event.inputs.mode == 'audit' && 'audit' || 'dry' }}
           COUNT: ${{ github.event.inputs.count || '200' }}
-        run: node --experimental-strip-types worker/invoice-upload.ts "$MODE" "$COUNT"
+        # audit = mükerrer fatura denetimi (salt okunur, worker/invoice-audit.ts)
+        run: |
+          if [ "$MODE" = "audit" ]; then node --experimental-strip-types worker/invoice-audit.ts
+          else node --experimental-strip-types worker/invoice-upload.ts "$MODE" "$COUNT"; fi

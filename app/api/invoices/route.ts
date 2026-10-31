@@ -19,10 +19,11 @@ export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
   const db = admin();
   const since = new Date(Date.now() - 60 * 86400000).toISOString();
-  const [{ data: orders, error }, inv, rep] = await Promise.all([
+  const [{ data: orders, error }, inv, rep, aud] = await Promise.all([
     db.from("orders").select("id, marketplace, order_no, status, total, ordered_at, customer_name, order_lines(title, qty)").in("status", OPEN).gte("ordered_at", since).order("ordered_at", { ascending: true }).limit(1000),
     db.from("order_invoices").select("order_id, status, ettn, belge_no, amount, error, updated_at"),
     db.from("app_state").select("value").eq("key", "invoice_upload_report").maybeSingle().then((r: any) => r, () => ({ data: null })),
+    db.from("app_state").select("value").eq("key", "invoice_audit_report").maybeSingle().then((r: any) => r, () => ({ data: null })),
   ]);
   if (error) return bad(error.message);
   if (inv.error) return bad(/order_invoices/.test(inv.error.message) ? "Supabase migration 072 çalıştırılmamış (SQL Editor)" : inv.error.message);
@@ -34,9 +35,10 @@ export async function GET(req: NextRequest) {
       invoice: i ? { status: i.status, ettn: i.ettn, belge_no: i.belge_no, amount: i.amount, error: i.error, updated_at: i.updated_at } : null };
   });
   const counts = rows.reduce((c: Record<string, number>, r) => { const k = r.invoice?.status ?? "none"; c[k] = (c[k] ?? 0) + 1; return c; }, {});
-  let upload: any = null;
+  let upload: any = null, audit: any = null;
   try { upload = rep?.data?.value ? JSON.parse(rep.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
-  return NextResponse.json({ rows, counts, upload, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS) });
+  try { audit = aud?.data?.value ? JSON.parse(aud.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
+  return NextResponse.json({ rows, counts, upload, audit, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS) });
 }
 
 export async function POST(req: NextRequest) {
@@ -53,7 +55,7 @@ export async function POST(req: NextRequest) {
 
   // Trendyol'a fatura yükleme: GitHub Actions (invoice-upload.yml; PDF için tarayıcı gerekir). dry = deneme, apply = son denemede uygun çıkanlar
   if (b.action === "upload") {
-    const mode = b.mode === "apply" ? "apply" : "dry";
+    const mode = b.mode === "apply" ? "apply" : b.mode === "audit" ? "audit" : "dry"; // audit = mükerrer fatura denetimi (salt okunur)
     const count = String(Math.max(1, Math.min(200, Number(b.count) || 200)));
     if (mode === "apply") {
       const { data: st } = await db.from("app_state").select("value").eq("key", "invoice_upload_report").maybeSingle();

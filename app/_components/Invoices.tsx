@@ -53,6 +53,11 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "logout" }), timeoutMs: 60000 } as any); notify(r.ok ? "good" : "err", r.message); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
+  async function audit() {
+    setBusy("Denetim başlatılıyor...");
+    try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "upload", mode: "audit" }) }); notify("good", "Mükerrer fatura denetimi başladı (salt okunur, 2-4 dk). Bu sırada e-Arşiv portalından çıkış yap. Bitince \"Raporu yenile\"."); }
+    catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+  }
   async function upload(mode: "dry" | "apply") {
     const u = d?.upload;
     // İlk gerçek yükleme tek fatura: K Trendyol panelinde doğru pakette doğru PDF'i görünce kalanlar gider
@@ -116,7 +121,16 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
             <button className="btn ghost" disabled={!!busy || !c.signed} onClick={() => upload("dry")}>Deneme (yüklemeden kontrol)</button>
             <button className="btn" disabled={!!busy || !(d.upload?.mode === "dry" && d.upload?.ok && Date.now() - Date.parse(d.upload.at) < 24 * 3600000)} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload?.mode === "dry" ? d.upload.ok : 0})</button>
             <button className="btn ghost" disabled={!!busy} onClick={load}>Raporu yenile</button>
+            <button className="btn ghost" disabled={!!busy || !d.configured} onClick={audit} title="Portalda elle kestiğin faturalarla sistemin faturalarını karşılaştırır; hiçbir şey değiştirmez">Mükerrer fatura kontrolü</button>
           </div>
+          {d.audit && <div style={{ fontSize: 13, marginTop: 6 }}>
+            <span className="muted">Mükerrer kontrolü: {when(d.audit.at)} · portalda {d.audit.portalDocs} belge (sistemin {d.audit.ourDocs}, elle {d.audit.foreign}, elle imzalı {d.audit.foreignSigned})</span>
+            {d.audit.duplicateSigned > 0 && <div style={{ color: "var(--bad)", fontWeight: 600 }}>⚠️ {d.audit.duplicateSigned} siparişte iki imzalı fatura var: birini GİB portalından iptal etmelisin (aynı satış iki kez beyan edilmiş olur).</div>}
+            {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").map((x: Row, i: number) => <li key={i}>Elle: {x.belge_no} ({x.onay}) · sipariş {x.order_no} · sistem: {x.our_belge_no ?? "-"} ({x.our_status ?? "yok"}) · <b style={{ color: /^MÜKERRER/.test(x.kind) ? "var(--bad)" : undefined }}>{x.kind}</b></li>)}
+            </ul>}
+            {(d.audit.rows ?? []).some((x: Row) => x.kind === "siparişle eşleşmedi") && <div className="muted">Siparişle eşleşmeyen elle belgeler: {(d.audit.rows ?? []).filter((x: Row) => x.kind === "siparişle eşleşmedi").map((x: Row) => x.belge_no).join(", ")}</div>}
+          </div>}
           {d.upload && <div style={{ fontSize: 13, marginTop: 6 }}>
             <span className="muted">Son {d.upload.mode === "dry" ? "deneme" : "yükleme"}: {when(d.upload.at)} · toplam {d.upload.total} · uygun {d.upload.ok}{d.upload.mode === "apply" ? ` · yüklendi ${d.upload.uploaded} · zaten vardı ${d.upload.already}` : ""} · atlanan {d.upload.failed}</span>
             {(d.upload.rows ?? []).filter((x: Row) => !x.ok).length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
