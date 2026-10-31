@@ -52,8 +52,8 @@
 		reverse_proxy storage:5000
 	}
 
-	# Panel (sunucuda Next.js, trentakip-panel.service, ana makinede :3000). Çalışmıyorsa 502.
+	# Panel (sunucuda Next.js, trentakip-panel.service, ana makinede :3100; 3000 PostgREST). Çalışmıyorsa 502.
 	handle {
-		reverse_proxy host.docker.internal:3000
+		reverse_proxy host.docker.internal:3100
 	}
 }

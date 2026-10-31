@@ -27,7 +27,7 @@ C=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "${VPS_SUPABASE_URL:-https://tr
 [ "$C" != 200 ] && problem api "veritabanı API'si yanıt vermiyor (HTTP $C)" || ok api "veritabanı API'si"
 # Panel (kuruluysa)
 if systemctl is-enabled trentakip-panel.service >/dev/null 2>&1; then
-  P=$(curl -s -m 15 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)
+  P=$(curl -s -m 15 -o /dev/null -w '%{http_code}' http://127.0.0.1:3100/)
   [ "$P" != 200 ] && problem panel "panel yanıt vermiyor (HTTP $P)" || ok panel "panel"
 fi
 # Başarısız zamanlanmış iş (izleme ve yedek hariç: onların kendi uyarısı var)

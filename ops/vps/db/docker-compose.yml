@@ -89,7 +89,7 @@ services:
       DOMAIN: ${DOMAIN}
       PANEL_URL: ${PANEL_URL}
     ports: ["80:80", "443:443", "443:443/udp"]
-    # Panel ana makinede çalışır (trentakip-panel.service :3000); güvenlik duvarı 3000'i yalnızca Docker ağlarına açar
+    # Panel ana makinede çalışır (trentakip-panel.service :3100); güvenlik duvarı 3100'ü yalnızca Docker ağlarına açar
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

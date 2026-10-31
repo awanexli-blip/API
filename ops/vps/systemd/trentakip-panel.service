@@ -1,5 +1,5 @@
 [Unit]
-Description=Trentakip: panel (Next.js, :3000; Caddy trentakip.duckdns.org)
+Description=Trentakip: panel (Next.js, :3100; Caddy trentakip.duckdns.org)
 After=network-online.target docker.service
 
 [Service]
@@ -7,7 +7,7 @@ User=trentakip
 WorkingDirectory=/opt/trentakip
 EnvironmentFile=/etc/trentakip/panel.env
 Environment=NODE_ENV=production NEXT_DIST_DIR=.next-live
-ExecStart=/opt/trentakip/node_modules/.bin/next start -H 0.0.0.0 -p 3000
+ExecStart=/opt/trentakip/node_modules/.bin/next start -H 0.0.0.0 -p 3100
 Restart=always
 RestartSec=5
 MemoryMax=900M
