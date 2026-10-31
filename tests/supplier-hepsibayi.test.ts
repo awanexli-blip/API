@@ -38,3 +38,16 @@ test("Hepsibayi: varyantlar ayrı stok/barkod, Hata görseli atlanır, başlıkt
   assert.ok(!/Hata/.test(imgs) && /4906301/.test(imgs) && /4906303/.test(imgs), imgs);
   assert.equal(corap.title, "Siyah Özel Bölgesi Açık Fantazi Külotlu Çorap TM0367", "kod olmayan başlık değişmez");
 });
+
+test("Hepsibayi: tek varyantlı üründe 'RZ' renk sayılmaz; gerçek renk kalır", () => {
+  const x = `<products><product><title>Ally Loca 2500uv 50g-(5775)</title><stock_code>HS4198-4069</stock_code><barcode>HS4047040576</barcode><stock>92</stock><sale_price>220.28</sale_price><currency>TL</currency><tax>20</tax>
+    <image_1>https://hepsicdn.com.tr/a.png</image_1><variants><variant><barcode>HS5265798466</barcode><stock>92</stock><price>220.28</price><name>Renk</name><value>RZ</value><color>RZ</color></variant></variants></product>
+    <product><title>Filtre</title><stock_code>HS4491-6324</stock_code><barcode>HS5083137840</barcode><stock>547</stock><sale_price>88.52</sale_price><currency>TL</currency><tax>20</tax>
+    <image_1>https://hepsicdn.com.tr/b.png</image_1><variants><variant><barcode>HS6754511399</barcode><stock>547</stock><price>88.52</price><name>Renk</name><value>Beyaz</value><color>Beyaz</color></variant></variants></product></products>`;
+  const { items } = findItems(new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }).parse(x));
+  const m = { ...mapping, "variants.variant.price": "cost_price" };
+  const [a, b] = itemsToGroups(items, m).map((g) => supplierPayload(g, { code: "hepsibayi", name: "Hepsibayi", sku_prefix: "HBY" } as any, new Set()).payload);
+  assert.ok(!a.variants[0].attributes?.Renk, JSON.stringify(a.variants[0]));
+  assert.equal(b.variants[0].attributes?.Renk, "Beyaz");
+  assert.equal(a.cost_price, 220.28);
+});

@@ -142,6 +142,8 @@ export function itemsToGroups(items: any[], mapping: Record<string, Field>): Gro
         else if (values[field] == null) values[field] = Array.isArray(v) ? v[0] : v;
       }
       if (el) { const pv = pairValues(el); if (pv.color && values.color == null) values.color = pv.color; if (pv.size && values.size == null) values.size = pv.size; }
+      // Renk yerine tutucu değer (Hepsibayi tek varyantlı üründe "RZ", 80 varyant): renk sayılmaz, pazaryerine "RZ" rengi gitmez
+      if (values.color != null && /^(rz|-|yok)$/i.test(values.color.trim())) delete values.color;
       rows.push({ row: i + 1, values, images });
     }
   });
