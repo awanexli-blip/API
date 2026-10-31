@@ -27,7 +27,7 @@ type Out = { belge_no: string | null; order_no: string | null; ok: boolean; reas
 const report: Out[] = [];
 
 const { data: rows, error } = await db.from("order_invoices")
-  .select("order_id, ettn, belge_no, amount, status, orders(marketplace, package_id, order_no, total, status, customer_name, order_lines(ty_discount))")
+  .select("order_id, ettn, belge_no, amount, status, error, orders(marketplace, package_id, order_no, total, status, customer_name, order_lines(ty_discount))")
   .eq("status", "signed").order("belge_no");
 if (error) throw new Error(error.message);
 let list = (rows ?? []).filter((r: any) => r.orders?.marketplace === "trendyol");
@@ -62,6 +62,8 @@ try {
     try {
       // 1) sistem içi tutarlılık
       if (!r.ettn || !r.belge_no) throw new Error("ETTN / belge no yok");
+      // Mükerrer denetimi (invoice-audit.ts) işaretlediyse: siparişin elle kesilmiş imzalı faturası da var, K hangisini iptal edeceğine karar verene kadar yüklenmez
+      if (/^MÜKERRER/.test(r.error ?? "")) throw new Error("mükerrer fatura: portalda elle kesilmiş imzalı fatura da var, biri iptal edilmeden yüklenmez");
       if (!o.customer_name) throw new Error("alıcı adı sistemde yok (silinmiş olabilir): elle yükle");
       if (BAD_STATUS.test(o.status ?? "")) throw new Error(`sipariş durumu ${o.status}`);
       const tyDisc = (o.order_lines ?? []).reduce((a: number, l: any) => a + (Number(l.ty_discount) || 0), 0);
