@@ -35,3 +35,26 @@ export const DEFAULT_BLOCKLIST = [
   "lamborghini", "fenerbahçe", "galatasaray", "beşiktaş", "trabzonspor", "fifa", "nba", "uefa", "staedtler", "parker", "stabilo", "crayola", "moleskine", "duracell", "energizer",
   "victorinox", "zippo", "smeg", "kitchenaid", "nespresso", "delonghi", "tchibo", "lavazza", "ikea", "ally", "duzzona", "uslion", "wiwu", "joyroom", "remax", "borofone", "spigen", "otterbox",
 ];
+
+// Uyumluluk ifadesi markasız yazılır (K, 31.10: "iOS uyumlu yerine tüm telefonlarla uyumlu"). YALNIZCA doğru olan dönüşümler:
+//   "Android ve iOS Uyumlu" / "iOS Android Windows Uyumlu" / "İos-Android" -> "Akıllı Telefon Uyumlu" (ürün iki sistemle de çalışıyor)
+//   "Android TV (Box)" -> "Akıllı TV (Box)"
+// Tek başına "Android Uyumlu" / "iPhone kılıfı" / "Android 7.1" dönüştürülmez (yalnızca o sistemle çalışan ürün; "tüm telefonlar" yanlış olur):
+// marka listesindeki "android" / "ios" ile gönderilmez.
+// Büyük harf başlıkta noktalı İ ("ANDROİD") ve noktasız ı da kabul (i bayrağı Türkçe İ/ı'yı katlamaz)
+const OS = String.raw`(?:[iİIı]\s?os|andro[iİIı]d)`;
+const SEP = String.raw`\s*(?:ve|ile|&|\/|-|,|\+)?\s*`;
+const PAIR = new RegExp(String.raw`(?<![\p{L}\d])${OS}(?:${SEP}(?:${OS}|windows|mac\s?os))+(?:\s+ile)?(?:\s+tüm\s+telefonlara)?(?:\s+(uyumlu|destekli|ile\s+uyumlu))?(?![\p{L}\d])`, "giu");
+const ATV = /(?<![\p{L}\d])andro[iİIı]d(\s+)(tv)(?![\p{L}\d])/giu;
+export function neutralizeCompat(text: string | null | undefined): string {
+  let s = String(text ?? "");
+  if (!s) return s;
+  s = s.replace(PAIR, (m: string, suffix?: string) => {
+    // Hem iOS hem Android geçmeli (ör. "Android, Windows" dönüşmez)
+    if (!/[iİIı]\s?os/iu.test(m) || !/andro[iİIı]d/iu.test(m)) return m;
+    const up = m === m.toLocaleUpperCase("tr");
+    const out = suffix ? `Akıllı Telefon ${/destekli/i.test(suffix) ? "Destekli" : "Uyumlu"}` : "Akıllı Telefon";
+    return up ? out.toLocaleUpperCase("tr") : out;
+  });
+  return s.replace(ATV, (_m, sp: string, tv: string) => `Akıllı${sp}${tv === "tv" ? "tv" : tv.toUpperCase() === tv ? "TV" : "Tv"}`);
+}

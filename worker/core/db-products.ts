@@ -10,7 +10,7 @@ import { salePriceOf } from "./sale-price.ts";
 import { contentChanges, fpOf, type ContentFp } from "./content-diff.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
-import { loadBrandMatcher } from "./brand-risk.ts";
+import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
 
 export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
@@ -244,6 +244,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const byId = new Map((ad.error ? [] : ad.data ?? []).filter((r: any) => r.draft).map((r: any) => [r.product_id, r.draft]));
         for (const p of products ?? []) if (byId.has(p.id)) p.description = byId.get(p.id);
       }
+      // Marka riski olan pazaryerinde (Trendyol/Amazon) uyumluluk ifadesi markasız: "Android ve iOS Uyumlu" -> "Akıllı Telefon Uyumlu" (brand-risk.ts).
+      // Tek sistemli ifade ("Android Uyumlu") kalır ve marka listesiyle gönderilmez
+      if (brandRisk) for (const p of products ?? []) { p.title = neutralizeCompat(p.title); if (p.description) p.description = neutralizeCompat(p.description); }
       const groups = new Map<string, NewProduct[]>(); // marka -> ürünler (adaptör çağrısı başına tek marka)
       // Yayındaki ilanı yeniden gönderme = değişen içeriğin güncellenmesi. Son gönderilen içeriğin izi (migration 068 yoksa canlı içerikle karşılaştırılır)
       const sentFp = new Map<string, ContentFp | null>();
