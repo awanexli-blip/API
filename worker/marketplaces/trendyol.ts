@@ -391,6 +391,14 @@ export function createTrendyol(): Marketplace {
           images: p.images.slice(0, 8).map((url: string) => ({ url: jpgUrl(url, undefined, "p") })), attributes,
         });
       }
+      // SEND_DRY=1: deneme; Trendyol'a hiçbir şey gönderilmez, gidecek olanın özeti yazılır (ilan "DENEME" nedeniyle hatalı işaretlenir)
+      if (process.env.SEND_DRY === "1") {
+        for (const x of payloads) {
+          console.log(`DENEME ${x.barcode} | ${x.title} | marka ${x.brandId} | kategori ${x.categoryId} | ${x.salePrice} TL | stok ${x.quantity} | KDV %${x.vatRate} | ${x.images.length} görsel | ${x.attributes.length} özellik`);
+          (res.failedItems ??= []).push({ id: x.barcode, reason: "DENEME: gönderilmedi (SEND_DRY)" });
+        }
+        return res;
+      }
       for (const batch of chunk(payloads, 100)) {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/v2/products`, { method: "POST", body: JSON.stringify({ items: batch }) });

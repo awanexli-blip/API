@@ -35,6 +35,7 @@ import type { InventoryItem, NewProduct } from "./marketplaces/types.ts";
 
 const mode = arg(process.argv[2], "preview", MODES, "mod");
 const marketplaceId = arg(process.argv[3] ?? process.env.MARKETPLACE, "trendyol", MARKETPLACES, "pazaryeri");
+const sendOnly = process.env.SEND_ONLY === "1";
 const trigger = process.env.TRIGGER ?? "manual";
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 // Trendyol dosya adı eskisi gibi kalır (panel/CLAUDE.md buna atıfta bulunuyor)
@@ -82,7 +83,7 @@ async function main() {
   const s = await loadSettings();
   if (s.enabled === false) return { skippedRun: `${marketplaceId} panelde kapalı` };
   // Satış durduruldu (panel): otomatik senkron kapalı olsa da çalışır; satıştaki her ilana stok 0, başka hiçbir şey yapılmaz
-  const paused = s.sales_paused === true && mode !== "preview";
+  const paused = s.sales_paused === true && mode !== "preview" && !sendOnly;
   if (!paused && mode === "auto" && trigger === "schedule" && !s.auto_sync) {
     return { skippedRun: "otomatik senkronizasyon kapalı" };
   }
@@ -101,8 +102,10 @@ async function main() {
     summary.listingsTable = await snapshotListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
     return summary;
   }
-  const doUpdate = mode === "update" || mode === "auto";
-  const doCreate = mode === "create" || (mode === "auto" && s.auto_create);
+  // SEND_ONLY=1 (sunucu denemesi; K, 31.10): yalnızca paneldeki "Pazaryerine gönder" kuyruğu işlenir. Stok/fiyat, eski ilan kaldırma, ret düzeltme,
+  // sipariş/takip, müşteri cevabı, otomatik yeniden deneme ÇALIŞMAZ (sunucu veritabanı Supabase kopyası: bunlar Supabase'de zaten yapılıyor, iki kez olmasın)
+  const doUpdate = !sendOnly && (mode === "update" || mode === "auto");
+  const doCreate = !sendOnly && (mode === "create" || (mode === "auto" && s.auto_create));
 
   const cfg = {
     commissionRate: Number(s.commission_rate), targetProfitRate: Number(s.target_profit_rate),
@@ -137,7 +140,7 @@ async function main() {
   const clean = (title: string, description: string) => (marketplaceId === "trendyol" ? cleanForMarketplace(title, description, banned) : { title, description });
 
   // Eski tedarikçi (BayilikXML) kaldırıldıysa XML okunmaz; ilanları arşivlenip silinir (aşağıda)
-  const raw = s.retire_legacy ? [] : await loadXml();
+  const raw = s.retire_legacy || sendOnly ? [] : await loadXml();
   {
     const c = csvCell;
     const dump = ["barcode;productCode;brand;category;quantity;price;currency;name"];
@@ -145,7 +148,7 @@ async function main() {
     writeFileSync("xml_dump.csv", "﻿" + dump.join("\n"), "utf8");
   }
   const listings = await mp.loadListings();
-  const retireRes = s.retire_legacy && (doUpdate || mode === "create") ? await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) })) : null;
+  const retireRes = s.retire_legacy && !sendOnly && (doUpdate || mode === "create") ? await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) })) : null;
   const existing = new Set<string>(listings.map((l) => l.id));
   const lsBy = new Map(listings.map((l) => [l.id, l]));
   // Çoklama koruması: yalnızca açık ilanlar (kapalı/arşiv ve kaldırılan eski tedarikçi ilanları sayılmaz), tam başlık
@@ -380,7 +383,7 @@ async function main() {
 
   // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında): BayilikXML (OS13-) ve veritabanı ürünleri (Toptancım vb.;
   // 27.10'a kadar yalnızca OS13- bakılıyordu, Toptancım retleri hiç ele alınmıyordu)
-  if ((doUpdate || mode === "create") && mp.updateRejected) {
+  if (!sendOnly && (doUpdate || mode === "create") && mp.updateRejected) {
     const rejected = listings.filter((l) => l.reject);
     // Veritabanı ürünlerinin başlık/açıklama/görselleri (görsel retinde yeniden gönderilir)
     const dbBy = new Map<string, { title: string; description: string; images: string[] }>();
@@ -422,7 +425,7 @@ async function main() {
     }
   }
   // Günlük satış özeti (saatte bir, son 35 gün; salt okunur): fiyat değişikliğinin satışa etkisi panelde ölçülür
-  if (mp.salesDaily && (new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1")) {
+  if (!sendOnly && mp.salesDaily && (new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1")) {
     try {
       const rows = await mp.salesDaily(Date.now() - 35 * 86400000, Date.now());
       const now = new Date().toISOString();
@@ -431,7 +434,7 @@ async function main() {
     } catch (e: any) { summary.sales = { error: String(e?.message ?? e).slice(0, 300) }; }
   }
   // Siparişler (Faz 6 F2, salt okunur): her çalışmada son 3 gün, saatte bir son 14 gün; kişisel veri yok
-  if (mp.fetchOrders && mode !== "preview") {
+  if (!sendOnly && mp.fetchOrders && mode !== "preview") {
     const full = new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1";
     const since = new Date().toISOString();
     summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 30 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
@@ -453,7 +456,7 @@ async function main() {
     if (Array.isArray(summary.descriptions?.batchIds)) summary.batchIds.push(...summary.descriptions.batchIds);
   }
   // Müşteri soruları (F7): çek, taslak, Telegram; yalnızca onaylı cevaplar gönderilir
-  if (mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+  if (!sendOnly && mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
   // Onaylı ilanlardan öğrenilen özellikler ürün kaydına (her modda; yalnızca veritabanına yazar)
   summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
@@ -465,13 +468,13 @@ async function main() {
   if (mp.findCatalogMatches) summary.matchJobs = await processMatchJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => ({ error: String(e?.message ?? e) }));
   // Paneldeki "Pazaryerine gönder" kuyruğu (yalnızca yazma modlarında)
   let sendRes: Awaited<ReturnType<typeof processSendJobs>> | null = null;
-  if (doUpdate || mode === "create") {
+  if (doUpdate || mode === "create" || sendOnly) {
     sendRes = await processSendJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => { summary.sendJobsError = String(e?.message ?? e); return null; });
     if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
     summary.attrOptions = await flushAttrOptions(db).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     // Eksik zorunlu özellikler yapay zekâ ile (başlık + açıklama, pazaryerinin değer listesinden); eksiği kalmayan yeniden gönderilir
-    if (marketplaceId !== "amazon") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
-    if (s.auto_sync && marketplaceId !== "amazon") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
+    if (!sendOnly && marketplaceId !== "amazon") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+    if (!sendOnly && s.auto_sync && marketplaceId !== "amazon") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
   }
 
   if (doUpdate) {
@@ -593,7 +596,7 @@ async function main() {
     const summary: any = await main();
     const status = summary.skippedRun ? "skipped" : summary.failedBatches > 0 || summary.batchCheck?.failedItems > 0 ? "partial" : "ok";
     // Telegram uyarıları (iade, iptal, kargo süresi, senkron sorunu, veritabanı boyutu, günlük özet); önizlemede gönderilmez
-    if (mode !== "preview" && !summary.skippedRun && marketplaceId !== "amazon") summary.alerts = await runAlerts(db, { id: marketplaceId, label: marketplaceId === "trendyol" ? "Trendyol" : "Hepsiburada" }, summary, status).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+    if (!sendOnly && mode !== "preview" && !summary.skippedRun && marketplaceId !== "amazon") summary.alerts = await runAlerts(db, { id: marketplaceId, label: marketplaceId === "trendyol" ? "Trendyol" : "Hepsiburada" }, summary, status).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     await db.from("sync_runs").update({ status, finished_at: new Date().toISOString(), summary }).eq("id", id);
     console.log(JSON.stringify(summary, null, 1));
   } catch (e: any) {

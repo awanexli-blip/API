@@ -271,6 +271,14 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("ret: önizlemede gönderim yok", !p.calls.trendyolWrites.some((w) => w.path.endsWith("unapproved-bulk-update")));
 }
 
+// 9b) SEND_ONLY (sunucu denemesi): stok/fiyat, ürün açma (XML), cevap, takip yazılmaz
+{
+  const p = run("auto", { SEND_ONLY: "1" });
+  check("SEND_ONLY: stok/fiyat gönderilmez", !p.calls.trendyolWrites.some((w) => w.path.includes("price-and-inventory")));
+  check("SEND_ONLY: XML'den ürün açılmaz", !p.calls.trendyolWrites.some((w) => w.path.includes("/v2/products")));
+  check("SEND_ONLY: soru cevabı / takip / silme yok", !p.calls.trendyolWrites.some((w) => /answers|tracking|delete|archive/i.test(w.path)));
+}
+
 // 10) birim testleri
 for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts", "desc-check.test.ts", "research.test.ts", "sale-price.test.ts", "content-diff.test.ts", "deps.test.ts", "trendyol-cargo.test.ts", "holds.test.ts", "brand-pick.test.ts", "compat.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
