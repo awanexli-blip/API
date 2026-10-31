@@ -1,0 +1,42 @@
+name: Sunucu sağlık kontrolü
+
+# Sunucuyu DIŞARIDAN yoklar (docs/SUNUCU_PLAN.md §3): sunucu tamamen kapanırsa kendi uyarısını gönderemez.
+# 10 dakikada bir giriş servisi + veritabanı API'si + panel; 3 deneme (1 dk arayla) de başarısızsa Telegram.
+# Uyarı yalnızca sunucu ana sistemken (ACTIVE_SITE=sunucu) gönderilir; öncesinde sonuç yalnızca bu sayfada görünür.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Yokla
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ACTIVE: ${{ vars.ACTIVE_SITE }}
+        run: |
+          probe() {
+            a=$(curl -s -m 20 -o /dev/null -w '%{http_code}' https://trentakip.duckdns.org/auth/v1/health)
+            r=$(curl -s -m 20 -o /dev/null -w '%{http_code}' https://trentakip.duckdns.org/rest/v1/)
+            p=$(curl -s -m 20 -o /dev/null -w '%{http_code}' https://trentakip.duckdns.org/)
+            echo "giriş $a · veri $r · panel $p"
+            [ "$a" = 200 ] && [ "$r" != 000 ] && [ "$r" -lt 500 ] && { [ "$ACTIVE" != sunucu ] || [ "$p" -lt 500 ]; }
+          }
+          for i in 1 2 3; do probe && exit 0; sleep 60; done
+          echo "::error::Sunucu yanıt vermiyor"
+          if [ "$ACTIVE" = sunucu ] && [ -n "$TG_TOKEN" ]; then
+            curl -s -o /dev/null "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" --data-urlencode "chat_id=${TG_CHAT}" \
+              --data-urlencode "text=🚨 Sunucu yanıt vermiyor (3 deneme). Yapılacaklar: docs/SUNUCU_PLAN.md §4 — önce Cenuta panelinden yeniden başlat, açılmazsa GitHub ACTIVE_SITE=github + Yedeğe geç."
+          fi
+          exit 1

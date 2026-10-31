@@ -21,6 +21,8 @@ permissions:
 
 jobs:
   score:
+    # Sunucu ana sistemken (docs/SUNUCU_PLAN.md) zamanlı çalışma sunucuda; burada yalnızca elle / çökmede (ACTIVE_SITE=github)
+    if: github.event_name != 'schedule' || vars.ACTIVE_SITE != 'sunucu'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

@@ -21,7 +21,8 @@ concurrency:
 
 jobs:
   draft:
-    if: vars.DESC_ENABLED != '0'
+    # Sunucu ana sistemken zamanlı çalışma sunucuda (docs/SUNUCU_PLAN.md)
+    if: vars.DESC_ENABLED != '0' && (github.event_name != 'schedule' || vars.ACTIVE_SITE != 'sunucu')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
