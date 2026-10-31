@@ -20,6 +20,8 @@ test("kapsam dışı: oyuncak, bijuteri, elektronik, spor ayakkabı, düzenleyic
     assert.ok(!ok(c), c);
   assert.ok(!ok("", "Oyuncak Mikser Seti Çocuk"), "oyuncak mikser");
   assert.ok(!ok("", "Blender Yedek Bıçağı"), "yedek parça");
+  assert.ok(!ok("Blender", "Ergonomik El Blenderı Paslanmaz Çelik Metal Blender Ayağı"), "blender ayağı");
+  assert.ok(!ok("Tüy Toplayıcı", "Evcil Hayvan Tüyü ve Tiftik Temizleyici Top"), "elektriksiz tüy topu");
   assert.ok(!ok("Bluetooth Hoparlör", "Saç Kurutma Makinesi Görünümlü Hoparlör"), "dışlama önce gelir değil: kategori hoparlör");
   assert.ok(!ok("", ""), "boş");
 });

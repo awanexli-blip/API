@@ -11,7 +11,7 @@ const APPLIANCE = /(tıraş makinesi|traş makinesi|saç düzleştirici|saç ma�
 const OUTERWEAR = /((?<![\p{L}])mont(?![\p{L}])|kaban|palto|anorak|(?<![\p{L}])ceket|takım elbise|pantolon|(?<![\p{L}])şort|trençkot|parka|blazer)/iu;
 const SHOES = /(ayakkabı|(?<![\p{L}])bot(?![\p{L}])|çizme|terlik|sandalet|babet|loafer|topuklu|oxford|makosen)/iu;
 // Aynı kelimeyi taşıyan ama kapsam dışı ürünler: oyuncak/süs, düzenleyici, manuel alet, spor ayakkabı, tekstil terlik, radyo/TV/fotoğraf
-const EXCLUDE = /(oyuncak|figür|maket|minyatür|anahtarlık|kolye|küpe|bileklik|kostüm|kılıf|sticker|magnet|düzenleyici|organizer|ayakkabılık|çakmağı|fırçası ve süpürge|bardaklık|sıcak su torbası|sneaker|spor ayakkabı|koşu ayakkabısı|yürüyüş ayakkabısı|ev terliği|panduf|patik|çorap|radyo|televizyon|(?<![\p{L}])tv(?![\p{L}])|fotoğraf|kamera|yedek parça|aparatı|bıçağı|filtresi|başlığı|kablosu)/iu;
+const EXCLUDE = /(oyuncak|figür|maket|minyatür|anahtarlık|kolye|küpe|bileklik|kostüm|kılıf|sticker|magnet|düzenleyici|organizer|ayakkabılık|çakmağı|fırçası ve süpürge|bardaklık|sıcak su torbası|sneaker|spor ayakkabı|koşu ayakkabısı|yürüyüş ayakkabısı|ev terliği|panduf|patik|çorap|radyo|televizyon|(?<![\p{L}])tv(?![\p{L}])|fotoğraf|kamera|yedek parça|aparatı|bıçağı|filtresi|başlığı|kablosu|ayağı|temizleyici top)/iu;
 
 export function inScope(x: { cat?: string | null; title?: string | null }): ScopeResult {
   // Türkçe küçük harf: "Araç İçi Süpürge" (i bayrağı İ/ı'yı katlamaz)
