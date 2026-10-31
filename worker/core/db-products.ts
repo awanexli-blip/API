@@ -180,6 +180,16 @@ async function upsertListings(db: any, rows: any[]) {
   for (const part of by.values()) await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
 }
 
+// Tedarikçi markası birden çok olabilir ("Eco Lounge|Genel Markalar|TCX"; K, 31.10 Hepsibayi): ürün koduna göre SABİT seçim
+// (aynı ürün her gönderimde ve tüm varyantlarında aynı marka; markalar ürünlere yaklaşık eşit dağılır)
+export function pickBrand(spec: string, sku: string): string {
+  const list = String(spec ?? "").split("|").map((x) => x.trim()).filter(Boolean);
+  if (list.length <= 1) return list[0] ?? "";
+  let h = 2166136261;
+  for (const ch of String(sku ?? "")) { h ^= ch.codePointAt(0)!; h = Math.imul(h, 16777619) >>> 0; }
+  return list[h % list.length];
+}
+
 export type SendResult = { jobs: number; sent: number; errors: number; batchIds: string[]; keys: Map<string, number> };
 
 export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendResult> {
@@ -367,7 +377,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const fromSupplier = String(p.source ?? "").startsWith("xml:");
           // "*" = her ürün XML'deki kendi markasıyla (tedarikçi markalarını kullanma yetkisi var; K, 25.10 Royal Tedarik)
           const sb = fromSupplier ? supBrand.get(p.source) ?? "" : "";
-          const brand = fromSupplier ? (sb === "*" ? String(p.brand ?? "").trim().slice(0, 100) : sb) : (await brandOk(p.brand)) ? p.brand : "";
+          const brand = fromSupplier ? (sb === "*" ? String(p.brand ?? "").trim().slice(0, 100) : pickBrand(sb, p.sku)) : (await brandOk(p.brand)) ? p.brand : "";
           if (fromSupplier && !brand) { fail(key, p, v, "Ürünün XML'de markası yok (tedarikçi ayarı: kendi markası)"); continue; }
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
