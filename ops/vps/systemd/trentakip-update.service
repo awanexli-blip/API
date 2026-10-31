@@ -1,5 +1,5 @@
 [Unit]
-Description=Trentakip: kodu GitHub main'den güncelle (yalnızca ileri sarma; değişince bağımlılıklar)
+Description=Trentakip: kodu GitHub main'den güncelle (yalnızca ileri sarma; değişince bağımlılıklar ve panel)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,5 +7,7 @@ Wants=network-online.target
 Type=oneshot
 User=trentakip
 WorkingDirectory=/opt/trentakip
-ExecStart=/bin/sh -c 'old=$(git rev-parse HEAD); git pull -q --ff-only && new=$(git rev-parse HEAD); if [ "$old" != "$new" ] && ! git diff --quiet "$old" "$new" -- worker/package-lock.json; then npm ci --prefix worker --no-audit --no-fund --silent; fi; echo "kod: $(git rev-parse --short HEAD)"'
-TimeoutStartSec=10min
+ExecStart=/bin/bash /opt/trentakip/ops/vps/update.sh
+# Panel yeniden derlendiyse yeniden başlat (root)
+ExecStartPost=+/bin/sh -c 'if [ -f /opt/trentakip/.panel-restart ]; then rm -f /opt/trentakip/.panel-restart; systemctl restart trentakip-panel.service; fi'
+TimeoutStartSec=20min

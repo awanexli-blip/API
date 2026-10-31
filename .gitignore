@@ -15,3 +15,7 @@ kaynaklar/
 
 # Pazaryeri dökümleri (müşteri/sipariş verisi, depo herkese açık)
 kesintiler/
+
+# Sunucu paneli (ops/vps/panel-build.sh)
+.next-*
+.panel-restart
