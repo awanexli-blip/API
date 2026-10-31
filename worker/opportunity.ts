@@ -19,7 +19,8 @@ export function scoreOf(x: { net: number; margin: number; stock: number; sold7: 
   const parts: Record<string, number> = {
     kar: r2(clamp(x.net / 120) * 25),
     marj: r2(clamp(x.margin / 0.3) * 5),
-    stok: r2(clamp(Math.log10(Math.max(1, x.stock)) / 3) * 15),
+    // 100 adette doyar (01.11: Hepsibayi 4.999 / 14.999 gibi sanal stoklarla gerçek stoklu tedarikçinin önüne geçiyordu)
+    stok: r2(clamp(Math.log10(Math.max(1, x.stock)) / 2) * 15),
     satis: r2(clamp(Math.log10(x.sold7 + 1) / 2) * 30),
     fiyat: x.price >= 120 && x.price <= 700 ? 10 : x.price > 700 && x.price <= 1500 ? 6 : x.price < 120 ? 4 : 2,
     icerik: (x.images >= 3 ? 5 : x.images >= 2 ? 3 : 0) + (x.descLen >= 150 ? 3 : 0),
