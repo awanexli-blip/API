@@ -1,0 +1,8 @@
+[Unit]
+Description=Trentakip tedarikçi içe aktarma (saatte bir, :45)
+
+[Timer]
+OnCalendar=*-*-* *:45:00
+
+[Install]
+WantedBy=timers.target

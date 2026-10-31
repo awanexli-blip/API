@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip senkron %i (15 dakikada bir; :07 :22 :37 :52)
+
+[Timer]
+OnCalendar=*-*-* *:07,22,37,52:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

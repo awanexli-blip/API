@@ -1,0 +1,16 @@
+# Sunucu ana sistemken tüm tedarikçilerin içe aktarması (gece/nightly işaretli olanlar; runner=vps olanlar trentakip-supplier-vps'de).
+# GEÇİŞTE açılır; öncesinde KAPALI (Toptancım'ı GitHub Actions Supabase'e aktarıyor).
+[Unit]
+Description=Trentakip: tedarikçi içe aktarma (tümü, sunucu veritabanı)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=trentakip
+WorkingDirectory=/opt/trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+Environment=ACTOR=sunucu-ice-aktarma
+ExecStart=/bin/sh -c "SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=2500 exec /usr/bin/node --experimental-strip-types worker/import-xml.ts nightly"
+TimeoutStartSec=90min
+Nice=10

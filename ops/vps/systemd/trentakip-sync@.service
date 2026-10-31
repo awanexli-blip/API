@@ -1,0 +1,16 @@
+# Sunucu ana sistemken senkron (docs/SUNUCU_PLAN.md): örnek adı pazaryeri (trentakip-sync@trendyol, @hepsiburada).
+# GEÇİŞTE açılır (systemctl enable --now trentakip-sync@trendyol.timer ...); öncesinde KAPALI (canlıyı Supabase + GitHub yönetiyor).
+[Unit]
+Description=Trentakip: senkron %i (sunucu veritabanı)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=trentakip
+WorkingDirectory=/opt/trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+Environment=TRIGGER=schedule ACTOR=sunucu-senkron
+ExecStart=/bin/sh -c "SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=1800 exec /usr/bin/node --experimental-strip-types worker/sync.ts auto %i"
+TimeoutStartSec=45min
+Nice=5
