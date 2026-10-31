@@ -11,6 +11,8 @@ import { geminiEnabled, geminiJson, GeminiQuotaError } from "./gemini.ts";
 import { checkDescription, stripTags } from "./desc-check.ts";
 import { loadBrandMatcher } from "./brand-risk.ts";
 import { readAll } from "./util.ts";
+import { createHash } from "node:crypto";
+const md5 = (t: string) => createHash("md5").update(t).digest("hex"); // desc_candidates ile aynı özet (md5(başlık|açıklama))
 import { researchProduct, type Fact } from "./research.ts";
 
 const Draft = z.object({ html: z.string(), confident: z.boolean(), notes: z.string() });
@@ -78,10 +80,15 @@ export async function composeDescription(c: Cand, facts: Fact[], ctx: { brandMat
   return { status: "ready", html: chk.html, notes: d.notes.slice(0, 300) };
 }
 
-export async function draftDescriptions(db: any, opts: { max?: number } = {}) {
+// productIds: yalnızca bu ürünler (gönderilecek deneme ürünleri; K, 01.11). DESC_AUTO_APPROVE=1: üç aşamadan geçen taslak panel onayı
+// beklemeden "approved" olur ve gönderimde tedarikçi metninin yerine gider (K: "%80 doğruluk olanlara açıklama eklesin")
+export async function draftDescriptions(db: any, opts: { max?: number; productIds?: string[] } = {}) {
   const out: Record<string, any> = { provider: claudeOn() ? "claude" : geminiEnabled() ? "gemini" : null, candidates: 0, ready: 0, skipped: 0, errors: 0, reasons: {} as Record<string, number> };
   if (!descEnabled()) return { ...out, skippedRun: "yapay zekâ anahtarı yok (ANTHROPIC_API_KEY / GEMINI_API_KEY)" };
-  const { data: cands, error } = await db.rpc("desc_candidates", { p_limit: opts.max ?? 20 });
+  const { data: cands, error } = opts.productIds?.length
+    ? await db.from("products").select("id, title, description, brand, category, attributes, product_images(url, position)").in("id", opts.productIds.slice(0, opts.max ?? 200)).eq("status", "active")
+      .then((r: any) => ({ error: r.error, data: (r.data ?? []).map((p: any) => ({ ...p, source_hash: md5(`${p.title ?? ""}|${p.description ?? ""}`), image_url: [...(p.product_images ?? [])].sort((a: any, b: any) => a.position - b.position)[0]?.url ?? null })) }))
+    : await db.rpc("desc_candidates", { p_limit: opts.max ?? 20 });
   if (error) return { ...out, skippedRun: /desc_candidates/.test(error.message) ? "migration 067 uygulanmamış" : error.message };
   out.candidates = cands?.length ?? 0;
   if (!out.candidates) return out;
@@ -109,7 +116,9 @@ export async function draftDescriptions(db: any, opts: { max?: number } = {}) {
       if (titleOnly(c) && !facts.length) { await skip(`kaynak bilgi yok: tedarikçi açıklaması başlığın kopyası${base.research?.status ? `, araştırma: ${base.research.status}` : ""}`); continue; }
       const r = await composeDescription(c, facts, { brandMatch, banned, forbidden: foreign });
       if (r.status === "skipped") { await skip(r.reason, r.checks); continue; }
-      const { error: we } = await db.from("product_descriptions").upsert({ ...base, status: "ready", draft: r.html, reason: null, checks: { rules: [], unsupported: [], notes: r.notes } });
+      const auto = process.env.DESC_AUTO_APPROVE === "1";
+      const { error: we } = await db.from("product_descriptions").upsert({ ...base, status: auto ? "approved" : "ready", draft: r.html, reason: null, checks: { rules: [], unsupported: [], notes: r.notes },
+        ...(auto ? { decided_at: now, decided_by: "otomatik (taslak + kural kontrolü + doğrulama geçti)" } : {}) });
       if (we) { out.errors++; out.lastError = we.message.slice(0, 200); continue; }
       out.ready++;
     } catch (e: any) {

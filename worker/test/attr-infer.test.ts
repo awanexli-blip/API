@@ -52,6 +52,10 @@ const ask = [{ name: "Malzeme", opt: { values: ["Peluş", "Plastik"], custom: fa
 const acc = acceptValues(ask, { values: [{ name: "malzeme", value: "PELUŞ", basis: "baslik" }, { name: "Renk", value: "Pembe", basis: "baslik" }, { name: "Yaş", value: "Yetişkin", basis: "cikarim" }] });
 const okAcc = acc.Malzeme === "Peluş" && acc.Renk === "Pembe" && !("Yaş" in acc);
 console.log(`${okAcc ? "OK  " : "HATA"} yapay zekâ değeri listeyle doğrulanır`); if (!okAcc) fails++;
+// Güven eşiği (K, 01.11 "%80 doğruluk"): 0,8 altı yazılmaz; güven verilmemişse (eski yanıt) eşik uygulanmaz
+const conf = acceptValues(ask, { values: [{ name: "Malzeme", value: "Plastik", basis: "fotograf", confidence: 0.6 }, { name: "Renk", value: "Siyah", basis: "fotograf", confidence: 0.9 }] });
+const okConf = !("Malzeme" in conf) && conf.Renk === "Siyah";
+console.log(`${okConf ? "OK  " : "HATA"} güveni 0,8 altı değer yazılmaz`); if (!okConf) fails++;
 
 // Varyant değeri eş anlamlı özellik adına (panelde "Beden: 42" -> Trendyol/HB "Numara")
 const dv = { Beden: "42", Renk: "Siyah", "Menşei": "TR" };
