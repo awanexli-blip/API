@@ -21,7 +21,7 @@ N=$(count_tables "$F")
 [ "$N" -gt 50 ] || { tg "🚨 Sunucu yedeği doğrulanamadı ($(date +%F)): içinde $N tablo"; exit 1; }
 
 # Supabase (geçişe kadar canlı sistem) yedeği: GitHub backup.yml secret'ları eklenene kadar canlı veri yedeksiz kalmasın (01.11).
-# Yalnızca okur (pg_dump; Supabase'e yazmaz). public şeması + kullanıcılar (auth.users/identities verisi; mirror.sh ile aynı kapsam).
+# Yalnızca okur (pg_dump; Supabase'e yazmaz). Doğrulama eşiği 30 tablo (Supabase public 44; sunucu tüm DB 73). public şeması + kullanıcılar (auth.users/identities verisi; mirror.sh ile aynı kapsam).
 NS=0
 if [ -n "${SUPABASE_DB_URL:-}" ]; then
   FS="$DIR/supabase-$(date +%F).dump.gpg"
@@ -29,7 +29,7 @@ if [ -n "${SUPABASE_DB_URL:-}" ]; then
     | gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-fd 3 -o "$FS.tmp" 3<<<"$BACKUP_PASSPHRASE"
   mv "$FS.tmp" "$FS"
   NS=$(count_tables "$FS")
-  [ "$NS" -gt 50 ] || { tg "🚨 Supabase (canlı) yedeği doğrulanamadı ($(date +%F)): içinde $NS tablo"; exit 1; }
+  [ "$NS" -gt 30 ] || { tg "🚨 Supabase (canlı) yedeği doğrulanamadı ($(date +%F)): içinde $NS tablo"; exit 1; }
 fi
 
 find "$DIR" -name '*.dump.gpg' -mtime +7 -delete
