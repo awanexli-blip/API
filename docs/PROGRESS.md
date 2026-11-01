@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-01 (59) — Yıldızlı toplu gönderim (Trendyol, sunucudan)
+- K: "deneme başarılıysa 10 numaradan başlayarak ~45 bine kadar gönder". Deneme 38/38 onaylı -> yıldız 10..1 (1.359 ürün) kuyruğa, iki kuru çalışma (`SEND_DRY`), sonra gerçek: **1.136 gönderildi**, 30 paket, `failedBatches` 0, Trendyol `batchCheck` 0 hatalı öğe. Trendyol toplam ~23,3 bin ilan (sınır 45 bin, bol yer).
+- Kuru çalışmada bulunan: başlıktan tahmin edilen kategori yanlış ("Fermuarlı Bot" -> Fermuar, "Tokalı Ayakkabı" -> Toka). Düzeltme `inScopeForSend`: gönderimde pazaryeri kategorisinin kendisi de kapsamda olmalı; kategori-yalnız hariç kelimeler (klima temizleyici, ütü bezi/masası, oto kokusu, aksesuar, hortum, tabanlık), izinliye Türk kahvesi makinesi, dik süpürge, IPL epilasyon. Testli.
+- Gönderilmeyen 229: yanlış kategori (Fermuar 52, Toka 28 ...), Trendyol kategorisi eşlenmemiş (topuklu ayakkabı 46), zorunlu özellik eksik (~45). Panel -> Gönderilemeyenler (kategori önerisi var).
+- `trentakip-sync-vps@trendyol.timer` açık (15 dk): yalnızca sunucu tedarikçilerinin ilanları, stok/fiyat + onay durumu + kuyruk.
+- HB gönderimi bekliyor: HB kimlik bilgileri sunucuda yok.
+
 ## 2026-11-01 (58) — Faaliyet kapsamı, yeni tedarikçiler sunucuda, deneme gönderimi, sunucu ana sistem hazırlığı
 - **Faaliyet kapsamı** (K: vergi dairesi kodları 475401 ev aleti/beyaz eşya, 477104 dış giyim, 477201 ayakkabı/terlik dışında satış yok): `lib/scope.ts` + testler; `app_state.scope_filter=on` (Supabase ve sunucu) -> kapsam dışı ilan stoğu 0, gönderilmez. Trendyol stoklu satışta 16.749 -> 774, HB 233. Kapatma: app_state değeri "off". K'ya öneri: muhasebeciyle internet satış kodu (NACE 47.91).
 - **Yeni tedarikçiler yalnızca sunucuda** (K: "Supabase'e hiçbir şey ekleme"): Hepsibayi (13.798, saatte 1) ve Bezos (95.726, KDV hariç varsayıldı, menşei TR K kararı) sunucu veritabanında; `trentakip-supplier-vps` drop-in ile yalnızca sunucu DB. Panelden Supabase'e eklenen hepsibayi tedarikçisi 13.804 ürün yazmıştı (+48 MB, deneme ilanlarının stoğunu 0 yapıyordu: maliyet boş) -> K onayıyla silindi (audit kayıtları silinmedi: izin yok).
