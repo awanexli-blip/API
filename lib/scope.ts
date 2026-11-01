@@ -7,17 +7,20 @@
 export type ScopeGroup = "ev_aleti" | "dis_giyim" | "ayakkabi";
 export type ScopeResult = { ok: boolean; group?: ScopeGroup; reason?: string };
 
-const APPLIANCE = /(tıraş makinesi|traş makinesi|saç düzleştirici|saç maşası|saç kurutma|fön makinesi|epilatör|hava nemlendirici|hava temizleyici|vantilatör|elektrikli ısıtıcı|(?<![\p{L}])ısıtıcı(?![\p{L}])|klima|halı yıkama|elektrikli süpürge|dikey süpürge|robot süpürge|araç içi süpürge|şarjlı süpürge|tüy toplayıcı|kahve makinesi|çay makinesi|blender|mikser|doğrayıcı|rondo|mutfak robotu|tost makinesi|ekmek kızartma|kettle|su ısıtıcı|(?<![\p{L}])ütü(?![\p{L}])|buharlı ütü|fritöz|airfryer|air fryer|buzdolabı|çamaşır makinesi|kurutma makinesi|bulaşık makinesi|mikrodalga|mini fırın|elektrikli fırın|ankastre|elektrikli ocak|meyve sıkacağı|narenciye sıkacağı|katı meyve|waffle makinesi|yoğurt makinesi|elektrikli öğütücü|elektrikli kahve öğütücü|derin dondurucu|şofben|termosifon|izgara makinesi|el blender)/iu;
+const APPLIANCE = /(tıraş makinesi|traş makinesi|saç düzleştirici|saç maşası|saç kurutma|fön makinesi|epilatör|epilasyon aleti|epilasyon cihazı|hava nemlendirici|hava temizleyici|vantilatör|elektrikli ısıtıcı|(?<![\p{L}])ısıtıcı(?![\p{L}])|klima|halı yıkama|elektrikli süpürge|dikey süpürge|dik süpürge|robot süpürge|araç içi süpürge|şarjlı süpürge|tüy toplayıcı|kahve makinesi|kahvesi makinesi|çay makinesi|blender|mikser|doğrayıcı|rondo|mutfak robotu|tost makinesi|ekmek kızartma|kettle|su ısıtıcı|(?<![\p{L}])ütü(?![\p{L}])|buharlı ütü|fritöz|airfryer|air fryer|buzdolabı|çamaşır makinesi|kurutma makinesi|bulaşık makinesi|mikrodalga|mini fırın|elektrikli fırın|ankastre|elektrikli ocak|meyve sıkacağı|narenciye sıkacağı|katı meyve|waffle makinesi|yoğurt makinesi|elektrikli öğütücü|elektrikli kahve öğütücü|derin dondurucu|şofben|termosifon|izgara makinesi|el blender)/iu;
 const OUTERWEAR = /((?<![\p{L}])mont(?![\p{L}])|kaban|palto|anorak|(?<![\p{L}])ceket|takım elbise|pantolon|(?<![\p{L}])şort|trençkot|parka|blazer)/iu;
 const SHOES = /(ayakkabı|(?<![\p{L}])bot(?![\p{L}])|çizme|terlik|sandalet|babet|loafer|topuklu|oxford|makosen)/iu;
 // Aynı kelimeyi taşıyan ama kapsam dışı ürünler: oyuncak/süs, düzenleyici, manuel alet, spor ayakkabı, tekstil terlik, radyo/TV/fotoğraf
-const EXCLUDE = /(oyuncak|figür|maket|minyatür|anahtarlık|kolye|küpe|bileklik|kostüm|kılıf|sticker|magnet|düzenleyici|organizer|ayakkabılık|çakmağı|fırçası ve süpürge|bardaklık|sıcak su torbası|sneaker|spor ayakkabı|koşu ayakkabısı|yürüyüş ayakkabısı|ev terliği|panduf|patik|çorap|radyo|televizyon|(?<![\p{L}])tv(?![\p{L}])|fotoğraf|kamera|yedek parça|aparatı|bıçağı|filtresi|başlığı|kablosu|ayağı|temizleyici top|rafı|dolabı|değirmen|kemer|hayatta kalma|granit tost|klima temizle|ütü masası|ütü bezi|ütü altlığı|aksesuarı|kokusu|koku giderici|sprey|hortumu|kurutmalık|boyası)/iu;
+const EXCLUDE = /(oyuncak|figür|maket|minyatür|anahtarlık|kolye|küpe|bileklik|kostüm|kılıf|sticker|magnet|düzenleyici|organizer|ayakkabılık|çakmağı|fırçası ve süpürge|bardaklık|sıcak su torbası|sneaker|spor ayakkabı|koşu ayakkabısı|yürüyüş ayakkabısı|ev terliği|panduf|patik|çorap|radyo|televizyon|(?<![\p{L}])tv(?![\p{L}])|fotoğraf|kamera|yedek parça|aparatı|bıçağı|filtresi|başlığı|kablosu|ayağı|temizleyici top|rafı|dolabı|değirmen|kemer|hayatta kalma|granit tost)/iu;
+// Yalnızca KATEGORİ adında aranır (başlıkta geçebilir: "Spreyli Masa Fanı", "Oda Kokusu Difüzörlü Nemlendirici" kapsamda)
+const EXCLUDE_CAT = /(klima temizle|ütü masası|ütü bezi|ütü altlığı|aksesuarı|kokusu|koku giderici|sprey|hortum|kurutmalık|boyası|tabanlık)/iu;
 
 export function inScope(x: { cat?: string | null; title?: string | null }): ScopeResult {
   // Türkçe küçük harf: "Araç İçi Süpürge" (i bayrağı İ/ı'yı katlamaz)
   const cat = String(x.cat ?? "").toLocaleLowerCase("tr"), title = String(x.title ?? "").toLocaleLowerCase("tr");
   const text = `${cat} ${title}`;
   if (EXCLUDE.test(text)) return { ok: false, reason: `kapsam dışı (${text.match(EXCLUDE)?.[0] ?? ""})` };
+  if (EXCLUDE_CAT.test(cat)) return { ok: false, reason: `kapsam dışı (${cat.match(EXCLUDE_CAT)?.[0] ?? ""})` };
   // Kategori varsa YALNIZCA kategori (kesin; başlıktaki kelime yanıltmasın: "Saç Kurutma Makinesi Görünümlü Hoparlör"), yoksa başlık
   const s = cat.trim() ? cat : title;
   if (APPLIANCE.test(s)) return { ok: true, group: "ev_aleti" };

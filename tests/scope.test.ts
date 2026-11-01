@@ -45,3 +45,9 @@ test("gönderim: pazaryeri kategorisi de izinli olmalı (yanlış kategoride aç
   for (const [c, t] of [["Klima Temizleyici", "Klima Temizleyici Sprey 150 ml"], ["Ütü Masası ve Aksesuarı", "Teflon Ev Ütü Altlığı"], ["Oto Kokusu", "Vanilla Oto Araç Kokusu"], ["Süpürge Aksesuarı", "Modern Süpürge Hortumu"]])
     assert.ok(!inScopeForSend("Ev Aletleri", c, t).ok, t);
 });
+
+test("başlıkta sprey/oda kokusu geçen elektrikli ürün kapsamda; yeni izinli kategoriler", () => {
+  assert.ok(inScopeForSend("Elektrikli Ev Aletleri", "Hava Nemlendirici", "Aromatik Oda Kokusu Difüzörü LED Işıklı Nemlendirici").ok);
+  assert.ok(inScopeForSend("Elektrikli Ev Aletleri", "Vantilatör", "RGB Işıklı Spreyli Masa Fanı").ok);
+  for (const c of ["Türk Kahvesi Makinesi", "Dik Süpürge", "IPL Lazer Epilasyon Aleti"]) assert.ok(inScopeForSend("Elektrikli Ev Aletleri", c, "x").ok, c);
+});
