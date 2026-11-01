@@ -85,9 +85,9 @@ async function main() {
       const pcfg = applyRules(cfg, rules, { cost, supplier: code, category: p.category, brand: p.brand, stock }).cfg;
       const price = cost > 0 ? calcPrice(cost, pcfg, comm) : null;
       const risky = brandRisk?.(neutralizeCompat(p.title), neutralizeCompat(p.description ?? "")); // gönderimdeki gibi: "Android ve iOS" -> "Akıllı Telefon"
-      const scope = inScope({ cat: p.category, title: p.title }); // faaliyet kapsamı (lib/scope.ts)
+      const scope = inScope({ cat: p.category, title: p.title }); // satış kısıtı: gıda, iç giyim (lib/scope.ts)
       const brandOk = ownBrand(String(p.brand ?? ""));
-      const excluded = !scope.ok ? `faaliyet kapsamı dışında (${scope.reason})` : p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < 10 ? "stok az (10'dan az)" : !images ? "görsel yok"
+      const excluded = !scope.ok ? `satılamaz (${scope.reason})` : p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < 10 ? "stok az (10'dan az)" : !images ? "görsel yok"
         : titles.has(normFull(p.title)) ? "mağazada aynı başlık var" : risky ? `marka riski (${risky})` : !price?.ok ? `fiyat: ${price?.reason ?? "hesaplanamadı"}` : null;
       const net = price?.ok ? price.netProfit : 0, margin = price?.ok ? price.profitRate : 0;
       const sc = scoreOf({ net, margin, stock, sold7: sold.get(p.id) ?? 0, price: price?.ok ? price.price : 0, images, descLen: String(p.description ?? "").length, level: pred?.level ?? null, brandOk, variants });

@@ -1,51 +1,62 @@
-// Faaliyet kapsamı (K, 31.10: vergi dairesi faaliyet kodları dışındaki ürünler satılamaz). Saf; worker ve panel kullanır, testli.
-// Kodlar: 475401 beyaz eşya + elektrikli küçük ev aleti (radyo, TV, fotoğraf hariç) · 477104 dış giyim (palto, kaban, anorak, takım elbise,
-// ceket, pantolon, şort) · 477201 ayakkabı, terlik vb. (spor ayakkabı ve tamamı tekstil olanlar hariç).
-// Girdi: pazaryeri kategori adı (Trendyol) ve/veya tedarikçi kategori yolu + başlık. Belirsiz (masaj aleti, tartı) KAPSAM DIŞI sayılır (güvenli taraf).
-// Açma/kapama: app_state "scope_filter" = "on" (açık) / başka (kapalı). Açıkken kapsam dışı ilanın stoğu 0, yeni gönderim yapılmaz.
+// Satış kısıtı (K, 01.11 düzeltme: "sadece gıda ve iç giyim ürünlerini satamıyoruz"; 31.10'daki izinli-liste yorumu yanlıştı). Saf; worker kullanır, testli.
+// Yasak: gıda/içecek (su, kola, makarna, çikolata, bebek maması ...) ve iç giyim (külot, boxer, sütyen, atlet, çorap, body/zıbın, pijama ...).
+// Gıda DEĞİL: kahve makinesi, çay fincanı, mama kabı, gıda saklama kabı (alet/kap). Evcil hayvan maması yasak sayılmaz (insan gıdası değil).
+// Girdi: pazaryeri kategori adı ve/veya tedarikçi kategori yolu ("A > B > C"); kategori yoksa başlık (yalnızca kesin iç giyim kelimeleri).
+// Açma/kapama: app_state "scope_filter" = "on" (açık) / başka (kapalı). Açıkken yasak ilanın stoğu 0, yeni gönderim yapılmaz.
 
-export type ScopeGroup = "ev_aleti" | "dis_giyim" | "ayakkabi";
+export type ScopeGroup = "genel";
 export type ScopeResult = { ok: boolean; group?: ScopeGroup; reason?: string };
 
-const APPLIANCE = /(tıraş makinesi|traş makinesi|saç düzleştirici|saç maşası|saç kurutma|fön makinesi|epilatör|epilasyon aleti|epilasyon cihazı|hava nemlendirici|hava temizleyici|vantilatör|elektrikli ısıtıcı|(?<![\p{L}])ısıtıcı(?![\p{L}])|klima|halı yıkama|elektrikli süpürge|dikey süpürge|dik süpürge|robot süpürge|araç içi süpürge|şarjlı süpürge|tüy toplayıcı|kahve makinesi|kahvesi makinesi|çay makinesi|blender|mikser|doğrayıcı|rondo|mutfak robotu|tost makinesi|ekmek kızartma|kettle|su ısıtıcı|(?<![\p{L}])ütü(?![\p{L}])|buharlı ütü|fritöz|airfryer|air fryer|buzdolabı|çamaşır makinesi|kurutma makinesi|bulaşık makinesi|mikrodalga|mini fırın|elektrikli fırın|ankastre|elektrikli ocak|meyve sıkacağı|narenciye sıkacağı|katı meyve|waffle makinesi|yoğurt makinesi|elektrikli öğütücü|elektrikli kahve öğütücü|derin dondurucu|şofben|termosifon|izgara makinesi|el blender)/iu;
-const OUTERWEAR = /((?<![\p{L}])mont(?![\p{L}])|kaban|palto|anorak|(?<![\p{L}])ceket|takım elbise|pantolon|(?<![\p{L}])şort|trençkot|parka|blazer)/iu;
-const SHOES = /(ayakkabı|(?<![\p{L}])bot(?![\p{L}])|çizme|terlik|sandalet|babet|loafer|topuklu|oxford|makosen)/iu;
-// Aynı kelimeyi taşıyan ama kapsam dışı ürünler: oyuncak/süs, düzenleyici, manuel alet, spor ayakkabı, tekstil terlik, radyo/TV/fotoğraf
-const EXCLUDE = /(oyuncak|figür|maket|minyatür|anahtarlık|kolye|küpe|bileklik|kostüm|kılıf|sticker|magnet|düzenleyici|organizer|ayakkabılık|çakmağı|fırçası ve süpürge|bardaklık|sıcak su torbası|sneaker|spor ayakkabı|koşu ayakkabısı|yürüyüş ayakkabısı|ev terliği|panduf|patik|çorap|radyo|televizyon|(?<![\p{L}])tv(?![\p{L}])|fotoğraf|kamera|yedek parça|aparatı|bıçağı|filtresi|başlığı|kablosu|ayağı|temizleyici top|rafı|dolabı|değirmen|kemer|hayatta kalma|granit tost)/iu;
-// Yalnızca KATEGORİ adında aranır (başlıkta geçebilir: "Spreyli Masa Fanı", "Oda Kokusu Difüzörlü Nemlendirici" kapsamda)
-const EXCLUDE_CAT = /(klima temizle|ütü masası|ütü bezi|ütü altlığı|aksesuarı|kokusu|koku giderici|sprey|hortum|kurutmalık|boyası|tabanlık)/iu;
+// Kategori adının (ya da yol parçasının) TAMAMI bunlardan biriyse yasak
+const FOOD_EXACT = new Set(["su", "kola", "makarna", "pirinç", "bakliyat", "zeytinyağı", "sıvı yağ", "çikolata", "sağlıklı atıştırmalık", "atıştırmalık", "bebek bisküvisi",
+  "kavanoz maması", "bebek maması", "devam sütü", "şeker hamuru", "kahve", "türk kahvesi", "filtre kahve", "çay", "bitki çayı", "bal", "reçel", "baharat", "kuruyemiş", "cips", "bisküvi",
+  "gofret", "kek", "şeker", "şekerleme", "sakız", "lokum", "un", "süt", "peynir", "yoğurt", "tereyağı", "et", "tavuk", "konserve", "salça", "sos", "ketçap", "mayonez", "tuz", "sirke",
+  "mercimek", "nohut", "bulgur", "yulaf", "kahvaltılık gevrek", "granola", "protein tozu", "gıda takviyesi", "vitamin", "enerji içeceği", "maden suyu", "meyve suyu", "gazlı içecek",
+  "soğuk çay", "hazır çorba", "pekmez", "tahin", "helva", "zeytin", "turşu", "dondurma", "sporcu besini"]);
+const UNDER_EXACT = new Set(["külot", "boxer", "sütyen", "atlet", "çorap", "emzirme sütyeni", "emzirme atleti", "bebek body & zıbın", "body", "zıbın", "fanila", "slip", "string",
+  "jartiyer", "korse", "korse & büstiyer", "büstiyer", "bralet", "babydoll", "gecelik", "pijama", "pijama takımı", "sabahlık", "kombinezon", "jüpon", "içlik", "termal içlik", "termal giyim",
+  "külotlu çorap", "soket çorap", "patik çorap", "iç çamaşırı takımı", "fantezi giyim", "lohusa sabahlık", "erkek iç giyim", "kadın iç giyim"]);
+// Yol parçasında geçerse yasak (tedarikçi yolu "Süpermarket > Gıda > ...", "Giyim > İç Giyim > ...")
+const FOOD_PART = /(gıda|yiyecek|içecek|süpermarket|atıştırmalık|takviye edici)/u;
+const FOOD_PART_OK = /(saklama|kabı|kap(?![\p{L}])|dispenser|sebil|makine|termos|şişe|matara|bardak|mikser|blender|aparat|kalıp|tartı|kutu|akü|ısıtıcı|soğutucu)/u;
+const UNDER_PART = /(iç giyim|iç çamaşır|ic giyim)/u;
+// Kategori yoksa başlıkta kesin iç giyim kelimesi
+const UNDER_TITLE = /(?<![\p{L}])(külot|boxer|sütyen|iç çamaşır|çorap(?!lık)|atlet(?!ik)|fanila|jartiyer|babydoll|bralet|büstiyer)(?![\p{L}])/u;
 
-export function inScope(x: { cat?: string | null; title?: string | null }): ScopeResult {
-  // Türkçe küçük harf: "Araç İçi Süpürge" (i bayrağı İ/ı'yı katlamaz)
-  const cat = String(x.cat ?? "").toLocaleLowerCase("tr"), title = String(x.title ?? "").toLocaleLowerCase("tr");
-  const text = `${cat} ${title}`;
-  if (EXCLUDE.test(text)) return { ok: false, reason: `kapsam dışı (${text.match(EXCLUDE)?.[0] ?? ""})` };
-  if (EXCLUDE_CAT.test(cat)) return { ok: false, reason: `kapsam dışı (${cat.match(EXCLUDE_CAT)?.[0] ?? ""})` };
-  // Kategori varsa YALNIZCA kategori (kesin; başlıktaki kelime yanıltmasın: "Saç Kurutma Makinesi Görünümlü Hoparlör"), yoksa başlık
-  const s = cat.trim() ? cat : title;
-  if (APPLIANCE.test(s)) return { ok: true, group: "ev_aleti" };
-  if (OUTERWEAR.test(s)) return { ok: true, group: "dis_giyim" };
-  if (SHOES.test(s)) return { ok: true, group: "ayakkabi" };
-  return { ok: false, reason: "faaliyet kodları dışında" };
+function forbiddenCat(cat: string): string | null {
+  for (const raw of cat.split(">")) {
+    const s = raw.trim();
+    if (!s) continue;
+    if (FOOD_EXACT.has(s)) return `gıda (${s})`;
+    if (UNDER_EXACT.has(s)) return `iç giyim (${s})`;
+    if (UNDER_PART.test(s)) return `iç giyim (${s})`;
+    if (FOOD_PART.test(s) && !FOOD_PART_OK.test(s)) return `gıda (${s})`;
+  }
+  return null;
 }
 
-export const SCOPE_LABEL: Record<ScopeGroup, string> = { ev_aleti: "Beyaz eşya / elektrikli küçük ev aleti", dis_giyim: "Dış giyim", ayakkabi: "Ayakkabı / terlik" };
+export function inScope(x: { cat?: string | null; title?: string | null }): ScopeResult {
+  // Türkçe küçük harf: "İç Giyim" (i bayrağı İ/ı'yı katlamaz)
+  const cat = String(x.cat ?? "").toLocaleLowerCase("tr"), title = String(x.title ?? "").toLocaleLowerCase("tr");
+  if (cat.trim()) {
+    const f = forbiddenCat(cat);
+    return f ? { ok: false, reason: `satılamaz: ${f}` } : { ok: true, group: "genel" };
+  }
+  const m = title.match(UNDER_TITLE);
+  return m ? { ok: false, reason: `satılamaz: iç giyim (${m[1]})` } : { ok: true, group: "genel" };
+}
 
-// Birden çok kategori kaynağı (tedarikçi yolu, pazaryeri kategorisi): biri izinliyse geçer. 01.11: tahmini Trendyol kategorisi yanlış
-// olabiliyor ("Fermuar" kategorisindeki bot, "Yumurta" kategorisindeki mikser); kategori yoksa başlık.
+export const SCOPE_LABEL: Record<ScopeGroup, string> = { genel: "Satılabilir (gıda ve iç giyim dışı)" };
+
+// Birden çok kategori kaynağı (tedarikçi yolu, pazaryeri kategorisi): biri yasaksa yasak (güvenli taraf). Kategori yoksa başlık.
 export function inScopeAny(cats: (string | null | undefined)[], title?: string | null): ScopeResult {
   const list = cats.filter((c): c is string => !!c && !!c.trim());
   if (!list.length) return inScope({ title });
-  const rs = list.map((c) => inScope({ cat: c, title }));
-  return rs.find((r) => r.ok) ?? rs[0];
+  for (const c of list) { const r = inScope({ cat: c, title }); if (!r.ok) return r; }
+  return { ok: true, group: "genel" };
 }
 
-// Yeni gönderim (01.11 toplu deneme: "Fermuarlı Bot" -> Fermuar, "Tokalı Ayakkabı" -> Toka kategorisi): pazaryeri kategorisi de izinli olmalı,
-// yoksa ürün yanlış kategoride açılırdı. Kategori yoksa inScopeAny. Mevcut ilanın stoğu için inScopeAny yeter (yanlış tahmin stoğu sıfırlamasın).
+// Yeni gönderim: mevcut ilanla aynı kural (pazaryeri ya da tedarikçi kategorisi yasaksa gönderilmez)
 export function inScopeForSend(supplierCat: string | null | undefined, mpCat: string | null | undefined, title?: string | null): ScopeResult {
-  if (mpCat && mpCat.trim()) {
-    const m = inScope({ cat: mpCat, title });
-    if (!m.ok) return { ok: false, reason: `pazaryeri kategorisi "${mpCat}" kapsam dışı (kategori yanlış tahmin edilmiş olabilir)` };
-  }
   return inScopeAny([supplierCat, mpCat], title);
 }

@@ -1,53 +1,37 @@
-// Faaliyet kapsamı (lib/scope.ts): yalnızca ev aleti / dış giyim / ayakkabı. npm test
+// Satış kısıtı (lib/scope.ts): yalnızca gıda ve iç giyim yasak (K, 01.11). npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inScope } from "../lib/scope.ts";
+import { inScope, inScopeAny, inScopeForSend } from "../lib/scope.ts";
 
 const ok = (cat: string, title = "") => inScope({ cat, title }).ok;
 
-test("izinli: elektrikli küçük ev aleti, dış giyim, ayakkabı/terlik", () => {
-  for (const c of ["Tıraş Makinesi", "Saç Düzleştirici", "Saç Maşası", "Saç Kurutma Makinesi", "Epilatör", "Hava Nemlendirici", "Vantilatör", "Araç İçi Süpürge", "Halı Yıkama Makinesi",
-    "Blender Seti", "Kişisel Blender", "Mikser & Mikser Seti", "Doğrayıcı & Rondo", "Su Isıtıcı & Kettle", "Fritöz", "Çay Makinesi", "Tüy Toplayıcı", "Mont", "Pantolon", "Şort", "Sandalet", "Terlik", "Bot"])
+test("satılabilir: gıda ve iç giyim dışı her şey", () => {
+  for (const c of ["Eğitici Oyuncak", "Bijuteri Kolye", "Akıllı Saat", "Tıraş Makinesi", "Bluetooth Hoparlör", "Parti Kostümü", "Sneaker", "Mont", "Medikal Korse",
+    "Kahve & Baharat Öğütücü", "Çay Makinesi", "Türk Kahvesi Makinesi", "Kedi ve Köpek Mama Su Kabı", "Kahve Fincanı", "Çay Süzgeci", "Akü Takviye Kablosu", "Saklama Kabı",
+    "Mutfak > Gıda Saklama Kabı", "Suluk & Matara", "Termos", "Kargaburun", "Ev & Yaşam > Mutfak > Su Sebili"])
     assert.ok(ok(c), c);
-  assert.ok(ok("", "Yeni Nesil Turbo Saç Kurutma Makinesi 2200W"), "kategori yoksa başlık");
-  assert.equal(inScope({ cat: "Blender Seti" }).group, "ev_aleti");
-  assert.equal(inScope({ cat: "Mont" }).group, "dis_giyim");
+  assert.ok(ok("", "Çikolata Kalıbı Silikon"), "kategori yoksa başlıkta gıda kelimesi elemez");
+  assert.ok(ok("", "Atletik Spor Ayakkabı"), "atletik");
+  assert.ok(ok("", "Çoraplık Düzenleyici"), "çoraplık");
 });
 
-test("kapsam dışı: oyuncak, bijuteri, elektronik, spor ayakkabı, düzenleyici, belirsizler", () => {
-  for (const c of ["Eğitici Oyuncak", "Bijuteri Kolye", "Akıllı Saat", "Kulak içi TWS Bluetooth Kulaklık", "Bluetooth Hoparlör", "Parti Kostümü", "Led Işık", "Sneaker", "Spor Ayakkabı",
-    "Buzdolabı Düzenleyici", "Ayakkabı Düzenleyici", "Ocak Çakmağı", "Temizlik Fırçası ve Süpürge", "Ev Terliği", "Nostaljik Radyo", "Akıllı Kamera", "Masaj Cihazı", "Tartı", "Yüz Temizleme Cihazı", "Evcilik ve Mutfak Setleri"])
+test("yasak: gıda", () => {
+  for (const c of ["Su", "Kola", "Makarna", "Pirinç", "Zeytinyağı", "Çikolata", "Sağlıklı Atıştırmalık", "Bebek Bisküvisi", "Kavanoz Maması", "Şeker Hamuru", "Kahve", "Bal",
+    "Süpermarket > Temel Gıda > Bakliyat", "Gıda > Kahvaltılık"])
     assert.ok(!ok(c), c);
-  assert.ok(!ok("", "Oyuncak Mikser Seti Çocuk"), "oyuncak mikser");
-  assert.ok(!ok("", "Blender Yedek Bıçağı"), "yedek parça");
-  assert.ok(!ok("Blender", "Ergonomik El Blenderı Paslanmaz Çelik Metal Blender Ayağı"), "blender ayağı");
-  assert.ok(!ok("Tüy Toplayıcı", "Evcil Hayvan Tüyü ve Tiftik Temizleyici Top"), "elektriksiz tüy topu");
-  assert.ok(!ok("Bluetooth Hoparlör", "Saç Kurutma Makinesi Görünümlü Hoparlör"), "dışlama önce gelir değil: kategori hoparlör");
-  for (const [c, t] of [["Çamaşır Makinesi Dolabı", "Çamaşır Makinesi Rafı Metal"], ["Kahve & Baharat Öğütücü", "Tuz ve Karabiber Değirmeni"], ["Kemer", "12 Parça Kamp ve Hayatta Kalma Seti"], ["Tost Makinesi", "Granit Tost Makinesi İç/Dış 25"]])
-    assert.ok(!ok(c, t), t);
-  assert.ok(!ok("", ""), "boş");
 });
 
-import { inScopeAny } from "../lib/scope.ts";
-test("birden çok kategori: biri izinliyse geçer (yanlış tahmini Trendyol kategorisi ürünü elemesin)", () => {
-  assert.ok(inScopeAny(["Ev & Yaşam > Ayakkabı > Bot & Çizme > Bot", "Fermuar"], "Erkek Kışlık Bot").ok);
-  assert.ok(inScopeAny(["Mikser", "Yumurta"], "El Tipi Pratik Mikser").ok);
-  assert.ok(!inScopeAny(["Eğitici Oyuncak", "Oyuncak Araba"], "Uzaktan Kumandalı Araba").ok);
-  assert.ok(inScopeAny([null, ""], "Saç Kurutma Makinesi 2200W").ok, "kategori yoksa başlık");
+test("yasak: iç giyim", () => {
+  for (const c of ["Külot", "Boxer", "Sütyen", "Atlet", "Çorap", "Emzirme Sütyeni", "Emzirme Atleti", "Bebek Body & Zıbın", "Pijama Takımı", "Giyim > İç Giyim > Fanila"])
+    assert.ok(!ok(c), c);
+  assert.ok(!ok("", "Erkek Pamuklu Boxer 3'lü"), "kategori yoksa başlık");
+  assert.ok(!ok("", "Kadın Dantelli Sütyen"));
 });
 
-import { inScopeForSend } from "../lib/scope.ts";
-test("gönderim: pazaryeri kategorisi de izinli olmalı (yanlış kategoride açılmasın)", () => {
-  assert.ok(!inScopeForSend("Ayakkabı > Bot", "Fermuar", "Erkek Fermuarlı Kışlık Şehir Bot").ok, "bot Fermuar kategorisinde");
-  assert.ok(!inScopeForSend("Ayakkabı > Topuklu", "Toka", "Kadın Tokalı Topuklu Ayakkabı").ok);
-  assert.ok(inScopeForSend("Ayakkabı > Bot", "Bot", "Erkek Kışlık Bot").ok);
-  assert.ok(inScopeForSend("Mutfak > Mikser", null, "El Mikseri").ok, "kategori yoksa tedarikçi");
-  for (const [c, t] of [["Klima Temizleyici", "Klima Temizleyici Sprey 150 ml"], ["Ütü Masası ve Aksesuarı", "Teflon Ev Ütü Altlığı"], ["Oto Kokusu", "Vanilla Oto Araç Kokusu"], ["Süpürge Aksesuarı", "Modern Süpürge Hortumu"]])
-    assert.ok(!inScopeForSend("Ev Aletleri", c, t).ok, t);
-});
-
-test("başlıkta sprey/oda kokusu geçen elektrikli ürün kapsamda; yeni izinli kategoriler", () => {
-  assert.ok(inScopeForSend("Elektrikli Ev Aletleri", "Hava Nemlendirici", "Aromatik Oda Kokusu Difüzörü LED Işıklı Nemlendirici").ok);
-  assert.ok(inScopeForSend("Elektrikli Ev Aletleri", "Vantilatör", "RGB Işıklı Spreyli Masa Fanı").ok);
-  for (const c of ["Türk Kahvesi Makinesi", "Dik Süpürge", "IPL Lazer Epilasyon Aleti"]) assert.ok(inScopeForSend("Elektrikli Ev Aletleri", c, "x").ok, c);
+test("birden çok kategori: biri yasaksa yasak; gönderim aynı kural", () => {
+  assert.ok(!inScopeAny(["Ev & Yaşam", "Çorap"], "Kışlık Çorap").ok);
+  assert.ok(inScopeAny(["Ayakkabı > Bot", "Fermuar"], "Erkek Kışlık Bot").ok);
+  assert.ok(inScopeAny([null, ""], "Saç Kurutma Makinesi").ok);
+  assert.ok(!inScopeForSend("Süpermarket > İçecek", "Kola", "Kola 1 L").ok);
+  assert.ok(inScopeForSend("Oyuncak", "Eğitici Oyuncak", "Ahşap Yapboz").ok);
 });

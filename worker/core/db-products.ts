@@ -362,9 +362,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           // Varyantın (rengin) kendi görselleri varsa onlar, yoksa ürünün görselleri (migration 063)
           const vImages: string[] = Array.isArray(v.images) && v.images.length ? v.images : images;
           if (!vImages.length) { fail(key, p, v, "Görsel yok"); continue; }
-          // Faaliyet kapsamı (K, 31.10): vergi dairesi faaliyet kodları dışındaki ürün hiçbir pazaryerine gönderilmez
+          // Satış kısıtı (K, 01.11): gıda ve iç giyim hiçbir pazaryerine gönderilmez (lib/scope.ts)
           // Pazaryeri kategorisi (varsa) izinli olmalı + tedarikçi ya da pazaryeri kategorisi izinli (lib/scope.ts inScopeForSend)
-          if (ctx.scopeActive) { const sc = inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Faaliyet kapsamı dışında: ${sc.reason ?? ""} (izinli: ev aleti, dış giyim, ayakkabı)`); continue; } }
+          if (ctx.scopeActive) { const sc = inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Satış kısıtı: ${sc.reason ?? ""} (gıda ve iç giyim satılamaz)`); continue; } }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           // Tahmin güveni düşükse otomatik seçilmez; en iyi tahmin "öneri" olarak yazılır (panel → Gönderilemeyenler tek tıkla seçer)
