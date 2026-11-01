@@ -37,6 +37,10 @@ import type { InventoryItem, Listing, NewProduct } from "./marketplaces/types.ts
 const mode = arg(process.argv[2], "preview", MODES, "mod");
 const marketplaceId = arg(process.argv[3] ?? process.env.MARKETPLACE, "trendyol", MARKETPLACES, "pazaryeri");
 const sendOnly = process.env.SEND_ONLY === "1";
+// SYNC_SOURCES (sunucu, geçişe kadar; K 01.11): yalnızca bu kaynakların ilanları ("vps" = runner=vps tedarikçiler: Hepsibayi, Bezos) için stok/fiyat
+// + gönderim kuyruğu. Toptancım ilanları, sipariş, cevap, stok sıfırlama kuralları, eski ilan kaldırma ÇALIŞMAZ (Supabase + GitHub yapıyor).
+const partialSources = process.env.SYNC_SOURCES ?? "";
+const lite = sendOnly || !!partialSources; // canlıda başka sistemin işini yapmayan çalışma
 // Gönderilecek ilanlardan faaliyet kapsamı dışında olanlar (pazaryeri kategorisi > tedarikçi kategori yolu > başlık)
 function scopeStats(items: InventoryItem[], lsBy: Map<string, Listing>, text: Map<string, { cat: string; title: string }>) {
   const out = new Set<string>(); const stats: Record<string, number> = { checked: 0, inScope: 0, outOfScope: 0, outWithStock: 0 };
@@ -96,7 +100,7 @@ async function main() {
   const s = await loadSettings();
   if (s.enabled === false) return { skippedRun: `${marketplaceId} panelde kapalı` };
   // Satış durduruldu (panel): otomatik senkron kapalı olsa da çalışır; satıştaki her ilana stok 0, başka hiçbir şey yapılmaz
-  const paused = s.sales_paused === true && mode !== "preview" && !sendOnly;
+  const paused = s.sales_paused === true && mode !== "preview" && !lite;
   if (!paused && mode === "auto" && trigger === "schedule" && !s.auto_sync) {
     return { skippedRun: "otomatik senkronizasyon kapalı" };
   }
@@ -153,7 +157,7 @@ async function main() {
   const clean = (title: string, description: string) => (marketplaceId === "trendyol" ? cleanForMarketplace(title, description, banned) : { title, description });
 
   // Eski tedarikçi (BayilikXML) kaldırıldıysa XML okunmaz; ilanları arşivlenip silinir (aşağıda)
-  const raw = s.retire_legacy || sendOnly ? [] : await loadXml();
+  const raw = s.retire_legacy || lite ? [] : await loadXml();
   {
     const c = csvCell;
     const dump = ["barcode;productCode;brand;category;quantity;price;currency;name"];
@@ -161,7 +165,7 @@ async function main() {
     writeFileSync("xml_dump.csv", "﻿" + dump.join("\n"), "utf8");
   }
   const listings = await mp.loadListings();
-  const retireRes = s.retire_legacy && !sendOnly && (doUpdate || mode === "create") ? await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) })) : null;
+  const retireRes = s.retire_legacy && !lite && (doUpdate || mode === "create") ? await retireLegacy(db, mp, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) })) : null;
   const existing = new Set<string>(listings.map((l) => l.id));
   const lsBy = new Map(listings.map((l) => [l.id, l]));
   // Çoklama koruması: yalnızca açık ilanlar (kapalı/arşiv ve kaldırılan eski tedarikçi ilanları sayılmaz), tam başlık
@@ -377,7 +381,13 @@ async function main() {
   // Faz 4: veritabanından gönderilen ilanlar (diğer tedarikçiler). Stok sıfırlamadan ÖNCE: "linked"e eklenir, XML'den kalkmış sayılmaz.
   const dbCtx: DbCtx = { db, mp, marketplaceId, cfg: cfg as PricingConfig, rules, fx, minStock, policy, catMap, existing, lsBy, lsTitles, linked, predict, leafMatch, pathMatch, overrides: ovMap, econ: new Map(), skip, defaultVatRate: Number(s.vat_rate ?? 20), clean,
     shipFor: byDesi ? (d) => mp.shippingCost!(Math.max(1, Math.ceil(Number(d) || defaultDesi)), s.cargo_carrier) : null, shipCfg: tyShip,
-    scopeText: new Map(), scopeActive: false };
+    scopeText: new Map(), scopeActive: false, sources: null };
+  if (partialSources) {
+    let list = partialSources.split(",").map((x) => x.trim()).filter(Boolean);
+    if (list.includes("vps")) { const { data } = await db.from("suppliers").select("code").eq("runner", "vps"); list = [...list.filter((x) => x !== "vps"), ...(data ?? []).map((x: any) => `xml:${x.code}`)]; }
+    dbCtx.sources = new Set(list);
+    summary.partialSources = list;
+  }
   // Faaliyet kapsamı (lib/scope.ts; K, 31.10): app_state.scope_filter = "on" iken kapsam dışı ilan stoğu 0, yeni gönderim yok. Kapalıyken yalnızca sayılır.
   {
     const { data } = await db.from("app_state").select("value").eq("key", "scope_filter").maybeSingle().then((r: any) => r, () => ({ data: null }));
@@ -402,7 +412,7 @@ async function main() {
 
   // Reddedilen ürünleri düzelt ve yeniden onaya gönder (yalnızca yazma modlarında): BayilikXML (OS13-) ve veritabanı ürünleri (Toptancım vb.;
   // 27.10'a kadar yalnızca OS13- bakılıyordu, Toptancım retleri hiç ele alınmıyordu)
-  if (!sendOnly && (doUpdate || mode === "create") && mp.updateRejected) {
+  if (!lite && (doUpdate || mode === "create") && mp.updateRejected) {
     const rejected = listings.filter((l) => l.reject);
     // Veritabanı ürünlerinin başlık/açıklama/görselleri (görsel retinde yeniden gönderilir)
     const dbBy = new Map<string, { title: string; description: string; images: string[] }>();
@@ -444,7 +454,7 @@ async function main() {
     }
   }
   // Günlük satış özeti (saatte bir, son 35 gün; salt okunur): fiyat değişikliğinin satışa etkisi panelde ölçülür
-  if (!sendOnly && mp.salesDaily && (new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1")) {
+  if (!lite && mp.salesDaily && (new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1")) {
     try {
       const rows = await mp.salesDaily(Date.now() - 35 * 86400000, Date.now());
       const now = new Date().toISOString();
@@ -453,7 +463,7 @@ async function main() {
     } catch (e: any) { summary.sales = { error: String(e?.message ?? e).slice(0, 300) }; }
   }
   // Siparişler (Faz 6 F2, salt okunur): her çalışmada son 3 gün, saatte bir son 14 gün; kişisel veri yok
-  if (!sendOnly && mp.fetchOrders && mode !== "preview") {
+  if (!lite && mp.fetchOrders && mode !== "preview") {
     const full = new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1";
     const since = new Date().toISOString();
     summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 30 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
@@ -465,17 +475,17 @@ async function main() {
     if (mp.updateTracking && mode !== "preview") summary.trackingPush = await pushTracking(db, mp).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
   }
   // Görseli görünmeyen onaylı ilanlar (tedarikçi WebP): JPG görseller yeniden gönderilir, sonuç toplu kontrolde okunur
-  if (doUpdate && mp.updateImages) {
+  if (doUpdate && !lite && mp.updateImages) {
     summary.imageFix = await fixImages(db, mp, listings).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
     if (Array.isArray(summary.imageFix?.batchIds)) summary.batchIds.push(...summary.imageFix.batchIds);
   }
   // Panelde onaylanan yapay zekâ açıklamaları (migration 067) canlı ilana; satış durdurulmuşsa gönderilmez
-  if (doUpdate && mp.updateDescriptions) {
+  if (doUpdate && !lite && mp.updateDescriptions) {
     summary.descriptions = await pushDescriptions(db, mp, listings).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
     if (Array.isArray(summary.descriptions?.batchIds)) summary.batchIds.push(...summary.descriptions.batchIds);
   }
   // Müşteri soruları (F7): çek, taslak, Telegram; yalnızca onaylı cevaplar gönderilir
-  if (!sendOnly && mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+  if (!lite && mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
   // Onaylı ilanlardan öğrenilen özellikler ürün kaydına (her modda; yalnızca veritabanına yazar)
   summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
@@ -488,13 +498,13 @@ async function main() {
   if (mp.findCatalogMatches) summary.matchJobs = await processMatchJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => ({ error: String(e?.message ?? e) }));
   // Paneldeki "Pazaryerine gönder" kuyruğu (yalnızca yazma modlarında)
   let sendRes: Awaited<ReturnType<typeof processSendJobs>> | null = null;
-  if (doUpdate || mode === "create" || sendOnly) {
+  if (doUpdate || mode === "create" || lite) {
     sendRes = await processSendJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => { summary.sendJobsError = String(e?.message ?? e); return null; });
     if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
     summary.attrOptions = await flushAttrOptions(db).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     // Eksik zorunlu özellikler yapay zekâ ile (başlık + açıklama, pazaryerinin değer listesinden); eksiği kalmayan yeniden gönderilir
-    if (!sendOnly && marketplaceId !== "amazon") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
-    if (!sendOnly && s.auto_sync && marketplaceId !== "amazon") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
+    if (!lite && marketplaceId !== "amazon") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+    if (!lite && s.auto_sync && marketplaceId !== "amazon") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
   }
 
   if (doUpdate) {
@@ -527,10 +537,10 @@ async function main() {
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
     noteErrors(summary, r);
     // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
-    if (mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000), { minNet: Number(cfg.netProfitMin ?? 0), overridden: new Set([...ovMap.values()].filter((o: any) => o.price_override != null).map((o: any) => o.barcode)) }).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
+    if (!lite && mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000), { minNet: Number(cfg.netProfitMin ?? 0), overridden: new Set([...ovMap.values()].filter((o: any) => o.price_override != null).map((o: any) => o.barcode)) }).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
 
     // XML'den kalkan ürünler: yalnızca eşleşme güvenilirse stoğu sıfırla
-    if (s.zero_missing) {
+    if (s.zero_missing && !lite) {
       if (existing.size && matched / existing.size >= 0.5) {
         // Yalnızca satıştaki ilanlar: kapalı/onay bekleyen ilana stok gönderilemez (Trendyol hata verir)
         const gone0 = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && !(l.quantity === 0)).map((l) => l.id);
@@ -545,7 +555,7 @@ async function main() {
     // Hiçbir ürüne bağlı olmayan satıştaki ilanlar (ör. yeniden eklenmemiş Royal ürünleri HB'de ~1000'er stokla): stokları güncellenemez,
     // satılırsa karşılanamaz -> stok 0 (migration 059 zero_unlinked; ürün geri eklenip bağlanınca stok kendiliğinden döner).
     // Güvenlik: veritabanı ilanları okunamadıysa ya da ilanların %20'sinden fazlası bağsız görünüyorsa çalışmaz.
-    if (s.zero_unlinked) {
+    if (s.zero_unlinked && !lite) {
       const loose = listings.filter((l) => !linked.has(l.id) && (l.status ?? "active") === "active" && Number(l.quantity) > 0).map((l) => l.id);
       const dbOk = !(dbInv.stats as any).error && Number((dbInv.stats as any).listings ?? 0) > 0;
       if (!dbOk || loose.length > listings.length * 0.2) summary.unlinkedZeroSkipped = `${loose.length} bağsız ilan; güvenlik için stok sıfırlanmadı`;
@@ -622,7 +632,7 @@ async function main() {
     const summary: any = await main();
     const status = summary.skippedRun ? "skipped" : summary.failedBatches > 0 || summary.batchCheck?.failedItems > 0 ? "partial" : "ok";
     // Telegram uyarıları (iade, iptal, kargo süresi, senkron sorunu, veritabanı boyutu, günlük özet); önizlemede gönderilmez
-    if (!sendOnly && mode !== "preview" && !summary.skippedRun && marketplaceId !== "amazon") summary.alerts = await runAlerts(db, { id: marketplaceId, label: marketplaceId === "trendyol" ? "Trendyol" : "Hepsiburada" }, summary, status).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+    if (!lite && mode !== "preview" && !summary.skippedRun && marketplaceId !== "amazon") summary.alerts = await runAlerts(db, { id: marketplaceId, label: marketplaceId === "trendyol" ? "Trendyol" : "Hepsiburada" }, summary, status).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     await db.from("sync_runs").update({ status, finished_at: new Date().toISOString(), summary }).eq("id", id);
     console.log(JSON.stringify(summary, null, 1));
   } catch (e: any) {

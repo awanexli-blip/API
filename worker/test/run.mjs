@@ -279,6 +279,16 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("SEND_ONLY: soru cevabı / takip / silme yok", !p.calls.trendyolWrites.some((w) => /answers|tracking|delete|archive/i.test(w.path)));
 }
 
+// 9c) SYNC_SOURCES (sunucudaki tedarikçiler, geçişe kadar): yalnızca o kaynağın ilanı stok/fiyat alır; diğer ilanlar, cevap, silme yok
+{
+  const p = run("auto", { SYNC_SOURCES: "xml:toptanci", MOCK_DB: "1" });
+  const items = p.calls.trendyolWrites.filter((w) => w.path.includes("price-and-inventory")).flatMap((w) => w.body.items ?? []);
+  check("SYNC_SOURCES: yalnızca o kaynağın ilanı gönderilir", items.length > 0 && items.every((i) => i.barcode === "ORPHAN-1"), items.map((i) => i.barcode).slice(0, 5));
+  check("SYNC_SOURCES: XML'den ürün açılmaz, cevap / silme yok", !p.calls.trendyolWrites.some((w) => w.path.includes("/v2/products") || /answers|delete|archive/i.test(w.path)));
+  const q = run("auto", { SYNC_SOURCES: "xml:baska", MOCK_DB: "1" });
+  check("SYNC_SOURCES: kaynak dışı ilana hiç stok/fiyat gitmez", !q.calls.trendyolWrites.some((w) => w.path.includes("price-and-inventory") && (w.body.items ?? []).length));
+}
+
 // 10) birim testleri
 for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts", "desc-check.test.ts", "research.test.ts", "sale-price.test.ts", "content-diff.test.ts", "deps.test.ts", "trendyol-cargo.test.ts", "holds.test.ts", "brand-pick.test.ts", "compat.test.ts", "stars.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }

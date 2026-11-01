@@ -1,0 +1,8 @@
+[Unit]
+Description=Trentakip sunucu tedarikçileri senkronu %i (15 dakikada bir; :12 :27 :42 :57)
+
+[Timer]
+OnCalendar=*-*-* *:12,27,42,57:00
+
+[Install]
+WantedBy=timers.target

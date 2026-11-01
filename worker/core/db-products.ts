@@ -28,6 +28,7 @@ export type DbCtx = {
   dyn?: { cfg: DynMargin; active: boolean; comp: Map<string, boolean> } | null;
   scopeText?: Map<string, { cat: string; title: string }>; // ilan -> tedarikçi kategori yolu + başlık (faaliyet kapsamı)
   scopeActive?: boolean; // app_state.scope_filter = "on": kapsam dışı ürün gönderilmez
+  sources?: Set<string> | null; // SYNC_SOURCES: yalnızca bu kaynakların ilanları stok/fiyat alır (sunucu, geçişe kadar)
 };
 
 // Görsel adının kök kısmı (tedarikçi CDN'i: "...-model-1-12345-sw1024sh1024.webp" -> "...-model")
@@ -120,6 +121,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
     for (const r of data as any[]) {
       const p = r.products, v = r.product_variants, key = r.listing_key as string;
       if (!p || !v || p.source === "xml:bayilik") continue; // BayilikXML ilanları XML akışında
+      if (ctx.sources && !ctx.sources.has(p.source)) continue; // kısmi senkron: başka sistemin yönettiği ilan
       stats.listings++;
       ctx.linked.add(key); // "XML'den kalkan" sayılıp stoğu sıfırlanmasın
       ctx.scopeText?.set(key, { cat: p.category ?? "", title: p.title ?? "" }); // faaliyet kapsamı (lib/scope.ts): pazaryeri kategorisi yoksa tedarikçi yolu

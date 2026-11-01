@@ -1,0 +1,17 @@
+# Geçişe kadar (docs/SUNUCU_PLAN.md): yalnızca sunucudaki tedarikçilerin (runner=vps: Hepsibayi, Bezos) ilanlarına stok/fiyat + gönderim kuyruğu.
+# Toptancım ilanları, sipariş, cevap, stok sıfırlama kuralları Supabase + GitHub'da kalır (SYNC_SOURCES=vps, worker/sync.ts "lite").
+# Geçişte kapatılır; yerine trentakip-sync@ açılır.
+[Unit]
+Description=Trentakip: sunucu tedarikçileri senkronu %i (stok/fiyat + gönderim)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=trentakip
+WorkingDirectory=/opt/trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+Environment=TRIGGER=schedule ACTOR=sunucu-tedarikci-senkron SYNC_SOURCES=vps TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID=
+ExecStart=/bin/sh -c "SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=1800 exec /usr/bin/node --experimental-strip-types worker/sync.ts update %i"
+TimeoutStartSec=40min
+Nice=5
