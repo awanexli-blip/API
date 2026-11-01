@@ -315,7 +315,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         // Ürün formunda (ya da Gönderilemeyenler'de) bu pazaryeri için seçilen kategori: "Trendyol kategori" / "Hepsiburada kategori"
         const mc = String(p.attributes?.[`${ctx.mp.label} kategori`] ?? "").trim();
         const manualCat = /^[\w-]{1,40}$/.test(mc) && /\d/.test(mc) ? mc : null;
-        // Sıra (K kararı 22.10: ürünlerin çoğu gitsin, Trendyol gibi ada bakılsın): elle > kategori eşlemesi > tahmin (yüksek/orta) > ağaç eşleşmesi (güçlü)
+        // Sıra (K kararı 22.10: ürünlerin çoğu gitsin, Trendyol gibi ada bakılsın): elle > kategori eşlemesi > tahmin (yüksek) > tedarikçi yolu (güçlü) > tahmin (orta) > ağaç eşleşmesi (güçlü)
         // > tahmin (düşük, %50+) > ağaç eşleşmesi (zayıf). Yanlış kategori Trendyol'dan revize olarak döner (Reddedilenler).
         const tyName = ctx.marketplaceId !== "trendyol" ? String(p.attributes?.["Trendyol kategori adı"] ?? "") : "";
         const leaf = !ctx.leafMatch ? null : (tyName && ctx.leafMatch(`${tyName} ${p.title}`, `${p.category ?? ""} ${tyName}`)) || ctx.leafMatch(p.title, p.category ?? "");
@@ -323,7 +323,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const path = ctx.pathMatch ? ctx.pathMatch(p.category ?? "", p.title) : null;
         const strongPath = path && path.score >= 12 ? path : null;
         const pick = manualCat || ctx.catMap.get(p.category)?.category_id ? null
-          : (pred && pred.level !== "dusuk" ? pred : null) ?? strongPath ?? (leaf && leaf.score >= 10 ? leaf : null) ?? (pred && pred.confidence >= 0.5 ? pred : null) ?? path ?? leaf ?? null;
+          // 01.11: tedarikçi yolu açıkça yazıyorsa ("... > Bot & Çizme > Bot", "Mikser") orta güvenli başlık tahmininin önüne geçer
+          // (tahmin "Erkek Fermuarlı Bot"u Fermuar, "Yumurta Çırpıcılı Mikser"i Yumurta kategorisine açmıştı)
+          : (pred && pred.level === "yuksek" ? pred : null) ?? strongPath ?? (pred && pred.level !== "dusuk" ? pred : null) ?? (leaf && leaf.score >= 10 ? leaf : null) ?? (pred && pred.confidence >= 0.5 ? pred : null) ?? path ?? leaf ?? null;
         // Elle seçilen kategorinin adı (formda saklanır): komisyon ipucu (HB EK.4) ve kayıt
         const manualName = manualCat ? String(p.attributes?.[`${ctx.mp.label} kategori adı`] ?? "").split(" > ").pop() || null : null;
         const catName = manualName ?? pick?.categoryName ?? null;

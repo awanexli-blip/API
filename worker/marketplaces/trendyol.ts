@@ -394,7 +394,7 @@ export function createTrendyol(): Marketplace {
       // SEND_DRY=1: deneme; Trendyol'a hiçbir şey gönderilmez, gidecek olanın özeti yazılır (ilan "DENEME" nedeniyle hatalı işaretlenir)
       if (process.env.SEND_DRY === "1") {
         for (const x of payloads) {
-          console.log(`DENEME ${x.barcode} | ${x.title} | marka ${x.brandId} | kategori ${x.categoryId} | ${x.salePrice} TL | stok ${x.quantity} | KDV %${x.vatRate} | ${x.images.length} görsel | ${x.attributes.length} özellik`);
+          console.log(`DENEME ${x.barcode} | ${x.title} | marka ${x.brandId} | kategori ${x.categoryId} ${items.find((i) => i.id === x.barcode)?.catName ?? ""} | ${x.salePrice} TL | stok ${x.quantity} | KDV %${x.vatRate} | ${x.images.length} görsel | ${x.attributes.length} özellik`);
           (res.failedItems ??= []).push({ id: x.barcode, reason: "DENEME: gönderilmedi (SEND_DRY)" });
         }
         return res;
