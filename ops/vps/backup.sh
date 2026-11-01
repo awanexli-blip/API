@@ -15,9 +15,24 @@ docker exec trentakip-db-1 pg_dump -U postgres -d postgres -Fc --no-owner \
   | gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-fd 3 -o "$F.tmp" 3<<<"$BACKUP_PASSPHRASE"
 mv "$F.tmp" "$F"
 # Doğrulama: şifre çözülür, pg_restore içindekiler listesini okuyabilmeli (tablo sayısı > 50)
-N=$(gpg --batch --quiet --decrypt --passphrase-fd 3 "$F" 3<<<"$BACKUP_PASSPHRASE" | docker exec -i trentakip-db-1 pg_restore -l 2>/dev/null | grep -c " TABLE DATA " || true)
+# Doğrulama: şifre çözülür, pg_restore içindekiler listesini okuyabilmeli. Liste okununca kalan veri boşaltılır (yoksa gpg "Broken pipe")
+count_tables() { gpg --batch --quiet --decrypt --passphrase-fd 3 "$1" 3<<<"$BACKUP_PASSPHRASE" | { docker exec -i trentakip-db-1 pg_restore -l 2>/dev/null | grep -c " TABLE DATA "; cat >/dev/null; } || true; }
+N=$(count_tables "$F")
 [ "$N" -gt 50 ] || { tg "🚨 Sunucu yedeği doğrulanamadı ($(date +%F)): içinde $N tablo"; exit 1; }
+
+# Supabase (geçişe kadar canlı sistem) yedeği: GitHub backup.yml secret'ları eklenene kadar canlı veri yedeksiz kalmasın (01.11).
+# Yalnızca okur (pg_dump; Supabase'e yazmaz). public şeması + kullanıcılar (auth.users/identities verisi; mirror.sh ile aynı kapsam).
+NS=0
+if [ -n "${SUPABASE_DB_URL:-}" ]; then
+  FS="$DIR/supabase-$(date +%F).dump.gpg"
+  docker exec -i trentakip-db-1 pg_dump "$SUPABASE_DB_URL" --schema=public --no-owner --no-privileges --no-publications --no-subscriptions -Fc \
+    | gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-fd 3 -o "$FS.tmp" 3<<<"$BACKUP_PASSPHRASE"
+  mv "$FS.tmp" "$FS"
+  NS=$(count_tables "$FS")
+  [ "$NS" -gt 50 ] || { tg "🚨 Supabase (canlı) yedeği doğrulanamadı ($(date +%F)): içinde $NS tablo"; exit 1; }
+fi
+
 find "$DIR" -name '*.dump.gpg' -mtime +7 -delete
 SIZE=$(du -h "$F" | cut -f1)
-echo "yedek tamam: $F ($SIZE, $N tablo)"
-[ "$(date +%u)" = 1 ] && tg "✅ Sunucu yedeği çalışıyor: $SIZE, $N tablo, son 7 gün saklanıyor" || true
+echo "yedek tamam: $F ($SIZE, $N tablo)${FS:+ · Supabase: $(du -h "$FS" | cut -f1), $NS tablo}"
+[ "$(date +%u)" = 1 ] && tg "✅ Yedekler çalışıyor: sunucu $SIZE ($N tablo)${FS:+, Supabase $(du -h "$FS" | cut -f1) ($NS tablo)}, son 7 gün saklanıyor" || true
