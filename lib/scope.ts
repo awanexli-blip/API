@@ -27,3 +27,12 @@ export function inScope(x: { cat?: string | null; title?: string | null }): Scop
 }
 
 export const SCOPE_LABEL: Record<ScopeGroup, string> = { ev_aleti: "Beyaz eşya / elektrikli küçük ev aleti", dis_giyim: "Dış giyim", ayakkabi: "Ayakkabı / terlik" };
+
+// Birden çok kategori kaynağı (tedarikçi yolu, pazaryeri kategorisi): biri izinliyse geçer. 01.11: tahmini Trendyol kategorisi yanlış
+// olabiliyor ("Fermuar" kategorisindeki bot, "Yumurta" kategorisindeki mikser); kategori yoksa başlık.
+export function inScopeAny(cats: (string | null | undefined)[], title?: string | null): ScopeResult {
+  const list = cats.filter((c): c is string => !!c && !!c.trim());
+  if (!list.length) return inScope({ title });
+  const rs = list.map((c) => inScope({ cat: c, title }));
+  return rs.find((r) => r.ok) ?? rs[0];
+}

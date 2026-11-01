@@ -7,7 +7,7 @@
 // Pazaryerine özgü her şey worker/marketplaces/<ad>.ts içindedir.
 
 import { loadGuard, type Guard } from "./core/holds.ts";
-import { inScope } from "../lib/scope.ts";
+import { inScopeAny } from "../lib/scope.ts";
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
@@ -46,7 +46,7 @@ function scopeStats(items: InventoryItem[], lsBy: Map<string, Listing>, text: Ma
   const out = new Set<string>(); const stats: Record<string, number> = { checked: 0, inScope: 0, outOfScope: 0, outWithStock: 0 };
   for (const it of items) {
     const ls = lsBy.get(it.id), t = text.get(it.id);
-    const r = inScope(ls?.categoryName ? { cat: ls.categoryName, title: ls.title } : t ?? { cat: "", title: ls?.title ?? "" });
+    const r = inScopeAny([t?.cat, ls?.categoryName], t?.title || ls?.title);
     stats.checked++;
     if (r.ok) { stats.inScope++; stats[r.group!] = (stats[r.group!] ?? 0) + 1; }
     else { out.add(it.id); stats.outOfScope++; if (it.quantity > 0) stats.outWithStock++; }

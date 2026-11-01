@@ -27,3 +27,11 @@ test("kapsam dışı: oyuncak, bijuteri, elektronik, spor ayakkabı, düzenleyic
     assert.ok(!ok(c, t), t);
   assert.ok(!ok("", ""), "boş");
 });
+
+import { inScopeAny } from "../lib/scope.ts";
+test("birden çok kategori: biri izinliyse geçer (yanlış tahmini Trendyol kategorisi ürünü elemesin)", () => {
+  assert.ok(inScopeAny(["Ev & Yaşam > Ayakkabı > Bot & Çizme > Bot", "Fermuar"], "Erkek Kışlık Bot").ok);
+  assert.ok(inScopeAny(["Mikser", "Yumurta"], "El Tipi Pratik Mikser").ok);
+  assert.ok(!inScopeAny(["Eğitici Oyuncak", "Oyuncak Araba"], "Uzaktan Kumandalı Araba").ok);
+  assert.ok(inScopeAny([null, ""], "Saç Kurutma Makinesi 2200W").ok, "kategori yoksa başlık");
+});
