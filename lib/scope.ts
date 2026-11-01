@@ -11,7 +11,7 @@ const APPLIANCE = /(tıraş makinesi|traş makinesi|saç düzleştirici|saç ma�
 const OUTERWEAR = /((?<![\p{L}])mont(?![\p{L}])|kaban|palto|anorak|(?<![\p{L}])ceket|takım elbise|pantolon|(?<![\p{L}])şort|trençkot|parka|blazer)/iu;
 const SHOES = /(ayakkabı|(?<![\p{L}])bot(?![\p{L}])|çizme|terlik|sandalet|babet|loafer|topuklu|oxford|makosen)/iu;
 // Aynı kelimeyi taşıyan ama kapsam dışı ürünler: oyuncak/süs, düzenleyici, manuel alet, spor ayakkabı, tekstil terlik, radyo/TV/fotoğraf
-const EXCLUDE = /(oyuncak|figür|maket|minyatür|anahtarlık|kolye|küpe|bileklik|kostüm|kılıf|sticker|magnet|düzenleyici|organizer|ayakkabılık|çakmağı|fırçası ve süpürge|bardaklık|sıcak su torbası|sneaker|spor ayakkabı|koşu ayakkabısı|yürüyüş ayakkabısı|ev terliği|panduf|patik|çorap|radyo|televizyon|(?<![\p{L}])tv(?![\p{L}])|fotoğraf|kamera|yedek parça|aparatı|bıçağı|filtresi|başlığı|kablosu|ayağı|temizleyici top|rafı|dolabı|değirmen|kemer|hayatta kalma|granit tost)/iu;
+const EXCLUDE = /(oyuncak|figür|maket|minyatür|anahtarlık|kolye|küpe|bileklik|kostüm|kılıf|sticker|magnet|düzenleyici|organizer|ayakkabılık|çakmağı|fırçası ve süpürge|bardaklık|sıcak su torbası|sneaker|spor ayakkabı|koşu ayakkabısı|yürüyüş ayakkabısı|ev terliği|panduf|patik|çorap|radyo|televizyon|(?<![\p{L}])tv(?![\p{L}])|fotoğraf|kamera|yedek parça|aparatı|bıçağı|filtresi|başlığı|kablosu|ayağı|temizleyici top|rafı|dolabı|değirmen|kemer|hayatta kalma|granit tost|klima temizle|ütü masası|ütü bezi|ütü altlığı|aksesuarı|kokusu|koku giderici|sprey|hortumu|kurutmalık|boyası)/iu;
 
 export function inScope(x: { cat?: string | null; title?: string | null }): ScopeResult {
   // Türkçe küçük harf: "Araç İçi Süpürge" (i bayrağı İ/ı'yı katlamaz)
@@ -35,4 +35,14 @@ export function inScopeAny(cats: (string | null | undefined)[], title?: string |
   if (!list.length) return inScope({ title });
   const rs = list.map((c) => inScope({ cat: c, title }));
   return rs.find((r) => r.ok) ?? rs[0];
+}
+
+// Yeni gönderim (01.11 toplu deneme: "Fermuarlı Bot" -> Fermuar, "Tokalı Ayakkabı" -> Toka kategorisi): pazaryeri kategorisi de izinli olmalı,
+// yoksa ürün yanlış kategoride açılırdı. Kategori yoksa inScopeAny. Mevcut ilanın stoğu için inScopeAny yeter (yanlış tahmin stoğu sıfırlamasın).
+export function inScopeForSend(supplierCat: string | null | undefined, mpCat: string | null | undefined, title?: string | null): ScopeResult {
+  if (mpCat && mpCat.trim()) {
+    const m = inScope({ cat: mpCat, title });
+    if (!m.ok) return { ok: false, reason: `pazaryeri kategorisi "${mpCat}" kapsam dışı (kategori yanlış tahmin edilmiş olabilir)` };
+  }
+  return inScopeAny([supplierCat, mpCat], title);
 }

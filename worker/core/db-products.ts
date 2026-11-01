@@ -11,7 +11,7 @@ import { contentChanges, fpOf, type ContentFp } from "./content-diff.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
-import { inScopeAny } from "../../lib/scope.ts";
+import { inScopeAny, inScopeForSend } from "../../lib/scope.ts";
 
 export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
@@ -363,8 +363,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const vImages: string[] = Array.isArray(v.images) && v.images.length ? v.images : images;
           if (!vImages.length) { fail(key, p, v, "Görsel yok"); continue; }
           // Faaliyet kapsamı (K, 31.10): vergi dairesi faaliyet kodları dışındaki ürün hiçbir pazaryerine gönderilmez
-          // Tahmini Trendyol kategorisi yanlış olabilir (01.11: kahve makinesi, kışlık bot reddedildi): tedarikçi kategorisi YA DA pazaryeri kategorisi izinliyse geçer
-          if (ctx.scopeActive) { const sc = inScopeAny([p.category, catName], p.title); if (!sc.ok) { fail(key, p, v, `Faaliyet kapsamı dışında: ${sc.reason ?? ""} (izinli: ev aleti, dış giyim, ayakkabı)`); continue; } }
+          // Pazaryeri kategorisi (varsa) izinli olmalı + tedarikçi ya da pazaryeri kategorisi izinli (lib/scope.ts inScopeForSend)
+          if (ctx.scopeActive) { const sc = inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Faaliyet kapsamı dışında: ${sc.reason ?? ""} (izinli: ev aleti, dış giyim, ayakkabı)`); continue; } }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           // Tahmin güveni düşükse otomatik seçilmez; en iyi tahmin "öneri" olarak yazılır (panel → Gönderilemeyenler tek tıkla seçer)

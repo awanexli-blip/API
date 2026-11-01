@@ -35,3 +35,13 @@ test("birden çok kategori: biri izinliyse geçer (yanlış tahmini Trendyol kat
   assert.ok(!inScopeAny(["Eğitici Oyuncak", "Oyuncak Araba"], "Uzaktan Kumandalı Araba").ok);
   assert.ok(inScopeAny([null, ""], "Saç Kurutma Makinesi 2200W").ok, "kategori yoksa başlık");
 });
+
+import { inScopeForSend } from "../lib/scope.ts";
+test("gönderim: pazaryeri kategorisi de izinli olmalı (yanlış kategoride açılmasın)", () => {
+  assert.ok(!inScopeForSend("Ayakkabı > Bot", "Fermuar", "Erkek Fermuarlı Kışlık Şehir Bot").ok, "bot Fermuar kategorisinde");
+  assert.ok(!inScopeForSend("Ayakkabı > Topuklu", "Toka", "Kadın Tokalı Topuklu Ayakkabı").ok);
+  assert.ok(inScopeForSend("Ayakkabı > Bot", "Bot", "Erkek Kışlık Bot").ok);
+  assert.ok(inScopeForSend("Mutfak > Mikser", null, "El Mikseri").ok, "kategori yoksa tedarikçi");
+  for (const [c, t] of [["Klima Temizleyici", "Klima Temizleyici Sprey 150 ml"], ["Ütü Masası ve Aksesuarı", "Teflon Ev Ütü Altlığı"], ["Oto Kokusu", "Vanilla Oto Araç Kokusu"], ["Süpürge Aksesuarı", "Modern Süpürge Hortumu"]])
+    assert.ok(!inScopeForSend("Ev Aletleri", c, t).ok, t);
+});
