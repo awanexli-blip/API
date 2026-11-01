@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-02 (60) — Satış kısıtı düzeltildi (yalnızca gıda + iç giyim), Trendyol 45 bine toplu gönderim
+- **Düzeltme (K):** "biz sadece gıda ve iç giyim ürünlerini satamıyoruz". 31.10 yorumu (yalnızca ev aleti/dış giyim/ayakkabı izinli) yanlıştı ve ~20 bin Trendyol + ~15 bin HB ilanının stoğunu 0 yapmıştı. `lib/scope.ts` artık yasak-liste: gıda (tam kategori adı / tam gıda yol parçası) ve iç giyim (külot, boxer, sütyen, atlet, çorap, body/zıbın, pijama, "İç Giyim" yolu). Kahve makinesi, mama kabı, "Süpermarket, Pet Shop > Sağlık/Temizlik", "Yiyecek & İçecek Hazırlama" aletleri satılabilir. Supabase senkronu: Trendyol 20.424 ilan yeniden satışta.
+- **Toplu gönderim:** puanlama yeni kurala göre (41.232 yıldızlı, kademe başı ~4.120). Sunucuda `trentakip-toplu` (systemd-run, `/opt/trentakip-toplu.sh`): yıldız 10 -> 1, `LISTING_CAP=45000`, her kademe `SEND_ONLY` canlı; bitince `trentakip-sync-vps@trendyol.timer` açılır + Telegram özeti. Günlük `/tmp/toplu.log`.
+- Not: 10 yıldızlılar kuru denemeden önce zamanlayıcının 01:57 çalışması tarafından canlı gönderildi (zamanlayıcı durdurulmadan kuyruk dolduruldu); örnekleme: kategoriler doğru, hatalar zorunlu özellik / eşlenmemiş kategori.
+- HB: kimlik bilgileri sunucuda yok -> gönderim bekliyor.
+
 ## 2026-11-01 (59) — Yıldızlı toplu gönderim (Trendyol, sunucudan)
 - K: "deneme başarılıysa 10 numaradan başlayarak ~45 bine kadar gönder". Deneme 38/38 onaylı -> yıldız 10..1 (1.359 ürün) kuyruğa, iki kuru çalışma (`SEND_DRY`), sonra gerçek: **1.136 gönderildi**, 30 paket, `failedBatches` 0, Trendyol `batchCheck` 0 hatalı öğe. Trendyol toplam ~23,3 bin ilan (sınır 45 bin, bol yer).
 - Kuru çalışmada bulunan: başlıktan tahmin edilen kategori yanlış ("Fermuarlı Bot" -> Fermuar, "Tokalı Ayakkabı" -> Toka). Düzeltme `inScopeForSend`: gönderimde pazaryeri kategorisinin kendisi de kapsamda olmalı; kategori-yalnız hariç kelimeler (klima temizleyici, ütü bezi/masası, oto kokusu, aksesuar, hortum, tabanlık), izinliye Türk kahvesi makinesi, dik süpürge, IPL epilasyon. Testli.
