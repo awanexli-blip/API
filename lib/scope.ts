@@ -16,9 +16,9 @@ const FOOD_EXACT = new Set(["su", "kola", "makarna", "pirinç", "bakliyat", "zey
 const UNDER_EXACT = new Set(["külot", "boxer", "sütyen", "atlet", "çorap", "emzirme sütyeni", "emzirme atleti", "bebek body & zıbın", "body", "zıbın", "fanila", "slip", "string",
   "jartiyer", "korse", "korse & büstiyer", "büstiyer", "bralet", "babydoll", "gecelik", "pijama", "pijama takımı", "sabahlık", "kombinezon", "jüpon", "içlik", "termal içlik", "termal giyim",
   "külotlu çorap", "soket çorap", "patik çorap", "iç çamaşırı takımı", "fantezi giyim", "lohusa sabahlık", "erkek iç giyim", "kadın iç giyim"]);
-// Yol parçasında geçerse yasak (tedarikçi yolu "Süpermarket > Gıda > ...", "Giyim > İç Giyim > ...")
-const FOOD_PART = /(gıda|yiyecek|içecek|süpermarket|atıştırmalık|takviye edici)/u;
-const FOOD_PART_OK = /(saklama|kabı|kap(?![\p{L}])|dispenser|sebil|makine|termos|şişe|matara|bardak|mikser|blender|aparat|kalıp|tartı|kutu|akü|ısıtıcı|soğutucu)/u;
+// Yol parçasının TAMAMI gıda başlığıysa yasak (02.11: "Süpermarket, Pet Shop > Sağlık > Masaj Aleti" ve "Yiyecek & İçecek Hazırlama > Su Isıtıcı"
+// gıda DEĞİL; parça içinde arama bunları eliyordu). İç giyim için parça içinde arama güvenli ("Giyim > İç Giyim > ...").
+const FOOD_PART = /^(temel gıda|gıda|gıda ürünleri|kuru gıda|dondurulmuş gıda|organik gıda|yiyecek|yiyecekler|içecek|içecekler|atıştırmalık|atıştırmalıklar|takviye edici gıda|takviye edici gıdalar|gıda takviyeleri|kahvaltılık|kahvaltılıklar|şarküteri|et & tavuk|et, tavuk & balık|meyve & sebze|bebek maması|mama ve beslenme ürünleri)$/u;
 const UNDER_PART = /(iç giyim|iç çamaşır|ic giyim)/u;
 // Kategori yoksa başlıkta kesin iç giyim kelimesi
 const UNDER_TITLE = /(?<![\p{L}])(külot|boxer|sütyen|iç çamaşır|çorap(?!lık)|atlet(?!ik)|fanila|jartiyer|babydoll|bralet|büstiyer)(?![\p{L}])/u;
@@ -30,7 +30,7 @@ function forbiddenCat(cat: string): string | null {
     if (FOOD_EXACT.has(s)) return `gıda (${s})`;
     if (UNDER_EXACT.has(s)) return `iç giyim (${s})`;
     if (UNDER_PART.test(s)) return `iç giyim (${s})`;
-    if (FOOD_PART.test(s) && !FOOD_PART_OK.test(s)) return `gıda (${s})`;
+    if (FOOD_PART.test(s)) return `gıda (${s})`;
   }
   return null;
 }
