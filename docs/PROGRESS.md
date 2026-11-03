@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-03 (61) — HB gönderimi sunucudan, sistem çakışması, Telegram komutları, siparişte tedarikçi
+- **Trendyol toplu gönderim bitti** (02.11): sınır 45.000 dolu (canlı 42.442, stoklu 36.651; sunucu tedarikçilerinden 20.363 canlı). Bazı kategoriler Trendyol "kategori yetkisi" istiyor (ret).
+- **İki sistem çakışması:** Supabase HB `zero_unlinked` açıktı -> sunucudan giden HB ilanları (Supabase'de bağsız) sıfırlanabilirdi (9.448 bağsızda %20 güvenlik durdurdu). Kapatıldı. Trendyol `zero_missing`/`zero_unlinked` zaten kapalı. Sunucu kısmi senkronu artık `sales_paused`a uyar.
+- **Hepsiburada:** K sunucuya HB bilgilerini ekledi; `hb-tool ping` çalışıyor (mağaza ID : servis anahtarı, UA = HB_USER_AGENT). HB adaptörüne `SEND_DRY`. Puanlama HB: 73.257 ürün. Deneme 335 ürün temiz (fiyatlar tedarikçi maliyetinden; tablet kılıfı maliyet 825 TL KDV hariç). Toplu gönderim `trentakip-hbtoplu` başladı.
+- **Telegram:** gereksiz bildirimler kaldırıldı (günlük özet, rekabet, kargo yaklaşıyor, kısmi senkron, sunucu "düzeldi", pazartesi yedek özeti, GitHub yedeği secret yokken). Acil durum komutları `lib/tg-commands.ts` (onay düğmeli; product_overrides + marketplace_settings.sales_paused + senkron tetikleme; audit_log).
+- **Sipariş bildirimi:** satır başına tedarikçi + tedarikçi kodu; maliyet bilinmiyorsa uyarı. (`order_lines`->`products` FK yok: ayrı sorgu.)
+- Sunucu sağlık: servisler, panel, yedek (03:16, sunucu 112 MB + Supabase 45 MB), içe aktarma hatasız.
+
 ## 2026-11-02 (60) — Satış kısıtı düzeltildi (yalnızca gıda + iç giyim), Trendyol 45 bine toplu gönderim
 - **Düzeltme (K):** "biz sadece gıda ve iç giyim ürünlerini satamıyoruz". 31.10 yorumu (yalnızca ev aleti/dış giyim/ayakkabı izinli) yanlıştı ve ~20 bin Trendyol + ~15 bin HB ilanının stoğunu 0 yapmıştı. `lib/scope.ts` artık yasak-liste: gıda (tam kategori adı / tam gıda yol parçası) ve iç giyim (külot, boxer, sütyen, atlet, çorap, body/zıbın, pijama, "İç Giyim" yolu). Kahve makinesi, mama kabı, "Süpermarket, Pet Shop > Sağlık/Temizlik", "Yiyecek & İçecek Hazırlama" aletleri satılabilir. Supabase senkronu: Trendyol 20.424 ilan yeniden satışta.
 - **Toplu gönderim:** puanlama yeni kurala göre (41.232 yıldızlı, kademe başı ~4.120). Sunucuda `trentakip-toplu` (systemd-run, `/opt/trentakip-toplu.sh`): yıldız 10 -> 1, `LISTING_CAP=45000`, her kademe `SEND_ONLY` canlı; bitince `trentakip-sync-vps@trendyol.timer` açılır + Telegram özeti. Günlük `/tmp/toplu.log`.

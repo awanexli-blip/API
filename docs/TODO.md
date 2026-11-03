@@ -2,9 +2,19 @@
 
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Kural: her oturumda önce `docs/PROGRESS.md`, sonra bu dosya okunur; iş bittikçe burada işaretlenir, ayrıntı PROGRESS'e yazılır.
-Son güncelleme: 28.10.2026.
+Son güncelleme: 03.11.2026.
 
 ## Şu an
+
+> **03.11 (PROGRESS 61) — K kararları (sırayla yapılacak):**
+> 1. [x] Telegram: yalnızca önemli bildirim (sipariş, zararına sipariş, iptal, iade, müşteri sorusu, sistem çöktü; + kargo süresi GEÇTİ) · acil durum komutları `lib/tg-commands.ts` (/ara /durdur /ac /fiyat /fiyatsil /satisdurdur /satisac /senkron, onay düğmeli).
+> 2. [~] Siparişte tedarikçi: bildirimde tedarikçi + kod (ürün kaydı / barkod ön eki). Hepsibayi-Bezos ürünleri Supabase'de olmadığı için EAN barkodlularda "bilinmiyor" + maliyet yok -> **taşıma (6) ile tam çözülür**.
+> 3. [ ] Aynı ürün birden çok tedarikçide (barkod/başlık): en ucuz tedarikçi satılır; başlık/açıklama en iyi olandan (uzun, eksiksiz, yasaklı kelimesiz). Ortak: Bezos~334, Hepsibayi~33 (toptancim ile).
+> 4. [ ] Trendyol revize (1.539) + kapalı (1.717): yasaklı kelime / kategori / görsel otomatik düzelt + yeniden gönder; düzeltilemeyen (görselde marka 814 vb.) **panelde "Revize bekleyenler" listesi** (K yeni foto ekleyip gönderecek). Kapalılar arşiv+kaldır: listeyi K'ya göster, onayla. Hedef 42-45 bin AKTİF ilan.
+> 5. [~] Hepsiburada: iki tedarikçinin tüm satılabilir ürünleri (73.257, yıldız yalnızca sıra) `trentakip-hbtoplu` sunucuda (günlük `/tmp/hbtoplu.log`, bitince Telegram + `trentakip-sync-vps@hepsiburada.timer`).
+> 6. [ ] **Tam taşıma: her şey sunucuda, Supabase acil yedek (kapatılmaz)** (K onayı 03.11). HB toplu gönderim bitince. `cutover.sh` sunucuya özel `marketplace_listings`/`jobs` satırlarını da korumalı (şu an korumuyor!). Sonra: panel + Telegram webhook sunucuya, `ACTIVE_SITE=sunucu`, `trentakip-sync@`/`import` zamanlayıcıları, `/senkron` komutu sunucuda tetiklenmeli (dispatchSync şu an GitHub).
+> Barkod ön ekleri (K): toptancim `TCX`, Bezos `BZ`, Hepsibayi `HS`/`HBY`, K'nın kendi ürünleri `OZ`. Gerçek EAN varsa o kullanılır.
+> Bekleyen (K): GitHub `SUPABASE_DB_URL2` + `BACKUP_PASSPHRASE` (yazılana kadar GitHub yedeği sessiz atlanır; Supabase sunucuda her gece yedekleniyor).
 
 > **28.10 (PROGRESS 41):** 1000 satır sınırı (kopyaların 3.538'i satışta kalmıştı), HB kalıcı kapanma, Gemini 404, Trendyol yeniden deneme, yedek, eski veritabanı kurtarma aracı yazıldı.
 > **28.10 (PROGRESS 45):** VPS kuruldu, senkron tetikleyici sunucudan. Taşıma kiti `ops/vps/db/` (`docs/VPS_TASIMA.md`), 7 gün deneme.
