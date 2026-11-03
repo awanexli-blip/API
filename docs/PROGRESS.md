@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-04 (62) — Siparişte tedarikçi her zaman belli
+- K: "bilinmeyen tedarikçi diye bir şey yok" (toptancim, Bezos, Hepsibayi, kendi ürünleri). Neden: siparişleri Supabase işliyor, Hepsibayi/Bezos ürünleri yalnızca sunucuda -> satırda maliyet/kod boştu.
+- `worker/orders-vps.ts` + `trentakip-orders-vps.timer` (sunucu, 3 dk): Supabase'de maliyeti boş satırlara sunucu ilan->ürün kaydından maliyet (×kur) + tedarikçi kodu (BZS…/HBY…) yazar; hiçbir tedarikçide olmayan ilan = `KENDI` (K'nın pazaryerinde elle açtığı ürün: Gezer terlik 10221.*, 14000894* ayakkabı). `order_upsert` dolu değeri korur, kâr sonraki senkronda hesaplanır. İlk çalışma: 8 sunucu ürünü, 35 kendi ürünü, 27 eski BayilikXML (ÖS13, 26.10).
+- Telegram sipariş bildirimi: siparişte bir kez (`notifications` order:<id>), tedarikçi belli olana kadar en fazla 40 dk bekler; zararına sipariş ayrı. Geçişte son 3 saatin siparişleri gönderilmiş sayıldı (tekrar gelmesin).
+- Öneri (K): kendi ürünlerini panelde ürün olarak girip ilana bağlarsa maliyet ve kâr da görünür.
+
 ## 2026-11-03 (61) — HB gönderimi sunucudan, sistem çakışması, Telegram komutları, siparişte tedarikçi
 - **Trendyol toplu gönderim bitti** (02.11): sınır 45.000 dolu (canlı 42.442, stoklu 36.651; sunucu tedarikçilerinden 20.363 canlı). Bazı kategoriler Trendyol "kategori yetkisi" istiyor (ret).
 - **İki sistem çakışması:** Supabase HB `zero_unlinked` açıktı -> sunucudan giden HB ilanları (Supabase'de bağsız) sıfırlanabilirdi (9.448 bağsızda %20 güvenlik durdurdu). Kapatıldı. Trendyol `zero_missing`/`zero_unlinked` zaten kapalı. Sunucu kısmi senkronu artık `sales_paused`a uyar.
