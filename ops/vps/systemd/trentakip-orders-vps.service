@@ -1,0 +1,18 @@
+[Unit]
+Description=Trentakip: sunucu tedarikçilerinin (Hepsibayi, Bezos) sipariş satırlarına maliyet + tedarikçi kodu (Supabase siparişleri, worker/orders-vps.ts)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+# env: canlı Supabase (SUPABASE_URL/KEY) · keys.env: sunucu veritabanı (VPS_SUPABASE_URL/VPS_SERVICE_ROLE_KEY)
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+WorkingDirectory=/opt/trentakip
+ExecStart=/usr/bin/node --experimental-strip-types worker/orders-vps.ts
+TimeoutStartSec=5min
+Nice=5
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true

@@ -467,9 +467,9 @@ async function main() {
   // Siparişler (Faz 6 F2, salt okunur): her çalışmada son 3 gün, saatte bir son 14 gün; kişisel veri yok
   if (!lite && mp.fetchOrders && mode !== "preview") {
     const full = new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1";
-    const since = new Date().toISOString();
     summary.orders = await syncOrders(db, mp, cfg, (k) => calcBy.get(k)?.cost ?? null, full ? 30 : 3).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
-    if (summary.orders?.inserted) summary.orders.notified = await notifyOrders(db, mp, since).catch(() => 0);
+    // Her çalışmada: maliyeti sunucudan dolmayı bekleyen siparişler sonraki turda bildirilir (inbox.ts)
+    if (summary.orders && !summary.orders.error) summary.orders.notified = await notifyOrders(db, mp).catch(() => 0);
     // İadeler (her çalışmada son 7 gün, saatte bir 30 gün) ve hakediş (saatte bir): salt okunur
     if (mp.fetchClaims) summary.claims = await syncClaims(db, mp, full ? 30 : 7).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
     if (mp.fetchSettlements && full) summary.settlements = await syncSettlements(db, mp, 30).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));

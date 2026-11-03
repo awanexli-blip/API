@@ -88,10 +88,17 @@ async function productContext(db: any, marketplace: string, key: string | null, 
 }
 
 // Yeni sipariş bildirimi (Telegram): yalnızca sayı, tutar, ürün adı, TEDARİKÇİ (K, 03.11: "hangisinden geldiğini bilmek istiyorum"); müşteri bilgisi yok
-// Tedarikçi: ürün kaydı (products.source -> suppliers.name) kesin; kayıt yoksa barkod ön eki (supplierOfBarcode).
-export async function notifyOrders(db: any, mp: Marketplace, since: string) {
+// Tedarikçi: ürün kaydı (products.source -> suppliers.name) kesin; kayıt yoksa tedarikçi kodu / barkod ön eki (supplierOfBarcode).
+// 04.11: Hepsibayi/Bezos ürünleri yalnızca sunucuda; maliyet + kod sunucudan birkaç dakikada dolar (worker/orders-vps.ts). Bu yüzden maliyeti boş
+// sipariş en fazla 40 dk bekletilir (sonraki senkronda tedarikçi ve kârla gider); 40 dk'da hâlâ boşsa gerçek sorun: yine de bildirilir.
+// Her sipariş bir kez (notifications "order:<id>"); son 90 dakikada oluşanlara bakılır.
+const ORDER_WAIT_MS = 40 * 60000;
+export async function notifyOrders(db: any, mp: Marketplace) {
   if (!telegramEnabled()) return 0;
-  const { data } = await db.from("orders").select("id, order_no, total, est_net, status, created_at, needs_attention, attention_reason, order_lines(title, qty, listing_key, supplier_sku, product_id)").eq("marketplace", mp.id).gte("created_at", since).order("created_at").limit(20);
+  const { data: all } = await db.from("orders").select("id, order_no, total, est_net, status, created_at, needs_attention, attention_reason, order_lines(title, qty, listing_key, supplier_sku, product_id, cost_snapshot)").eq("marketplace", mp.id).gte("created_at", new Date(Date.now() - 90 * 60000).toISOString()).order("created_at").limit(40);
+  const { data: done } = (all ?? []).length ? await db.from("notifications").select("key").in("key", (all ?? []).map((o: any) => `order:${o.id}`)) : { data: [] };
+  const sent = new Set((done ?? []).map((x: any) => x.key));
+  const data = (all ?? []).filter((o: any) => !sent.has(`order:${o.id}`) && ((o.order_lines ?? []).every((l: any) => l.cost_snapshot != null) || Date.now() - Date.parse(o.created_at) > ORDER_WAIT_MS));
   // order_lines -> products yabancı anahtarı yok (gömülü seçim olmaz): ürünler ayrı okunur
   const ids = [...new Set((data ?? []).flatMap((o: any) => (o.order_lines ?? []).map((l: any) => l.product_id)).filter(Boolean))];
   const { data: prods } = ids.length ? await db.from("products").select("id, source, sku").in("id", ids) : { data: [] };
@@ -101,18 +108,20 @@ export async function notifyOrders(db: any, mp: Marketplace, since: string) {
   for (const o of data ?? []) {
     const lines = (o.order_lines ?? []).map((l: any) => {
       const p = l.product_id ? prod.get(l.product_id) : null;
-      const sup = p?.source ? supName.get(p.source) ?? String(p.source).replace(/^xml:/, "") : supplierOfBarcode(l.listing_key);
       const code = l.supplier_sku ?? p?.sku ?? null;
+      const sup = p?.source === "manual" ? "Kendi ürünün" : p?.source ? supName.get(p.source) ?? String(p.source).replace(/^xml:/, "") : supplierOfBarcode(code ?? l.listing_key);
       return `${l.qty} × ${esc(l.title)}\n   🏭 <b>${esc(sup)}</b>${code ? ` · kod ${esc(code)}` : ""}`;
     }).join("\n");
     const loss = o.est_net != null && Number(o.est_net) < 0;
-    const noCost = o.est_net == null ? "\n⚠️ Maliyet bilinmiyor: kârı tedarikçi fiyatıyla kontrol et" : "";
+    const noCost = o.est_net == null ? "\n🚨 Ürün hiçbir tedarikçide eşleşmedi / maliyet yok: siparişi tedarikçiye vermeden kontrol et" : "";
+    const { error: ne } = await db.from("notifications").insert({ key: `order:${o.id}` });
+    if (ne) continue; // başka çalışma az önce gönderdi (anahtar tekil)
     await tgSend(`${loss ? "🚨 <b>ZARARINA SİPARİŞ</b>" : "🛒 <b>Yeni sipariş</b>"} (${esc(mp.label)}) ${esc(o.order_no ?? "")}\n${lines}\n<b>Tutar:</b> ${Number(o.total ?? 0).toFixed(2)} TL${o.est_net != null ? ` · tahmini net ${Number(o.est_net).toFixed(2)} TL` : ""}${noCost}${o.needs_attention ? `\n⚠️ ${esc(o.attention_reason ?? "dikkat")}` : ""}`);
   }
   return (data ?? []).length;
 }
 
-// Ürün kaydı olmayan satırda tedarikçi tahmini (K, 03.11): barkod ön ekleri. Gerçek EAN barkodlarda ön ek yok -> "bilinmiyor".
+// Ürün kaydı olmayan satırda tedarikçi (K, 03.11): tedarikçi kodu / barkod ön eki. Sunucu ürünlerinde kod orders-vps.ts ile dolar (BZS…, HBY…).
 export function supplierOfBarcode(bc: string | null | undefined): string {
   const b = String(bc ?? "").toUpperCase();
   if (/^(ÖS13-|OS13-)/.test(b)) return "BayilikXML (eski)";
@@ -120,5 +129,5 @@ export function supplierOfBarcode(bc: string | null | undefined): string {
   if (/^(BZS?|BEZ|BOZ)/.test(b)) return "Bezos";
   if (/^(HS|HBY)/.test(b)) return "Hepsibayi";
   if (b.startsWith("OZ")) return "Kendi ürünün (OZ)";
-  return "tedarikçi bilinmiyor (panelde ürüne bak)";
+  return "EŞLEŞMEDİ: tedarikçi bulunamadı (kontrol et)";
 }
