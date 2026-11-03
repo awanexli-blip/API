@@ -328,6 +328,15 @@ export function createHepsiburada(): Marketplace {
           },
         });
       }
+      // SEND_DRY=1: deneme (Trendyol adaptöründeki gibi); HB'ye hiçbir şey gönderilmez, gidecek olanın özeti yazılır
+      if (process.env.SEND_DRY === "1") {
+        for (const x of payloads) {
+          const a = x.attributes;
+          console.log(`DENEME ${a.merchantSku} | ${a.UrunAdi} | marka ${a.Marka} | kategori ${x.categoryId} | ${a.price} | stok ${a.stock} | KDV ${a.tax_vat_rate} | görsel ${Object.keys(a).filter((k) => /^Image\d$/.test(k)).length}`);
+          (res.failedItems ??= []).push({ id: a.merchantSku, reason: "DENEME: gönderilmedi (SEND_DRY)" });
+        }
+        return res;
+      }
       for (const batch of chunk(payloads, 100)) {
         try {
           const form = new FormData();
