@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sunucu veritabanı gece yedeği (docs/SUNUCU_PLAN.md adım 1): pg_dump (tüm veritabanı) -> gpg (AES256, /etc/trentakip/backup.env BACKUP_PASSPHRASE)
 # -> /var/backups/trentakip/<tarih>.dump.gpg. Son 7 gün tutulur. Her yedek şifre çözülüp içindekiler listesiyle doğrulanır.
-# Hata olursa (ve her pazartesi özet) Telegram. Sunucu dışına kopya: ayrı adım (K yer seçecek).
+# Yalnızca hata olursa Telegram (pazartesi özeti 03.11 kaldırıldı: K yalnızca önemli bildirim istiyor). Sunucu dışına kopya: ayrı adım (K yer seçecek).
 set -euo pipefail
 . /etc/trentakip/env
 . /etc/trentakip/backup.env
@@ -35,4 +35,3 @@ fi
 find "$DIR" -name '*.dump.gpg' -mtime +7 -delete
 SIZE=$(du -h "$F" | cut -f1)
 echo "yedek tamam: $F ($SIZE, $N tablo)${FS:+ · Supabase: $(du -h "$FS" | cut -f1), $NS tablo}"
-[ "$(date +%u)" = 1 ] && tg "✅ Yedekler çalışıyor: sunucu $SIZE ($N tablo)${FS:+, Supabase $(du -h "$FS" | cut -f1) ($NS tablo)}, son 7 gün saklanıyor" || true

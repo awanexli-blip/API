@@ -1,7 +1,8 @@
 // Telegram uyarıları (K, 27.10: "önemli her şey Telegram'dan, hızlı"): her senkron sonunda kontrol edilir, aynı olay bir kez gönderilir
 // (notifications tablosu, migration 060). Müşteri adı/adresi/telefonu mesaja girmez.
-// Olaylar: iade talebi, müşteri iptali, kargo süresi yaklaşan/geçen sipariş, senkron hatası (3 saatte en çok bir), veritabanı 400 MB,
-// günlük satış özeti (09:00 sonrası ilk Trendyol senkronu). Yeni sipariş ve müşteri sorusu bildirimleri inbox.ts'te.
+// K, 03.11: "yalnızca çok önemli olanlar": yeni sipariş, zararına sipariş, iptal, iade, müşteri sorusu, sistem çöktü (+ kargo süresi GEÇTİ: ceza).
+// Olaylar: iade talebi, müşteri iptali, kargo süresi geçen sipariş, senkron HATASI (kısmi değil; 3 saatte en çok bir), veritabanı 450 MB (sistem durabilir).
+// Kaldırılan (03.11): kargo süresi yaklaşıyor, kısmi senkron, günlük özet, rekabet önerileri. Yeni sipariş ve müşteri sorusu inbox.ts'te.
 import { esc, telegramEnabled, tgSend } from "./telegram.ts";
 
 const TR = (d = new Date()) => new Date(d.getTime() + 3 * 3600 * 1000); // Türkiye saati (UTC+3)
@@ -52,18 +53,18 @@ export async function runAlerts(db: any, mp: { id: string; label: string }, summ
       }
     }
   }
-  // 3) Kargo süresi: 6 saatten az kalan ve geçmiş, henüz kargolanmamış siparişler
+  // 3) Kargo süresi GEÇEN, henüz kargolanmamış siparişler ("yaklaşıyor" uyarısı 03.11 kaldırıldı)
   {
-    const { data } = await db.from("orders").select("id, order_no, ship_deadline, status, order_lines(title, qty)").eq("marketplace", mp.id).in("status", ["new", "ready", "sent_to_supplier"]).gte("last_seen_at", new Date(now.getTime() - 6 * 3600000).toISOString()).not("ship_deadline", "is", null).lte("ship_deadline", new Date(now.getTime() + 6 * 3600000).toISOString()).limit(30);
+    const { data } = await db.from("orders").select("id, order_no, ship_deadline, status, order_lines(title, qty)").eq("marketplace", mp.id).in("status", ["new", "ready", "sent_to_supplier"]).gte("last_seen_at", new Date(now.getTime() - 6 * 3600000).toISOString()).not("ship_deadline", "is", null).lte("ship_deadline", now.toISOString()).limit(30);
     for (const o of data ?? []) {
-      const late = new Date(o.ship_deadline).getTime() < now.getTime();
+      const late = true;
       const items = (o.order_lines ?? []).map((l: any) => `${l.qty} × ${esc(l.title)}`).join("\n");
       const when = TR(new Date(o.ship_deadline)).toISOString().slice(5, 16).replace("T", " ");
       if (await notifyOnce(db, `ship:${o.id}:${late ? "late" : "soon"}`, `${late ? "🚨 <b>Kargo süresi GEÇTİ</b>" : "⏰ <b>Kargo süresi yaklaşıyor</b>"} (${esc(mp.label)}) ${esc(o.order_no ?? "")}\n${items}\n<b>Son gün:</b> ${when}${o.status === "new" ? "\nTedarikçiye henüz verilmedi." : ""}`)) add(late ? "kargo_gecti" : "kargo_yakin");
     }
   }
-  // 4) Senkron sorunu (3 saatte en çok bir uyarı)
-  if (status === "error" || status === "partial") {
+  // 4) Senkron HATASI (3 saatte en çok bir uyarı; "partial" = bazı paketler başarısız, kendiliğinden düzelir: bildirilmez)
+  if (status === "error") {
     const slot = `${day(now)}T${String(Math.floor(now.getUTCHours() / 3) * 3).padStart(2, "0")}`;
     const why = summary?.pushErrors?.[0] ?? summary?.error ?? (summary?.failedBatches ? `${summary.failedBatches} toplu gönderim başarısız` : "");
     if (await notifyOnce(db, `sync:${mp.id}:${slot}`, `⚠️ <b>${esc(mp.label)} senkronunda sorun</b>\n${esc(String(why).slice(0, 300))}\nGüncellenen: ${Number(summary?.updated ?? 0).toLocaleString("tr-TR")} ilan. Sorun sürerse Claude'a bildir.`)) add("senkron");
@@ -72,25 +73,7 @@ export async function runAlerts(db: any, mp: { id: string; label: string }, summ
   {
     const { data: size } = await db.rpc("db_size_bytes");
     const mb = Number(size ?? 0) / 1048576;
-    if (mb >= 400 && await notifyOnce(db, `db:${day(now)}`, `🗄️ <b>Veritabanı ${Math.round(mb)} MB</b> (ücretsiz sınır 500 MB). Dolarsa sistem durur, Claude'a bildir.`)) add("db");
-  }
-  // 6) Günlük özet (Türkiye 09:00 sonrası ilk Trendyol senkronunda; dün, tüm pazaryerleri)
-  if (mp.id === "trendyol" && TR(now).getUTCHours() >= 9) {
-    const today = day(TR(now));
-    const from = new Date(`${today}T00:00:00+03:00`), y = new Date(from.getTime() - 86400000);
-    const { data: k } = await db.rpc("sales_kpi", { p_from: y.toISOString(), p_to: from.toISOString(), p_mp: null });
-    const { count: rej } = await db.from("marketplace_listings").select("listing_key", { count: "exact", head: true }).in("status", ["rejected", "error"]).gte("updated_at", y.toISOString());
-    const { count: open } = await db.from("orders").select("id", { count: "exact", head: true }).in("status", ["new", "ready"]);
-    const text = `📊 <b>Dünün özeti</b> (${day(y)})\nSipariş: <b>${k?.orders ?? 0}</b> · ${tl(k?.gross)}\nTahmini net kâr: <b>${tl(k?.net)}</b>\nİptal: ${k?.cancelled ?? 0} · İade: ${k?.returned ?? 0}\nTedarikçiye verilmeyi bekleyen sipariş: ${open ?? 0}\nReddedilen/hatalı ilan (24 saat): ${rej ?? 0}`;
-    if (await notifyOnce(db, `daily:${today}`, text)) add("gunluk");
-  }
-  // 7) Rekabet önerileri (günde bir, Trendyol): onay panelde (Pazaryeri > Rekabet > Öneriler)
-  if (mp.id === "trendyol") {
-    const { data: rows } = await db.from("listing_buybox").select("suggestion").eq("marketplace", "trendyol").not("suggestion", "is", null).limit(5000);
-    const c = { lower: 0, raise: 0, reset: 0 } as Record<string, number>;
-    for (const r of rows ?? []) c[r.suggestion] = (c[r.suggestion] ?? 0) + 1;
-    const total = c.lower + c.raise + c.reset;
-    if (total && await notifyOnce(db, `buybox:${day(TR(now))}`, `🏷️ <b>${total} rekabet önerisi</b> (güncel fiyatlarla)\nİn (buybox al): ${c.lower} · Artır: ${c.raise} · Formüle dön: ${c.reset}\nPanel → Trendyol → Rekabet → Öneriler: karşılaştır, seç, onayla.`)) add("rekabet");
+    if (mb >= 450 && await notifyOnce(db, `db:${day(now)}`, `🗄️ <b>Veritabanı ${Math.round(mb)} MB</b> (ücretsiz sınır 500 MB). Dolarsa sistem durur, Claude'a bildir.`)) add("db");
   }
   return out;
 }

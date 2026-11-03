@@ -4,6 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 import { admin, guard, unauthorized, bad } from "@/lib/server";
 import { approveAnswer } from "@/lib/inbox";
 import { askAssistant, HELP } from "@/lib/assistant";
+import { CMD_HELP, handleCommand, handleCommandButton, type CmdReply } from "@/lib/tg-commands";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // asistan cevabı yanıt döndükten sonra (after) üretilir; Gemini yoğunsa yeniden deneme payı
@@ -72,6 +73,13 @@ export async function POST(req: NextRequest) {
     const m = /^qa:(ok|no):([0-9a-f-]{36})$/.exec(String(cb.data ?? ""));
     const hm = /^hl:(a|p|s):([0-9a-f-]{36})$/.exec(String(cb.data ?? ""));
     let note = "Geçersiz işlem";
+    // Acil durum komutu onayı (lib/tg-commands.ts): düğmeye basan = onay
+    const cn = String(cb.data ?? "").startsWith("c:") ? await handleCommandButton(String(cb.data)) : null;
+    if (cn) {
+      note = cn;
+      await tg("editMessageReplyMarkup", { chat_id: chat, message_id: cb.message?.message_id, reply_markup: { inline_keyboard: [] } });
+      await tg("sendMessage", { chat_id: chat, reply_to_message_id: cb.message?.message_id, text: cn });
+    }
     // Elle değişen ilan kararı (worker/core/holds.ts)
     if (hm) {
       const r = await decideHold(hm[2], HOLD_STATUS[hm[1] as "a" | "p" | "s"], "telegram");
@@ -110,8 +118,12 @@ export async function POST(req: NextRequest) {
     }
     // Diğer mesajlar: durum asistanı (salt okunur). Telegram'a hemen 200 dönülür (yeniden gönderim olmasın), cevap sonra yazılır.
     const text = msg.text.trim();
-    if (/^\/(start|yardim|yardım|help)/i.test(text) || !text) {
-      await tg("sendMessage", { chat_id: chat, text: HELP });
+    // Acil durum komutları (lib/tg-commands.ts); komut değilse asistan
+    const cr = await handleCommand(text).catch((e: any) => ({ text: `❗ ${String(e?.message ?? e).slice(0, 200)}` }) as CmdReply);
+    if (cr) {
+      await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: cr.text, parse_mode: "HTML", ...(cr.buttons ? { reply_markup: { inline_keyboard: cr.buttons } } : {}) });
+    } else if (/^\/(start|yardim|yardım|help)/i.test(text) || !text) {
+      await tg("sendMessage", { chat_id: chat, text: `${HELP}\n\n${CMD_HELP.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">")}` });
     } else {
       after(async () => {
         await tg("sendChatAction", { chat_id: chat, action: "typing" });

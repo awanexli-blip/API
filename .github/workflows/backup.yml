@@ -48,6 +48,9 @@ jobs:
         run: |
           set -eu
           if [ -z "${DB_URL}" ] || [ -z "${PASS}" ]; then
+            # 03.11: secret'lar eklenene kadar zamanlı çalışma sessizce atlanır (Supabase her gece sunucuda da yedekleniyor: ops/vps/backup.sh;
+            # her gece gelen "yedek alınamadı" Telegram'ı gereksizdi). Elle çalıştırmada hata verir.
+            if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then echo "::notice::Secret yok: atlandı (sunucu yedeği çalışıyor)"; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
             echo "::error::Yedek alınamadı: GitHub Secrets'ta SUPABASE_DB_URL2 ve/veya BACKUP_PASSPHRASE yok. Kurulum: docs/YEDEK.md"
             exit 1
           fi
@@ -61,6 +64,7 @@ jobs:
           echo "stamp=$(date -u +%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
 
       - name: Yedek al (pg_dump 17)
+        if: steps.kind.outputs.skip != '1'
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL2 }}
           KIND: ${{ steps.kind.outputs.kind }}
@@ -83,6 +87,7 @@ jobs:
           [ "$size" -gt 10000 ] || { echo "::error::Yedek dosyası boş görünüyor"; exit 1; }
 
       - name: Doğrula (boş Postgres'e geri yükle, satır sayılarını karşılaştır)
+        if: steps.kind.outputs.skip != '1'
         run: |
           set -euo pipefail
           docker run -d --name verify -e POSTGRES_PASSWORD=verify "$PG_IMAGE" >/dev/null
@@ -111,6 +116,7 @@ jobs:
           echo "Yedek doğrulandı: $(wc -l < out/live_counts.txt) tablo"
 
       - name: Şifrele (AES-256)
+        if: steps.kind.outputs.skip != '1'
         env:
           PASS: ${{ secrets.BACKUP_PASSPHRASE }}
           STAMP: ${{ steps.kind.outputs.stamp }}
@@ -125,6 +131,7 @@ jobs:
           ls -l out
 
       - name: Yükle
+        if: steps.kind.outputs.skip != '1'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: db-${{ steps.kind.outputs.kind }}-${{ steps.kind.outputs.stamp }}

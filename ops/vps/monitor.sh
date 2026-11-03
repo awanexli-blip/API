@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sunucu iç izleme (docs/SUNUCU_PLAN.md §3): 5 dakikada bir. Sorun -> Telegram (aynı sorun 3 saatte bir), düzelince "düzeldi".
+# Sunucu iç izleme (docs/SUNUCU_PLAN.md §3): 5 dakikada bir. Sorun -> Telegram (aynı sorun 3 saatte bir). "Düzeldi" mesajı yok (K, 03.11: yalnızca önemli).
 # Dış izleme (sunucu tamamen kapanırsa) GitHub Actions'tadır; bu betik sunucu ayaktayken bozulan parçaları yakalar.
 set -uo pipefail
 . /etc/trentakip/env
@@ -10,7 +10,7 @@ problem() { # $1 anahtar, $2 mesaj
   local f="$S/$1"
   if [ ! -f "$f" ] || [ $(( $(date +%s) - $(stat -c %Y "$f") )) -gt 10800 ]; then tg "⚠️ Sunucu: $2"; touch "$f"; fi
 }
-ok() { [ -f "$S/$1" ] && { rm -f "$S/$1"; tg "✅ Sunucu: $2 düzeldi"; }; return 0; }
+ok() { rm -f "$S/$1"; return 0; }
 
 # Disk
 D=$(df --output=pcent / | tail -1 | tr -dc 0-9)

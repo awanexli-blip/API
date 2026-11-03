@@ -101,6 +101,8 @@ async function main() {
   if (s.enabled === false) return { skippedRun: `${marketplaceId} panelde kapalı` };
   // Satış durduruldu (panel): otomatik senkron kapalı olsa da çalışır; satıştaki her ilana stok 0, başka hiçbir şey yapılmaz
   const paused = s.sales_paused === true && mode !== "preview" && !lite;
+  // Kısmi senkron (sunucu tedarikçileri / yalnızca gönderim): satış durdurulmuşsa hiçbir şey gönderilmez (stoğu geri yüklemesin; sıfırlamayı tam senkron yapar)
+  if (s.sales_paused === true && lite && mode !== "preview") return { skippedRun: "satış durduruldu (panel / Telegram)" };
   if (!paused && mode === "auto" && trigger === "schedule" && !s.auto_sync) {
     return { skippedRun: "otomatik senkronizasyon kapalı" };
   }
