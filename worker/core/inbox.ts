@@ -98,7 +98,7 @@ export async function notifyOrders(db: any, mp: Marketplace) {
   const { data: all } = await db.from("orders").select("id, order_no, total, est_net, status, created_at, needs_attention, attention_reason, order_lines(title, qty, listing_key, supplier_sku, product_id, cost_snapshot)").eq("marketplace", mp.id).gte("created_at", new Date(Date.now() - 90 * 60000).toISOString()).order("created_at").limit(40);
   const { data: done } = (all ?? []).length ? await db.from("notifications").select("key").in("key", (all ?? []).map((o: any) => `order:${o.id}`)) : { data: [] };
   const sent = new Set((done ?? []).map((x: any) => x.key));
-  const data = (all ?? []).filter((o: any) => !sent.has(`order:${o.id}`) && ((o.order_lines ?? []).every((l: any) => l.cost_snapshot != null) || Date.now() - Date.parse(o.created_at) > ORDER_WAIT_MS));
+  const data = (all ?? []).filter((o: any) => !sent.has(`order:${o.id}`) && ((o.order_lines ?? []).every((l: any) => l.cost_snapshot != null || l.supplier_sku != null || l.product_id != null) || Date.now() - Date.parse(o.created_at) > ORDER_WAIT_MS));
   // order_lines -> products yabancı anahtarı yok (gömülü seçim olmaz): ürünler ayrı okunur
   const ids = [...new Set((data ?? []).flatMap((o: any) => (o.order_lines ?? []).map((l: any) => l.product_id)).filter(Boolean))];
   const { data: prods } = ids.length ? await db.from("products").select("id, source, sku").in("id", ids) : { data: [] };
@@ -124,7 +124,8 @@ export async function notifyOrders(db: any, mp: Marketplace) {
 // Ürün kaydı olmayan satırda tedarikçi (K, 03.11): tedarikçi kodu / barkod ön eki. Sunucu ürünlerinde kod orders-vps.ts ile dolar (BZS…, HBY…).
 export function supplierOfBarcode(bc: string | null | undefined): string {
   const b = String(bc ?? "").toUpperCase();
-  if (/^(ÖS13-|OS13-)/.test(b)) return "BayilikXML (eski)";
+  if (b === "KENDI") return "Kendi ürünün (pazaryerinde elle açılmış)";
+  if (/^(ÖS13-|OS13-)/.test(b)) return "BayilikXML (eski ilan)";
   if (b.startsWith("TCX")) return "toptancim (TCX)";
   if (/^(BZS?|BEZ|BOZ)/.test(b)) return "Bezos";
   if (/^(HS|HBY)/.test(b)) return "Hepsibayi";

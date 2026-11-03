@@ -15,12 +15,13 @@ const days = Number(process.env.ORDER_DAYS ?? 14);
 
 const since = new Date(Date.now() - days * 86400000).toISOString();
 const { data: rows, error } = await live.from("order_lines").select("order_id, line_no, listing_key, orders!inner(marketplace, created_at)")
-  .is("cost_snapshot", null).is("product_id", null).not("listing_key", "is", null).gte("orders.created_at", since).limit(1000);
+  .is("cost_snapshot", null).is("product_id", null).is("supplier_sku", null).not("listing_key", "is", null).gte("orders.created_at", since).limit(1000);
 if (error) throw new Error(`sipariş satırları okunamadı: ${error.message}`);
 const { data: st } = await live.from("settings").select("fx_usd, fx_eur").maybeSingle();
 const fx: Record<string, number> = { TL: 1, TRY: 1, USD: Number(st?.fx_usd ?? 0), EUR: Number(st?.fx_eur ?? 0) };
 
-const out = { lines: rows?.length ?? 0, filled: 0, notFound: 0, noCost: 0, errors: 0 };
+const OWN_SKU = "KENDI";
+const out = { lines: rows?.length ?? 0, filled: 0, own: 0, notFound: 0, noCost: 0, errors: 0 };
 const byMp = new Map<string, any[]>();
 for (const r of rows ?? []) { const mp = (r as any).orders.marketplace; byMp.set(mp, [...(byMp.get(mp) ?? []), r]); }
 for (const [mp, list] of byMp) {
@@ -38,11 +39,14 @@ for (const [mp, list] of byMp) {
     }
   }
   for (const r of list) {
-    const f = ref.get(r.listing_key);
+    // Hiçbir tedarikçide yok (Supabase'de ürünü yok, sunucuda yok): K'nın pazaryerinde elle açtığı kendi ürünü (ör. Gezer terlik 10221.*).
+    // Eski BayilikXML (ÖS13-/OS13-) ilanları ayrı etiketlenir (inbox.ts supplierOfBarcode). Maliyet yok: K bilir / panelden girer.
+    const f = ref.get(r.listing_key) ?? (/^(ÖS13-|OS13-)/i.test(r.listing_key) ? null : { cost: null, sku: OWN_SKU });
     if (!f) { out.notFound++; continue; }
-    if (f.cost == null) out.noCost++;
+    if (f.sku === OWN_SKU) out.own++;
+    if (f.cost == null && f.sku !== OWN_SKU) out.noCost++;
     if (dry) { out.filled++; continue; }
-    const { error: ue } = await live.from("order_lines").update({ cost_snapshot: f.cost, supplier_sku: f.sku }).eq("order_id", r.order_id).eq("line_no", r.line_no).is("cost_snapshot", null);
+    const { error: ue } = await live.from("order_lines").update({ cost_snapshot: f.cost, supplier_sku: f.sku }).eq("order_id", r.order_id).eq("line_no", r.line_no).is("cost_snapshot", null).is("supplier_sku", null);
     if (ue) { out.errors++; console.error("satır yazılamadı:", ue.message.slice(0, 150)); } else out.filled++;
   }
 }
