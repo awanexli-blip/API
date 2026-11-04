@@ -162,7 +162,7 @@ export function createTrendyol(): Marketplace {
   const NEUTRAL = ["çok renkli", "karışık", "renkli", "tek ebat", "standart", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
   const isColor = (name: string) => /renk|color/i.test(name);
 
-  // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > başlık/açıklama > başlığı benzer onaylı ilan > nötr değer
+  // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > başlık/açıklama > Menşei TR > nötr değer > başlığı benzer onaylı ilan
   async function fillAttributes(p: NewProduct, cid: string): Promise<{ attributes: any[]; missing: string[]; learned: Record<string, string> }> {
     const out = new Map<number, Attr>();
     for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.attributeId) out.set(Number(a.attributeId), a);
@@ -211,6 +211,12 @@ export function createTrendyol(): Marketplace {
         const tr = (await attributeValues(cid, id)).find((v) => ["tr", "türkiye", "turkey"].includes(lo(v.name)));
         if (tr) { val = { attributeId: id, attributeValueId: tr.id }; learned[name] = tr.name; }
       }
+      // K (04.11, F klavye): emin olunmayan değerde önce nötr seçenek ("Belirtilmemiş" vb.); başka ilandan kopyalama yalnızca nötr seçenek yoksa
+      if (!val) {
+        const vals = await attributeValues(cid, id);
+        const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
+        if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
+      }
       if (!val) for (const b of refs) {
         const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);
         if (a) {
@@ -219,11 +225,6 @@ export function createTrendyol(): Marketplace {
           if (nm) learned[name] = String(nm);
           break;
         }
-      }
-      if (!val) {
-        const vals = await attributeValues(cid, id);
-        const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
-        if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
       }
       if (val) out.set(id, val);
       else { missing.push(name); noteMissing("trendyol", cid, name, (await attributeValues(cid, id)).map((v) => v.name), !!ca.allowCustom, p.catName); }
