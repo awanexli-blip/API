@@ -105,7 +105,7 @@ export async function aiFillAttributes(db: any, marketplace: string, max = claud
     const { data } = await db.from("attr_options").select("category_id, name, values, allow_custom").eq("marketplace", marketplace).in("category_id", cats.slice(i, i + 200));
     for (const o of data ?? []) opts.set(`${o.category_id}|${lo(o.name)}`, { values: Array.isArray(o.values) ? o.values.map(String) : [], custom: !!o.allow_custom });
   }
-  const out = { provider: claudeOn() ? "claude" : "gemini", candidates: list.length, asked: 0, filled: 0, products: 0, requeued: 0, errors: 0, quota: false };
+  const out = { provider: claudeOn() ? "claude" : "gemini", candidates: list.length, asked: 0, filled: 0, products: 0, requeued: 0, errors: 0, quota: false, textOnly: 0, withPhoto: 0 };
   const ready: string[] = [];
   const now = new Date().toISOString();
   const seen = new Set<string>();
@@ -133,7 +133,16 @@ export async function aiFillAttributes(db: any, marketplace: string, max = claud
       const missing = (c.missing as string[]).filter((n) => known[n] == null || known[n] === "");
       const ask = missing.map((name) => ({ name, opt: opts.get(`${c.category_id}|${lo(name)}`) })).filter((a): a is { name: string; opt: Opt } => !!a.opt && (a.opt.values.length > 0 || a.opt.custom));
       let filled: Record<string, string> = {};
-      try { filled = await suggestAttributes({ title: c.title, description: c.description ?? "", known, ask, image: await imageOf(c.product_id) }); }
+      // K (04.11, kota hızlı doluyor): önce yalnızca başlık + açıklamadan çıkarım (görselsiz, ucuz); dolmayan özellik kalırsa fotoğrafla ikinci deneme
+      try {
+        filled = await suggestAttributes({ title: c.title, description: c.description ?? "", known, ask, image: null });
+        out.textOnly++;
+        const rest = ask.filter((a) => !(a.name in filled));
+        if (rest.length) {
+          const img = await imageOf(c.product_id);
+          if (img) { out.withPhoto++; filled = { ...filled, ...(await suggestAttributes({ title: c.title, description: c.description ?? "", known: { ...known, ...filled }, ask: rest, image: img })) }; }
+        }
+      }
       catch (e: any) {
         if (e instanceof GeminiQuotaError) { out.quota = true; (out as any).quotaMessage ??= e.message; return; } // kota: bu çalışmada dur, ürün sonra yeniden denenir
         out.errors++; (out as any).lastError ??= String(e?.message ?? e).slice(0, 300); // özet: neden (anahtar mesajda yok)

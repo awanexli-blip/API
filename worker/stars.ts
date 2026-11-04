@@ -50,17 +50,18 @@ async function send(star: number, mp: string) {
   if (!(star >= 1 && star <= 10)) throw new Error("yıldız 1-10 olmalı");
   const o = await readAll<any>((a, b) => db.from("product_opportunity").select("product_id, source").eq("marketplace", mp).eq("stars", star).is("excluded", null).order("product_id").range(a, b));
   if (o.error) throw new Error(o.error.message);
-  // Pazaryerinde ilanı olan (hata/kaldırılmış hariç) ya da kuyrukta bekleyen ürün atlanır
+  // Pazaryerinde ilanı olan, reddedilen (K, 04.11: "düzeltmeden gönderme"; düzeltilen ürünü ai-attrs kendisi kuyruğa alır) ya da kuyrukta bekleyen
+  // ürün atlanır. Yalnızca kaldırılmış (gone) ve deneme (SEND_DRY, "DENEME") işaretli ilan yeniden alınır.
   const has = new Set<string>();
-  const ls = await readAll<any>((a, b) => db.from("marketplace_listings").select("product_id, status").eq("marketplace", mp).not("product_id", "is", null).order("listing_key").range(a, b));
-  for (const l of ls.data ?? []) if (!["error", "gone"].includes(l.status)) has.add(l.product_id);
+  const ls = await readAll<any>((a, b) => db.from("marketplace_listings").select("product_id, status, last_error").eq("marketplace", mp).not("product_id", "is", null).order("listing_key").range(a, b));
+  for (const l of ls.data ?? []) if (l.status !== "gone" && !(l.status === "error" && String(l.last_error ?? "").startsWith("DENEME"))) has.add(l.product_id);
   const { data: q } = await db.from("jobs").select("payload").eq("type", `send_products:${mp}`).in("status", ["queued", "running"]);
   for (const j of q ?? []) for (const id of j.payload?.product_ids ?? []) has.add(id);
   let ids = o.data.map((x: any) => x.product_id).filter((id: string) => !has.has(id));
   // Trendyol ürün sınırı: mevcut ilan + kuyruk + yeni <= LISTING_CAP
   const cap = Number(process.env.LISTING_CAP ?? (mp === "trendyol" ? 48000 : 0));
   if (cap) {
-    const live = (ls.data ?? []).filter((l: any) => !["error", "gone"].includes(l.status)).length;
+    const live = (ls.data ?? []).filter((l: any) => !["error", "gone"].includes(l.status)).length; // sınır: hatalı ilan pazaryerinde yer tutmaz
     const room = Math.max(0, cap - live - (q ?? []).reduce((t: number, j: any) => t + (j.payload?.product_ids?.length ?? 0), 0));
     if (ids.length > room) { console.log(`sınır: ${cap} ilan; yer ${room}, ${ids.length - room} ürün dışarıda kaldı`); ids = ids.slice(0, room); }
   }
