@@ -197,11 +197,17 @@ async function main() {
   // Trendyol kategori ağacı (herkese açık uç): başlıktan kategori, sınıflandırıcı emin değilse son çare
   let leafMatch: DbCtx["leafMatch"] = null, pathMatch: DbCtx["pathMatch"] = null, leafInfo: number | string | null = null;
   if (mp.categoryLeaves && process.env.CATEGORY_TREE_URL !== "off") {
-    try {
-      const leaves = await mp.categoryLeaves();
-      if (leaves.length) { leafMatch = buildLeafMatcher(leaves, new Set(examples.map((e) => e.categoryId))); pathMatch = buildPathMatcher(leaves); }
-      leafInfo = leaves.length;
-    } catch (e: any) { console.error("kategori ağacı alınamadı:", e.message); leafInfo = "hata: " + String(e.message).slice(0, 300); }
+    // 04.11: HB ağacı 10 gönderimin 3'ünde "fetch failed" -> o turların ürünlerinin hepsi "kategori yok" oldu. 3 deneme, olmazsa kayıtlı kopya (mp_categories).
+    let leaves: { id: string; name: string; path: string[] }[] = [];
+    for (let t = 0; t < 3 && !leaves.length; t++) {
+      try { leaves = await mp.categoryLeaves(); }
+      catch (e: any) { console.error(`kategori ağacı alınamadı (deneme ${t + 1}):`, e.message); leafInfo = "hata: " + String(e.message).slice(0, 300); await new Promise((r) => setTimeout(r, 5000 * (t + 1))); }
+    }
+    if (!leaves.length) {
+      const saved = await readAll<any>((a, b) => db.from("mp_categories").select("id, name, path").eq("marketplace", marketplaceId).order("id").range(a, b));
+      if (!saved.error && saved.data.length) { leaves = saved.data.map((x: any) => ({ id: String(x.id), name: String(x.name), path: String(x.path ?? x.name).split(" > ") })); leafInfo = `kayıtlı kopya: ${leaves.length}`; }
+    } else leafInfo = leaves.length;
+    if (leaves.length) { leafMatch = buildLeafMatcher(leaves, new Set(examples.map((e) => e.categoryId))); pathMatch = buildPathMatcher(leaves); }
   }
 
   // Panelde ID yerine ad görünsün: adı boş eşleşmelere ilanlardaki kategori adını yaz (migration 004 yoksa sessizce geç)
