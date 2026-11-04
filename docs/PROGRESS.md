@@ -6,7 +6,12 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 - K: "bilinmeyen tedarikçi diye bir şey yok" (toptancim, Bezos, Hepsibayi, kendi ürünleri). Neden: siparişleri Supabase işliyor, Hepsibayi/Bezos ürünleri yalnızca sunucuda -> satırda maliyet/kod boştu.
 - `worker/orders-vps.ts` + `trentakip-orders-vps.timer` (sunucu, 3 dk): Supabase'de maliyeti boş satırlara sunucu ilan->ürün kaydından maliyet (×kur) + tedarikçi kodu (BZS…/HBY…) yazar; hiçbir tedarikçide olmayan ilan = `KENDI` (K'nın pazaryerinde elle açtığı ürün: Gezer terlik 10221.*, 14000894* ayakkabı). `order_upsert` dolu değeri korur, kâr sonraki senkronda hesaplanır. İlk çalışma: 8 sunucu ürünü, 35 kendi ürünü, 27 eski BayilikXML (ÖS13, 26.10).
 - Telegram sipariş bildirimi: siparişte bir kez (`notifications` order:<id>), tedarikçi belli olana kadar en fazla 40 dk bekler; zararına sipariş ayrı. Geçişte son 3 saatin siparişleri gönderilmiş sayıldı (tekrar gelmesin).
-- Öneri (K): kendi ürünlerini panelde ürün olarak girip ilana bağlarsa maliyet ve kâr da görünür.
+- Kendi ürünleri: pazaryerinde elle açılmış eski ilan başlığı paneldeki ürünle tek ve net eşleşirse (Jaccard >= 0,8) o ürünün maliyeti + bağlantısı (15 Gezer satırı eşleşti; ayakkabılar belirsiz -> maliyetsiz).
+- **Kâr bulgusu (04.11):** son 30 gün Trendyol marj %6,3; kârı bilinen 61 siparişin 36'sı zararına: toptancim 26/44 (toplam -690 TL, düşük fiyatlı ürünlerde 115 TL kargo?), kendi ürünleri 9 (Gezer terlik 105-125 TL'ye satılıyor, maliyet 55 -> sipariş başı ~-60 TL). Bezos/Hepsibayi zararsız. Bugünkü siparişler Telegram'a gönderildi (ortalama net 84,37 TL; tedarikçi ürünlerinde 142,16 TL). **Sıradaki:** toptancim zarar nedenini incele (kargo/komisyon/KDV), Gezer fiyatı (K).
+- Bezos "Fantezi Kostüm" (BZRSL0000503) satıldı: iç giyim sayılır mı? K'ya soruldu.
+- Toptancim sunucu veritabanına içe aktarıldı (37.016; yalnızca veri, ilanları hâlâ Supabase yönetir). Düzenli yenileme zamanlayıcısı henüz yok (taşımada).
+- REST API: Hepsibayi/Bezos REST dokümanı + anahtar K'dan bekleniyor.
+
 
 ## 2026-11-03 (61) — HB gönderimi sunucudan, sistem çakışması, Telegram komutları, siparişte tedarikçi
 - **Trendyol toplu gönderim bitti** (02.11): sınır 45.000 dolu (canlı 42.442, stoklu 36.651; sunucu tedarikçilerinden 20.363 canlı). Bazı kategoriler Trendyol "kategori yetkisi" istiyor (ret).
