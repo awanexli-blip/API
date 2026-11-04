@@ -37,3 +37,11 @@ test("birden çok kategori: biri yasaksa yasak; gönderim aynı kural", () => {
   assert.ok(!inScopeForSend("Süpermarket > İçecekler", "Kola", "Kola 1 L").ok);
   assert.ok(inScopeForSend("Oyuncak", "Eğitici Oyuncak", "Ahşap Yapboz").ok);
 });
+
+import { vatSuspect } from "../lib/scope.ts";
+test("Türkçe karaktersiz gıda kategorileri (Bezos) ve şüpheli KDV", () => {
+  for (const c of ["Ev & Yaşam Ürünleri > Gıda ve İçecek Ürünleri > Icecekler", "Ev & Yaşam Ürünleri > Gıda ve İçecek Ürünleri > Temel Gida", "Süpermarket > Gida Urunleri"])
+    assert.ok(!ok(c), c);
+  assert.ok(ok("Ev & Yaşam Ürünleri > Mobilya > Salon & Oturma Odası > Sehpa > Zigon Sehpa"), "zigon");
+  assert.ok(vatSuspect(1) && vatSuspect(0) && !vatSuspect(10) && !vatSuspect(20) && !vatSuspect(null));
+});

@@ -11,7 +11,7 @@ import { contentChanges, fpOf, type ContentFp } from "./content-diff.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
-import { inScopeAny, inScopeForSend } from "../../lib/scope.ts";
+import { inScopeAny, inScopeForSend, vatSuspect } from "../../lib/scope.ts";
 
 export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
@@ -165,7 +165,8 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       let qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
       // Faaliyet kapsamı (lib/scope.ts): "değişmedi" denetiminden ÖNCE (Hepsiburada yalnızca değişeni gönderir; yoksa kapsam dışı stok hiç sıfırlanmazdı)
       if (ctx.scopeText) {
-        const sc = inScopeAny([p.category, ls.categoryName], p.title ?? ls.title);
+        const vs = vatSuspect(p.vat_rate);
+        const sc = vs ? { ok: false, reason: `satılamaz: ${vs}` } : inScopeAny([p.category, ls.categoryName], p.title ?? ls.title);
         if (!sc.ok) { stats.scopeOut = (stats.scopeOut ?? 0) + 1; if (qty > 0) stats.scopeOutWithStock = (stats.scopeOutWithStock ?? 0) + 1; if (ctx.scopeActive) qty = 0; }
         else stats.scopeIn = (stats.scopeIn ?? 0) + 1;
       }
@@ -364,7 +365,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (!vImages.length) { fail(key, p, v, "Görsel yok"); continue; }
           // Satış kısıtı (K, 01.11): gıda ve iç giyim hiçbir pazaryerine gönderilmez (lib/scope.ts)
           // Pazaryeri kategorisi (varsa) izinli olmalı + tedarikçi ya da pazaryeri kategorisi izinli (lib/scope.ts inScopeForSend)
-          if (ctx.scopeActive) { const sc = inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Satış kısıtı: ${sc.reason ?? ""} (gıda ve iç giyim satılamaz)`); continue; } }
+          if (ctx.scopeActive) { const vs = vatSuspect(p.vat_rate); const sc = vs ? { ok: false, reason: vs } : inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Satış kısıtı: ${sc.reason ?? ""} (gıda ve iç giyim satılamaz)`); continue; } }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           // Tahmin güveni düşükse otomatik seçilmez; en iyi tahmin "öneri" olarak yazılır (panel → Gönderilemeyenler tek tıkla seçer)

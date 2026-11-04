@@ -19,7 +19,11 @@ const UNDER_EXACT = new Set(["külot", "boxer", "sütyen", "atlet", "çorap", "e
 // Yol parçasının TAMAMI gıda başlığıysa yasak (02.11: "Süpermarket, Pet Shop > Sağlık > Masaj Aleti" ve "Yiyecek & İçecek Hazırlama > Su Isıtıcı"
 // gıda DEĞİL; parça içinde arama bunları eliyordu). İç giyim için parça içinde arama güvenli ("Giyim > İç Giyim > ...").
 const FOOD_PART = /^(temel gıda|gıda|gıda ürünleri|kuru gıda|dondurulmuş gıda|organik gıda|yiyecek|yiyecekler|içecek|içecekler|atıştırmalık|atıştırmalıklar|takviye edici gıda|takviye edici gıdalar|gıda takviyeleri|kahvaltılık|kahvaltılıklar|şarküteri|et & tavuk|et, tavuk & balık|meyve & sebze|bebek maması|mama ve beslenme ürünleri)$/u;
-const UNDER_PART = /(iç giyim|iç çamaşır|ic giyim)/u;
+const UNDER_PART = /(iç giyim|iç çamaşır|ic giyim|ic camasir)/u;
+// 04.11: Bezos kategorileri Türkçe karaktersiz ("Temel Gida", "Icecekler", "Gıda ve İçecek Ürünleri"): karşılaştırma harfleri düzleştirerek yapılır
+const fold = (x: string) => x.replace(/ı/g, "i").replace(/ç/g, "c").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ö/g, "o");
+const FOOD_EXACT_F = new Set([...FOOD_EXACT].map(fold));
+const FOOD_PART_F = new RegExp(fold(FOOD_PART.source).replace("^(", "^(gida ve icecek urunleri|gida ve icecek|gida urunleri ve icecekler|"), "u");
 // Kategori yoksa başlıkta kesin iç giyim kelimesi
 const UNDER_TITLE = /(?<![\p{L}])(külot|boxer|sütyen|iç çamaşır|çorap(?!lık)|atlet(?!ik)|fanila|jartiyer|babydoll|bralet|büstiyer)(?![\p{L}])/u;
 
@@ -27,10 +31,10 @@ function forbiddenCat(cat: string): string | null {
   for (const raw of cat.split(">")) {
     const s = raw.trim();
     if (!s) continue;
-    if (FOOD_EXACT.has(s)) return `gıda (${s})`;
+    if (FOOD_EXACT.has(s) || FOOD_EXACT_F.has(fold(s))) return `gıda (${s})`;
     if (UNDER_EXACT.has(s)) return `iç giyim (${s})`;
     if (UNDER_PART.test(s)) return `iç giyim (${s})`;
-    if (FOOD_PART.test(s)) return `gıda (${s})`;
+    if (FOOD_PART.test(s) || FOOD_PART_F.test(fold(s))) return `gıda (${s})`;
   }
   return null;
 }
@@ -44,6 +48,13 @@ export function inScope(x: { cat?: string | null; title?: string | null }): Scop
   }
   const m = title.match(UNDER_TITLE);
   return m ? { ok: false, reason: `satılamaz: iç giyim (${m[1]})` } : { ok: true, group: "genel" };
+}
+
+// Tedarikçinin KDV oranı %1 / %0 (04.11): Türkiye'de %1 KDV neredeyse yalnızca temel gıda (çay, pirinç, yağ, helva...); %0 da şüpheli
+// (ör. sofra takımı %0 yazılmış: oran yanlış -> fatura yanlış kesilir). İkisi de satılmaz, tedarikçiyle doğrulanmalı.
+export function vatSuspect(vat: unknown): string | null {
+  const v = vat == null || vat === "" ? null : Number(vat);
+  return v === 1 ? "tedarikçi KDV %1 (temel gıda olabilir)" : v === 0 ? "tedarikçi KDV %0 (oran şüpheli: tedarikçiyle doğrula)" : null;
 }
 
 export const SCOPE_LABEL: Record<ScopeGroup, string> = { genel: "Satılabilir (gıda ve iç giyim dışı)" };

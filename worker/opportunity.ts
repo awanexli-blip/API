@@ -8,7 +8,7 @@ import { calcPrice, cfgFromSettings } from "./pricing.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./core/brand-risk.ts";
-import { inScope } from "../lib/scope.ts";
+import { inScope, vatSuspect } from "../lib/scope.ts";
 import { env, chunk, normFull, arg, SUPPLIER_ARG, readAll } from "./core/util.ts";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -72,7 +72,7 @@ async function main() {
   const rows: any[] = [];
   const stat: Record<string, number> = {};
   for (let last = "00000000-0000-0000-0000-000000000000"; ; ) {
-    const { data, error } = await db.from("products").select("id, title, description, brand, category, cost_price, status, product_variants(stock, reserved), product_images(id)")
+    const { data, error } = await db.from("products").select("id, title, description, brand, category, cost_price, vat_rate, status, product_variants(stock, reserved), product_images(id)")
       .eq("source", source).gt("id", last).order("id").limit(500);
     if (error) throw new Error(error.message);
     if (!data?.length) break;
@@ -85,7 +85,8 @@ async function main() {
       const pcfg = applyRules(cfg, rules, { cost, supplier: code, category: p.category, brand: p.brand, stock }).cfg;
       const price = cost > 0 ? calcPrice(cost, pcfg, comm) : null;
       const risky = brandRisk?.(neutralizeCompat(p.title), neutralizeCompat(p.description ?? "")); // gönderimdeki gibi: "Android ve iOS" -> "Akıllı Telefon"
-      const scope = inScope({ cat: p.category, title: p.title }); // satış kısıtı: gıda, iç giyim (lib/scope.ts)
+      const vs = vatSuspect(p.vat_rate); // KDV %1/%0: gıda olabilir / oran şüpheli
+      const scope = vs ? { ok: false, reason: vs } : inScope({ cat: p.category, title: p.title }); // satış kısıtı: gıda, iç giyim (lib/scope.ts)
       const brandOk = ownBrand(String(p.brand ?? ""));
       const excluded = !scope.ok ? `satılamaz (${scope.reason})` : p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < 10 ? "stok az (10'dan az)" : !images ? "görsel yok"
         : titles.has(normFull(p.title)) ? "mağazada aynı başlık var" : risky ? `marka riski (${risky})` : !price?.ok ? `fiyat: ${price?.reason ?? "hesaplanamadı"}` : null;
