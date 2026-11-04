@@ -197,7 +197,11 @@ export async function POST(req: NextRequest) {
   if (b.action !== "draft") return bad("Geçersiz işlem");
   const ids: string[] = [...new Set<string>((Array.isArray(b.order_ids) ? b.order_ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 25);
   if (!ids.length) return bad("Sipariş seç (en fazla 25)");
-  const { data: orders, error } = await db.from("orders").select("id, marketplace, order_no, status, ordered_at, customer_name, address, city, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, supplier_sku, vat_rate)").in("id", ids);
+  // order_lines.vat_rate (migration 077) yoksa kolonsuz okunur (sunucu ürünlerinde KDV bilinmez -> o siparişler kesilmez)
+  const ORDER_COLS = "id, marketplace, order_no, status, ordered_at, customer_name, address, city, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, supplier_sku";
+  let r0: { data: any[] | null; error: any } = await db.from("orders").select(`${ORDER_COLS}, vat_rate)`).in("id", ids);
+  if (r0.error && /vat_rate/.test(r0.error.message)) r0 = await db.from("orders").select(`${ORDER_COLS})`).in("id", ids);
+  const { data: orders, error } = r0;
   if (error) return bad(error.message);
   const pids = [...new Set((orders ?? []).flatMap((o: any) => (o.order_lines ?? []).map((l: any) => l.product_id)).filter(Boolean))];
   const vat = new Map<string, number>();
