@@ -94,7 +94,6 @@ export function createTrendyol(): Marketplace {
   type Attr = { attributeId: number; attributeValueId?: number; customAttributeValue?: string; name?: string; value?: string };
   const attrsByBarcode = new Map<string, Attr[]>();
   const catOfBarcode = new Map<string, string>();
-  const barcodesByCat = new Map<string, string[]>();
   const toAttrs = (list: any[]): Attr[] => {
     const out: Attr[] = [];
     for (const a of list ?? []) {
@@ -163,11 +162,13 @@ export function createTrendyol(): Marketplace {
   const NEUTRAL = ["çok renkli", "karışık", "renkli", "tek ebat", "standart", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
   const isColor = (name: string) => /renk|color/i.test(name);
 
-  // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > benzer onaylı ilan > nötr değer
+  // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > başlık/açıklama > başlığı benzer onaylı ilan > nötr değer
   async function fillAttributes(p: NewProduct, cid: string): Promise<{ attributes: any[]; missing: string[]; learned: Record<string, string> }> {
     const out = new Map<number, Attr>();
     for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.attributeId) out.set(Number(a.attributeId), a);
-    const refs = [...(p.refs ?? []).filter((b) => catOfBarcode.get(b) === cid), ...(barcodesByCat.get(cid) ?? [])];
+    // Yalnızca başlığı benzeyen onaylı ilanlar (sınıflandırıcının referansları). 04.11: kategorideki HERHANGİ bir ilandan kopyalama kaldırıldı
+    // (Q klavyeye başka ilandan "Tuş Düzeni: F Klavye" geçmişti). Değer bulunamazsa nötr değer, o da yoksa eksik -> yapay zekâ / panel.
+    const refs = (p.refs ?? []).filter((b) => catOfBarcode.get(b) === cid);
     const missing: string[] = [];
     const learned: Record<string, string> = {};
     for (const ca of await categoryAttributes(cid)) {
@@ -204,6 +205,11 @@ export function createTrendyol(): Marketplace {
         const hit = inferAttribute(name, await attributeValues(cid, id), p.name, p.detail ?? "");
         if (hit) { val = { attributeId: id, attributeValueId: hit.id }; learned[name] = hit.name; }
         else if (ca.allowCustom) { const c = inferCustom(name, p.name, p.detail ?? ""); if (c) { val = { attributeId: id, customAttributeValue: c }; learned[name] = c; } }
+      }
+      // Menşei boşsa TR (K, 01.11: "menşei TR yazabilirsin"); başka ilandan kopyalanmaz
+      if (!val && /men[şs]e/i.test(name)) {
+        const tr = (await attributeValues(cid, id)).find((v) => ["tr", "türkiye", "turkey"].includes(lo(v.name)));
+        if (tr) { val = { attributeId: id, attributeValueId: tr.id }; learned[name] = tr.name; }
       }
       if (!val) for (const b of refs) {
         const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);
@@ -255,7 +261,6 @@ export function createTrendyol(): Marketplace {
             const cid = String(c.category.id);
             attrsByBarcode.set(barcode, attrs);
             catOfBarcode.set(barcode, cid);
-            const l = barcodesByCat.get(cid); if (l) { if (l.length < 50) l.push(barcode); } else barcodesByCat.set(cid, [barcode]);
           }
           tgItems.push({ barcode, stockCode: v.stockCode ? String(v.stockCode) : "", productMainId: c.productMainId ? String(c.productMainId) : "", title, salePrice: price, categoryId: c.category?.id ?? null, categoryName: c.category?.name ?? "", brandId: c.brand?.id ?? null, closed });
         }

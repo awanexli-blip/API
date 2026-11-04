@@ -65,7 +65,8 @@ function run(mode, env = {}, marketplace = "trendyol") {
   const attrOf = (bc, id) => items.find((i) => i.barcode === bc)?.attributes.find((a) => a.attributeId === id);
   check("özellik: başlıktaki renk (Siyah)", attrOf("OS13-YENI-2", 47)?.attributeValueId === 1, JSON.stringify(attrOf("OS13-YENI-2", 47)));
   check("özellik: renk yoksa Çok Renkli", attrOf("OS13-YEN-1", 47)?.attributeValueId === 2, JSON.stringify(attrOf("OS13-YEN-1", 47)));
-  check("özellik: Menşei benzer onaylı ilandan", attrOf("OS13-YEN-1", 1192)?.attributeValueId === 7001, JSON.stringify(attrOf("OS13-YEN-1", 1192)));
+  // 04.11: kategorideki başka ilandan (REF-1: CN) kopyalanmaz; Menşei boşsa TR (K kararı)
+  check("özellik: Menşei boşsa TR (başka ilandan kopyalanmaz)", attrOf("OS13-YEN-1", 1192)?.attributeValueId === 3, JSON.stringify(attrOf("OS13-YEN-1", 1192)));
   check("özellik: opsiyonel gönderilmez", !attrOf("OS13-YEN-1", 999));
   check("özellik: doldurulamayan ürün gönderilmez", !items.some((i) => i.barcode === "OS13-IMKANSIZ") && Object.keys(s.skipped).some((k) => k.startsWith("zorunlu özellik doldurulamadı")), JSON.stringify(s.skipped));
   check("tekrar: son 24 saatte reddedilen gönderilmez", !items.some((i) => i.barcode === "OS13-FAILED1") && s.skipped["son 24 saatte reddedildi, beklemede"] === 1, JSON.stringify(s.skipped));
