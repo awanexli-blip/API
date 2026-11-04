@@ -16,7 +16,7 @@ const days = Number(process.env.ORDER_DAYS ?? 14);
 const since = new Date(Date.now() - days * 86400000).toISOString();
 // 077: KDV oranı boş sunucu ürünü satırları (maliyeti önceden doldurulmuşlar da) -> ürünün KDV oranı (fatura için)
 {
-  const { data: nv } = await live.from("order_lines").select("order_id, line_no, listing_key, orders!inner(marketplace, created_at)").is("vat_rate", null).or("supplier_sku.like.BZS%,supplier_sku.like.HBY%").gte("orders.created_at", since).limit(1000);
+  const { data: nv } = await live.from("order_lines").select("order_id, line_no, listing_key, orders!inner(marketplace, created_at)").is("vat_rate", null).or("supplier_sku.like.BZS*,supplier_sku.like.HBY*").gte("orders.created_at", since).limit(1000);
   const by = new Map<string, any[]>();
   for (const r of (nv ?? []) as any[]) by.set(r.orders.marketplace, [...(by.get(r.orders.marketplace) ?? []), r]);
   let n = 0;
