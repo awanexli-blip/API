@@ -71,3 +71,14 @@ export function inScopeAny(cats: (string | null | undefined)[], title?: string |
 export function inScopeForSend(supplierCat: string | null | undefined, mpCat: string | null | undefined, title?: string | null): ScopeResult {
   return inScopeAny([supplierCat, mpCat], title);
 }
+
+// Oyuncak uyumsuzluğu (K, 04.11: "beklediği gibi olmaz, ceza verir"): tedarikçide OYUNCAK kategorisindeki ürün pazaryerinde oyuncak dışı
+// kategoride satılmaz (oyuncak süpürge "Araç İçi Süpürge", oyuncak blender "Bluetooth Kulaklık", oyuncak saz "Bağlama" olarak satılıyordu).
+// Pazaryeri kategorisi oyuncak/çocuk/hobi türüyse ya da ürün zaten o türde kullanılan bir şeyse (kaykay, paten, pedallı araç...) geçer.
+const TOY_SUP = /(oyuncak|oyun seti|oyun setleri)/u;
+const TOY_MP_OK = /(oyuncak|oyun|figür|peluş|bebek|lego|puzzle|yapboz|maket|eğitici|hobi|parti|kostüm|slime|balon|bisiklet|scooter|kaydırak|havuz|uçurtma|araba|model|plaj|kum|hamur|boya|kukla|maske|zıp|salıncak|meslek|evcilik|mutfak set|bilim|deney|kumanda|drone|robot|tren|kaykay|paten|pedallı|akülü araç|yürüteç|çadır|top)/u;
+export function toyMismatch(supplierCat: string | null | undefined, mpCat: string | null | undefined): string | null {
+  const s = fold(String(supplierCat ?? "").toLocaleLowerCase("tr")), m = String(mpCat ?? "").toLocaleLowerCase("tr");
+  if (!m.trim() || !TOY_SUP.test(s)) return null;
+  return TOY_MP_OK.test(m) || TOY_MP_OK.test(fold(m)) ? null : `tedarikçide oyuncak, pazaryerinde "${mpCat}" (yanlış tanıtım riski)`;
+}

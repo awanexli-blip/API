@@ -45,3 +45,13 @@ test("Türkçe karaktersiz gıda kategorileri (Bezos) ve şüpheli KDV", () => {
   assert.ok(ok("Ev & Yaşam Ürünleri > Mobilya > Salon & Oturma Odası > Sehpa > Zigon Sehpa"), "zigon");
   assert.ok(vatSuspect(1) && vatSuspect(0) && !vatSuspect(10) && !vatSuspect(20) && !vatSuspect(null));
 });
+
+import { toyMismatch } from "../lib/scope.ts";
+test("oyuncak uyumsuzluğu: tedarikçide oyuncak, pazaryerinde gerçek ürün kategorisi", () => {
+  assert.ok(toyMismatch("Anne, Bebek, Çocuk >>> Oyuncak >>> Oyun Setleri", "Araç İçi Süpürge"));
+  assert.ok(toyMismatch("Anne, Bebek, Çocuk >>> Oyuncak >>> Oyun Setleri", "Kulak içi TWS Bluetooth Kulaklık"));
+  assert.ok(!toyMismatch("Anne, Bebek, Çocuk >>> Oyuncak >>> Oyuncak Araçlar", "Oyuncak Araba"));
+  assert.ok(!toyMismatch("Oyuncak >>> Bahçe", "Kaykay"));
+  assert.ok(!toyMismatch("Elektronik > Süpürge", "Araç İçi Süpürge"), "tedarikçi oyuncak değil");
+  assert.ok(!toyMismatch("Oyuncak", null), "kategori yok");
+});
