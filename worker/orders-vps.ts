@@ -14,19 +14,31 @@ const dry = process.env.DRY === "1";
 const days = Number(process.env.ORDER_DAYS ?? 14);
 
 const since = new Date(Date.now() - days * 86400000).toISOString();
-const { data: rows, error } = await live.from("order_lines").select("order_id, line_no, listing_key, orders!inner(marketplace, created_at)")
-  .is("cost_snapshot", null).is("product_id", null).is("supplier_sku", null).not("listing_key", "is", null).gte("orders.created_at", since).limit(1000);
+// Maliyeti boş, ürüne bağlı olmayan satırlar (KENDI işaretliler de: sonradan panele eklenen ürünle eşleşebilir)
+const { data: rows, error } = await live.from("order_lines").select("order_id, line_no, listing_key, title, orders!inner(marketplace, created_at)")
+  .is("cost_snapshot", null).is("product_id", null).or("supplier_sku.is.null,supplier_sku.eq.KENDI").not("listing_key", "is", null).gte("orders.created_at", since).limit(1000);
 if (error) throw new Error(`sipariş satırları okunamadı: ${error.message}`);
 const { data: st } = await live.from("settings").select("fx_usd, fx_eur").maybeSingle();
 const fx: Record<string, number> = { TL: 1, TRY: 1, USD: Number(st?.fx_usd ?? 0), EUR: Number(st?.fx_eur ?? 0) };
 
 const OWN_SKU = "KENDI";
-const out = { lines: rows?.length ?? 0, filled: 0, own: 0, notFound: 0, noCost: 0, errors: 0 };
+// K'nın panelden eklediği kendi ürünleri (source manual). Pazaryerinde elle açılmış eski ilan (ör. Gezer 10221.*) bu ürünlere bağlı değil:
+// başlık benzerliği tek ve net ise (Jaccard >= 0,8, ikinciden en az 0,15 fark) o ürünün maliyeti. Emin değilse maliyet yazılmaz.
+const { data: manual } = await live.from("products").select("id, title, sku, cost_price, currency").eq("source", "manual").eq("status", "active").limit(500);
+const words = (t: string) => new Set(String(t ?? "").toLocaleLowerCase("tr").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1));
+const manualW = (manual ?? []).map((m: any) => ({ m, w: words(m.title) }));
+function ownMatch(title: string) {
+  const a = words(title);
+  if (!a.size) return null;
+  const sc = manualW.map(({ m, w }) => { let i = 0; for (const x of a) if (w.has(x)) i++; return { m, j: i / (a.size + w.size - i) }; }).sort((x, y) => y.j - x.j);
+  return sc[0] && sc[0].j >= 0.8 && (!sc[1] || sc[0].j - sc[1].j >= 0.15) ? sc[0].m : null;
+}
+const out = { lines: rows?.length ?? 0, filled: 0, own: 0, ownMatched: 0, notFound: 0, noCost: 0, errors: 0 };
 const byMp = new Map<string, any[]>();
 for (const r of rows ?? []) { const mp = (r as any).orders.marketplace; byMp.set(mp, [...(byMp.get(mp) ?? []), r]); }
 for (const [mp, list] of byMp) {
   const keys = [...new Set(list.map((r) => r.listing_key as string))];
-  const ref = new Map<string, { cost: number | null; sku: string | null }>();
+  const ref = new Map<string, { cost: number | null; sku: string | null; product_id?: string }>();
   for (let i = 0; i < keys.length; i += 200) {
     const { data, error: e } = await vps.from("marketplace_listings").select("listing_key, product_variants(cost_price), products(cost_price, currency, sku)")
       .eq("marketplace", mp).in("listing_key", keys.slice(i, i + 200));
@@ -41,12 +53,20 @@ for (const [mp, list] of byMp) {
   for (const r of list) {
     // Hiçbir tedarikçide yok (Supabase'de ürünü yok, sunucuda yok): K'nın pazaryerinde elle açtığı kendi ürünü (ör. Gezer terlik 10221.*).
     // Eski BayilikXML (ÖS13-/OS13-) ilanları ayrı etiketlenir (inbox.ts supplierOfBarcode). Maliyet yok: K bilir / panelden girer.
-    const f = ref.get(r.listing_key) ?? (/^(ÖS13-|OS13-)/i.test(r.listing_key) ? null : { cost: null, sku: OWN_SKU });
+    const own = ref.has(r.listing_key) ? null : ownMatch(r.title);
+    const ownCost = own ? Number(own.cost_price) * (fx[own.currency ?? "TRY"] ?? 0) : NaN;
+    const f = ref.get(r.listing_key) ?? (own ? { cost: ownCost > 0 ? Math.round(ownCost * 100) / 100 : null, sku: own.sku ?? OWN_SKU, product_id: own.id }
+      : /^(ÖS13-|OS13-)/i.test(r.listing_key) ? null : { cost: null, sku: OWN_SKU });
     if (!f) { out.notFound++; continue; }
-    if (f.sku === OWN_SKU) out.own++;
+    if (own) out.ownMatched++; else if (f.sku === OWN_SKU) out.own++;
     if (f.cost == null && f.sku !== OWN_SKU) out.noCost++;
     if (dry) { out.filled++; continue; }
-    const { error: ue } = await live.from("order_lines").update({ cost_snapshot: f.cost, supplier_sku: f.sku }).eq("order_id", r.order_id).eq("line_no", r.line_no).is("cost_snapshot", null).is("supplier_sku", null);
+    if (f.sku === OWN_SKU && !("product_id" in f)) { // zaten KENDI ise yeniden yazma
+      const { error: ke } = await live.from("order_lines").update({ supplier_sku: OWN_SKU }).eq("order_id", r.order_id).eq("line_no", r.line_no).is("supplier_sku", null);
+      if (ke) { out.errors++; console.error("satır yazılamadı:", ke.message.slice(0, 150)); } else out.filled++;
+      continue;
+    }
+    const { error: ue } = await live.from("order_lines").update({ cost_snapshot: f.cost, supplier_sku: f.sku, ...(f.product_id ? { product_id: f.product_id } : {}) }).eq("order_id", r.order_id).eq("line_no", r.line_no).is("cost_snapshot", null);
     if (ue) { out.errors++; console.error("satır yazılamadı:", ue.message.slice(0, 150)); } else out.filled++;
   }
 }
