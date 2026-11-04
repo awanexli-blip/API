@@ -272,14 +272,17 @@ export function createHepsiburada(): Marketplace {
     // Ürün açma: JSON dosyası multipart olarak gönderilir (en fazla 100 ürün)
     async createProducts(list: NewProduct[], ctx): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
-      // Görselsiz ilan açılmasın: JPG dönüştürücü (panel /api/img) bu çalışmada bir kez denenir; çalışmıyorsa hiçbir ürün gönderilmez
-      const probe = list.flatMap((p) => p.images).find((u) => jpgUrl(u) !== u);
-      if (probe && imgCheck === null) {
+      // Görselsiz ilan açılmasın: JPG dönüştürücü bu çalışmada denenir; çalışmıyorsa hiçbir ürün gönderilmez.
+      // 04.11: tek görselle tek deneme anlık bir kesintide turdaki tüm ürünleri düşürüyordu -> 3 farklı görsel, aralarında bekleme; biri yeterli
+      const probes = [...new Set(list.flatMap((p) => p.images).filter((u) => jpgUrl(u) !== u))].slice(0, 3);
+      const probe = probes[0];
+      for (let t = 0; probe && imgCheck !== "ok" && t < probes.length; t++) {
         try {
-          const r = await fetch(jpgUrl(probe), { signal: AbortSignal.timeout(60000) });
+          const r = await fetch(jpgUrl(probes[t]), { signal: AbortSignal.timeout(60000) });
           imgCheck = r.ok && /image\/jpeg/.test(r.headers.get("content-type") ?? "") ? "ok" : `HTTP ${r.status}`;
           await r.body?.cancel().catch(() => {});
         } catch (e: any) { imgCheck = String(e?.message ?? e).slice(0, 100); }
+        if (imgCheck !== "ok") await sleep(10000);
       }
       if (probe && imgCheck !== "ok") {
         for (const p of list) { ctx.skip("görsel dönüştürücü çalışmıyor"); (res.failedItems ??= []).push({ id: p.id, reason: `Görsel JPG dönüştürücü çalışmıyor (${imgCheck}); panel adresi (PANEL_URL) ve anahtar Vercel ile aynı olmalı` }); }
