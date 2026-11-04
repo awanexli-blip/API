@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
   if (b.action !== "draft") return bad("Geçersiz işlem");
   const ids: string[] = [...new Set<string>((Array.isArray(b.order_ids) ? b.order_ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 25);
   if (!ids.length) return bad("Sipariş seç (en fazla 25)");
-  const { data: orders, error } = await db.from("orders").select("id, marketplace, order_no, status, ordered_at, customer_name, address, city, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key)").in("id", ids);
+  const { data: orders, error } = await db.from("orders").select("id, marketplace, order_no, status, ordered_at, customer_name, address, city, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, supplier_sku, vat_rate)").in("id", ids);
   if (error) return bad(error.message);
   const pids = [...new Set((orders ?? []).flatMap((o: any) => (o.order_lines ?? []).map((l: any) => l.product_id)).filter(Boolean))];
   const vat = new Map<string, number>();
@@ -216,8 +216,16 @@ export async function POST(req: NextRequest) {
       // Kilit: aynı sipariş için ikinci taslak açılmasın (birincil anahtar). Hatalı/silinmiş kayıt "reset" ile açılır.
       const claim = await db.from("order_invoices").insert({ order_id: o.id, status: "creating", created_by: "panel", updated_at: now });
       if (claim.error) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: claim.error.code === "23505" ? "Bu sipariş için zaten taslak/fatura var" : claim.error.message }); continue; }
+      // KDV oranı: satırdaki (sunucu ürünleri, migration 077) > ürün kaydı > %20. Sunucu tedarikçisi ürününde oran bilinmiyorsa kesilmez (04.11: %10'luk ürün %20 kesilecekti)
+      const lineVat = (l: any) => (l.vat_rate != null ? Number(l.vat_rate) : vat.get(l.product_id) ?? null);
+      if ((o.order_lines ?? []).some((l: any) => lineVat(l) == null && /^(BZS|HBY)/.test(String(l.supplier_sku ?? "")))) {
+        const why = "KDV oranı henüz bilinmiyor (Bezos/Hepsibayi ürünü): birkaç dakika sonra tekrar dene";
+        await db.from("order_invoices").update({ status: "error", error: why, updated_at: new Date().toISOString() }).eq("order_id", o.id);
+        results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: why });
+        continue;
+      }
       try {
-        const inv = buildInvoice({ ...o, lines: (o.order_lines ?? []).map((l: any) => ({ ...l, vat_rate: vat.get(l.product_id) ?? 20, known: [ltitle.get(`${o.marketplace}|${l.listing_key}`), ptitle.get(l.product_id)] })) });
+        const inv = buildInvoice({ ...o, lines: (o.order_lines ?? []).map((l: any) => ({ ...l, vat_rate: lineVat(l) ?? 20, known: [ltitle.get(`${o.marketplace}|${l.listing_key}`), ptitle.get(l.product_id)] })) });
         const { _ozet, ...payload } = inv;
         const doc = await gib.createDraft(payload);
         await db.from("order_invoices").update({ status: "draft", ettn: doc.ettn, belge_no: doc.belgeNumarasi ?? null, amount: _ozet.total, vat: _ozet.kdv, error: null, updated_at: new Date().toISOString() }).eq("order_id", o.id);

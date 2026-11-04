@@ -14,6 +14,28 @@ const dry = process.env.DRY === "1";
 const days = Number(process.env.ORDER_DAYS ?? 14);
 
 const since = new Date(Date.now() - days * 86400000).toISOString();
+// 077: KDV oranı boş sunucu ürünü satırları (maliyeti önceden doldurulmuşlar da) -> ürünün KDV oranı (fatura için)
+{
+  const { data: nv } = await live.from("order_lines").select("order_id, line_no, listing_key, orders!inner(marketplace, created_at)").is("vat_rate", null).or("supplier_sku.like.BZS%,supplier_sku.like.HBY%").gte("orders.created_at", since).limit(1000);
+  const by = new Map<string, any[]>();
+  for (const r of (nv ?? []) as any[]) by.set(r.orders.marketplace, [...(by.get(r.orders.marketplace) ?? []), r]);
+  let n = 0;
+  for (const [mp, list] of by) {
+    const keys = [...new Set(list.map((r) => r.listing_key as string))];
+    const vr = new Map<string, number>();
+    for (let i = 0; i < keys.length; i += 200) {
+      const { data } = await vps.from("marketplace_listings").select("listing_key, products(vat_rate)").eq("marketplace", mp).in("listing_key", keys.slice(i, i + 200));
+      for (const x of (data ?? []) as any[]) if (x.products?.vat_rate != null) vr.set(x.listing_key, Number(x.products.vat_rate));
+    }
+    for (const r of list) {
+      const v = vr.get(r.listing_key);
+      if (v == null || dry) continue;
+      const { error: ve } = await live.from("order_lines").update({ vat_rate: v }).eq("order_id", r.order_id).eq("line_no", r.line_no).is("vat_rate", null);
+      if (!ve) n++;
+    }
+  }
+  console.log(JSON.stringify({ vatFilled: n, vatCandidates: nv?.length ?? 0 }));
+}
 // Maliyeti boş, ürüne bağlı olmayan satırlar (KENDI işaretliler de: sonradan panele eklenen ürünle eşleşebilir)
 const { data: rows, error } = await live.from("order_lines").select("order_id, line_no, listing_key, title, orders!inner(marketplace, created_at)")
   .is("cost_snapshot", null).is("product_id", null).or("supplier_sku.is.null,supplier_sku.eq.KENDI").not("listing_key", "is", null).gte("orders.created_at", since).limit(1000);
