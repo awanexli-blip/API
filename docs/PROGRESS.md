@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-04 (63) — Elle değişiklik yanlış alarmı, fatura KDV, gıda filtresi, HB yeniden gönderim
+- **Elle değişiklik yanlış alarmı** (K: "ben bir şey yapmıyorum"): HB stok 0'ı / kampanyalı fiyatı uygulamayınca "elle artırıldı" sanılıyordu (Supabase 2.240 HB); sunucuda sistemin kendi açtığı 17.358 TY + 3.488 HB ilanı "elle eklenmiş" sanılıp stok/fiyatı güncellenmiyordu. `holds.ts`: değişiklik ancak gönderdiğimiz değer pazaryerinde görüldükten sonra olursa elle; ürüne bağlı ilan elle eklenmiş sayılmaz; kayıtlar readAll (1000 satır sınırı). Bekleyenler "sync" yapıldı -> çözüldü (yeni tespit 0).
+- **Fatura KDV:** migration 077 `order_lines.vat_rate` (K SQL Editor'de çalıştırdı; MCP izni reddedildi). Sunucu Bezos/Hepsibayi satırlarına ürünün KDV oranını yazar; oran bilinmeyen sunucu ürününde fatura taslağı açılmaz (%20 varsayılmaz). KDV kaynağı tedarikçi XML alanı (alış faturasıyla karşılaştırma yok: K ilk faturalarla kontrol edecek).
+- **Gıda filtresi:** Bezos kategorileri Türkçe karaktersiz ("Temel Gida", "Icecekler") kaçıyordu; harfler düzleştirilerek karşılaştırılır. Tedarikçi KDV %1/%0 olan ürün satılmaz (`vatSuspect`; %1 = temel gıda; %0 şüpheli, ör. sofra takımı). Etki: 13 TY + 24 HB satıştaki ilan.
+- **HB gönderimi** (03.11 bitti): sunucu tedarikçilerinden 24.925 HB ilanı satışta; 49.093 hata (çoğu "Hepsiburada kategorisi yok": kategori ağacı 3 kademede "fetch failed"). `sync.ts`: ağaç 3 deneme + kayıtlı kopya. Hatalılar yeniden kuyrukta (`trentakip-hbtoplu2`, günlük `/tmp/hbtoplu.log`). Kalan nedenler: zorunlu özellik (cinsiyet, ekran vb.), eşleşmeyen kategoriler (telefon aksesuarı, eSIM, kupa).
+
 ## 2026-11-04 (62) — Siparişte tedarikçi her zaman belli
 - K: "bilinmeyen tedarikçi diye bir şey yok" (toptancim, Bezos, Hepsibayi, kendi ürünleri). Neden: siparişleri Supabase işliyor, Hepsibayi/Bezos ürünleri yalnızca sunucuda -> satırda maliyet/kod boştu.
 - `worker/orders-vps.ts` + `trentakip-orders-vps.timer` (sunucu, 3 dk): Supabase'de maliyeti boş satırlara sunucu ilan->ürün kaydından maliyet (×kur) + tedarikçi kodu (BZS…/HBY…) yazar; hiçbir tedarikçide olmayan ilan = `KENDI` (K'nın pazaryerinde elle açtığı ürün: Gezer terlik 10221.*, 14000894* ayakkabı). `order_upsert` dolu değeri korur, kâr sonraki senkronda hesaplanır. İlk çalışma: 8 sunucu ürünü, 35 kendi ürünü, 27 eski BayilikXML (ÖS13, 26.10).
