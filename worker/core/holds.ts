@@ -55,7 +55,8 @@ export function decideZero(s: Sent | undefined, h: Hold | undefined, fresh: bool
 type NewHold = { listing_key: string; kind: "edited" | "manual_new"; title: string | null; mp_price: number | null; mp_qty: number | null; our_price: number | null; our_qty: number | null; sent_price: number | null; sent_qty: number | null };
 
 export async function loadGuard(db: any, marketplace: string, lsBy: Map<string, Listing>) {
-  const h = await db.from("listing_holds").select("id, listing_key, status, kind, title").eq("marketplace", marketplace).limit(5000);
+  // readAll: tek istekte en fazla 1000 satır gelir (04.11: 17 bin kaydın yalnızca 1000'i okunuyordu)
+  const h = await readAll<any>((a, b) => db.from("listing_holds").select("id, listing_key, status, kind, title").eq("marketplace", marketplace).order("id").range(a, b));
   if (h.error) return { off: `elle değişiklik koruması kapalı (migration 074 çalıştırılmamış: ${h.error.message.slice(0, 80)})` } as const;
   const sr = await readAll<any>((a, b) => db.from("marketplace_listings").select("listing_key, sent_price, sent_qty, price, stock, pushed_at, first_seen_at").eq("marketplace", marketplace).order("listing_key").range(a, b));
   if (sr.error) return { off: `elle değişiklik koruması kapalı (${sr.error.message.slice(0, 80)})` } as const;
