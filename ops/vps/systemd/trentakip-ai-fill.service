@@ -1,0 +1,19 @@
+[Unit]
+Description=Trentakip: reddedilen ilanların eksik zorunlu özelliklerini Gemini ile doldur (fotoğraf + başlık, güven >= 0,8) ve yeniden kuyruğa al (sunucu veritabanı)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+Environment=TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID= SUPABASE_DB_URL=
+WorkingDirectory=/opt/trentakip
+# Kota biterse (429) iş kendiliğinden durur; faturalandırma açılınca aynı iş hızlanır. Önce Hepsiburada (sınırsız), sonra Trendyol.
+ExecStart=/bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; /usr/bin/node --experimental-strip-types worker/ai-fill.ts hepsiburada --attrs=${AI_FILL_HB:-60}; /usr/bin/node --experimental-strip-types worker/ai-fill.ts trendyol --attrs=${AI_FILL_TY:-30}"
+TimeoutStartSec=25min
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true

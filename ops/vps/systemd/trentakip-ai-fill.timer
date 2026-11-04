@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip yapay zekâ özellik doldurma (30 dakikada bir)
+
+[Timer]
+OnCalendar=*-*-* *:05,35:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target
