@@ -42,6 +42,8 @@ async function main() {
   const { data: base } = await db.from("settings").select("*").eq("id", 1).single();
   let s: any = base;
   if (mp !== "trendyol") { const { data: ms } = await db.from("marketplace_settings").select("*").eq("marketplace", mp).maybeSingle(); s = { ...base }; for (const [k, v] of Object.entries(ms ?? {})) if (v != null) s[k] = v; }
+  // Trendyol: ürün sınırı (50 bin) için stoğu 10 altı elenir; Hepsiburada sınırsız (K, 04.11 "ekleyebildiğin kadar"): senkronun en düşük stoğu (min_stock, 3)
+  const minStockOpp = mp === "trendyol" ? 10 : Math.max(1, Number(s.min_stock ?? 3));
   const cfg = cfgFromSettings(s, Number(s.vat_rate ?? 20));
   const pr = await readAll((a, b) => db.from("pricing_rules").select("*").order("id").range(a, b));
   const rules = rulesFor((pr.data ?? []) as PricingRule[], mp);
@@ -88,7 +90,7 @@ async function main() {
       const vs = vatSuspect(p.vat_rate); // KDV %1/%0: gıda olabilir / oran şüpheli
       const scope = vs ? { ok: false, reason: vs } : inScope({ cat: p.category, title: p.title }); // satış kısıtı: gıda, iç giyim (lib/scope.ts)
       const brandOk = ownBrand(String(p.brand ?? ""));
-      const excluded = !scope.ok ? `satılamaz (${scope.reason})` : p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < 10 ? "stok az (10'dan az)" : !images ? "görsel yok"
+      const excluded = !scope.ok ? `satılamaz (${scope.reason})` : p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < minStockOpp ? `stok az (${minStockOpp}'dan az)` : !images ? "görsel yok"
         : titles.has(normFull(p.title)) ? "mağazada aynı başlık var" : risky ? `marka riski (${risky})` : !price?.ok ? `fiyat: ${price?.reason ?? "hesaplanamadı"}` : null;
       const net = price?.ok ? price.netProfit : 0, margin = price?.ok ? price.profitRate : 0;
       const sc = scoreOf({ net, margin, stock, sold7: sold.get(p.id) ?? 0, price: price?.ok ? price.price : 0, images, descLen: String(p.description ?? "").length, level: pred?.level ?? null, brandOk, variants });
