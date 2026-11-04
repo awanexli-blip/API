@@ -6,12 +6,15 @@ let fails = 0;
 const check = (n: string, c: boolean, i: unknown = "") => { console.log(`${c ? "OK  " : "HATA"} ${n}${c ? "" : "  " + JSON.stringify(i)}`); if (!c) fails++; };
 const it = { id: "K1", price: 299.9, quantity: 12 };
 const ls = (price: number, quantity: number): any => ({ id: "K1", price, quantity, title: "Priz", status: "active" });
-const sent = (o: Partial<any> = {}): any => ({ sent_price: 299.9, sent_qty: 12, price: 289.9, stock: 10, pushed_at: "2026-10-30T10:00:00Z", first_seen_at: null, ...o });
+// Önceki görüntü = gönderdiğimiz (pazaryeri uygulamış); "uygulanmamış" testlerinde price/stock eski değer
+const sent = (o: Partial<any> = {}): any => ({ sent_price: 299.9, sent_qty: 12, price: 299.9, stock: 12, pushed_at: "2026-10-30T10:00:00Z", first_seen_at: null, ...o });
 const o = { fresh: false, soldRecently: 0 };
 
 check("değişiklik yok: gönderilir", decide(it, ls(299.9, 12), sent(), undefined, o).action === "push");
 check("satış stoğu düşürdü: elle sayılmaz", decide(it, ls(299.9, 9), sent(), undefined, o).action === "push");
-check("gecikme (pazaryeri hâlâ eski değerde): elle sayılmaz", decide(it, ls(289.9, 10), sent(), undefined, o).action === "push");
+check("gecikme (pazaryeri hâlâ eski değerde): elle sayılmaz", decide(it, ls(289.9, 10), sent({ price: 289.9, stock: 10 }), undefined, o).action === "push");
+check("pazaryeri güncellemeyi uygulamadı (HB stok 0 gönderildi, 1998 kaldı): elle sayılmaz", decide(it, ls(919.9, 1999), sent({ sent_price: 919.9, sent_qty: 0, price: 919.9, stock: 1998 }), undefined, o).action === "push");
+check("uygulanmamış fiyat dalgalanması: elle sayılmaz", decide(it, ls(2129.9, 50), sent({ sent_price: 2359.9, sent_qty: 50, price: 2099.9, stock: 50 }), undefined, o).action === "push");
 const ed = decide(it, ls(349.9, 12), sent(), undefined, o);
 check("fiyat elle değişti: bekletilir", ed.action === "skip" && ed.detect === "edited", ed);
 check("stok elle artırıldı: bekletilir", decide(it, ls(299.9, 50), sent(), undefined, o).detect === "edited");
@@ -23,9 +26,9 @@ check("fiyat kalsın: yalnızca stok", decide(it, ls(349.9, 12), sent(), { id: "
 const sy = decide(it, ls(349.9, 12), sent(), { id: "h", listing_key: "K1", status: "sync", kind: "edited" }, o);
 check("sistemle eşitle: gönderilir ve karar kapanır", sy.action === "push" && sy.resolve === true);
 check("eski ilan, hiç gönderilmemiş (özellik öncesi): ilk gönderim sessiz", decide(it, ls(349.9, 12), sent({ pushed_at: null, sent_price: null }), undefined, o).action === "push");
-check("yeni ilan, fiyatı sistemden farklı: elle eklenmiş", decide(it, ls(349.9, 12), sent({ pushed_at: null, sent_price: null, first_seen_at: "2026-10-31T00:00:00Z" }), undefined, o).detect === "manual_new");
+check("ürüne bağlı yeni ilan, fiyatı farklı (sistemin gönderdiği): elle sayılmaz", decide(it, ls(349.9, 12), sent({ pushed_at: null, sent_price: null, first_seen_at: "2026-10-31T00:00:00Z" }), undefined, o).action === "push");
 check("yeni ilan, fiyatı sistemle aynı (bizim açtığımız): gönderilir", decide(it, ls(299.9, 12), sent({ pushed_at: null, first_seen_at: "2026-10-31T00:00:00Z" }), undefined, o).action === "push");
-check("tabloda hiç yok + koruma başlamış: yeni sayılır", decide(it, ls(349.9, 5), undefined, undefined, { ...o, fresh: true }).detect === "manual_new");
+check("tabloda hiç yok + koruma başlamış (ürüne bağlı): gönderilir", decide(it, ls(349.9, 5), undefined, undefined, { ...o, fresh: true }).action === "push");
 check("tabloda yok + ilk çalışma: sessiz", decide(it, ls(349.9, 5), undefined, undefined, o).action === "push");
 
 check("sıfırlama: eski bağsız ilan sıfırlanır", decideZero(sent({ pushed_at: null }), undefined, false).action === "push");

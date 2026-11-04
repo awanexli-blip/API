@@ -30,14 +30,17 @@ export function decide(it: InventoryItem, ls: Listing | undefined, s: Sent | und
   const lp = num(ls.price), lq = num(ls.quantity);
   if (s?.pushed_at) {
     const sp = num(s.sent_price), sq = num(s.sent_qty), prevP = num(s.price), prevQ = num(s.stock);
-    const priceEdited = lp != null && sp != null && Math.abs(lp - sp) > 0.01 && (prevP == null || Math.abs(lp - prevP) > 0.01);
-    const qtyUp = lq != null && sq != null && lq > sq && lq !== prevQ;
-    const qtyZero = lq === 0 && sq != null && sq >= 3 && prevQ !== 0 && opts.soldRecently === 0;
+    // 04.11 (K: "ben bir şey yapmıyorum"): değişiklik ancak gönderdiğimiz değer pazaryerinde bir kez GÖRÜLDÜKTEN sonra olursa elle sayılır
+    // (bir önceki görüntü = gönderdiğimiz). Pazaryerinin uygulamadığı / geciktirdiği güncelleme (HB stok 0'ı uygulamadı: 1.998 kaldı) elle değildir.
+    const priceApplied = prevP != null && sp != null && Math.abs(prevP - sp) <= 0.01;
+    const qtyApplied = prevQ != null && sq != null && prevQ === sq;
+    const priceEdited = priceApplied && lp != null && Math.abs(lp - sp!) > 0.01;
+    const qtyUp = qtyApplied && lq != null && lq > sq!;
+    const qtyZero = qtyApplied && lq === 0 && sq! >= 3 && opts.soldRecently === 0;
     return priceEdited || qtyUp || qtyZero ? { action: "skip", detect: "edited" } : { action: "push" };
   }
-  // Hiç gönderilmemiş: yalnızca özellikten SONRA ortaya çıkan ilan (eski ilanlar ilk gönderimde sessizce kaydedilir)
-  const isNew = s ? s.first_seen_at != null : opts.fresh;
-  if (isNew && it.price != null && lp != null && lp > 0 && Math.abs(lp - it.price) > Math.max(1, it.price * 0.01)) return { action: "skip", detect: "manual_new" };
+  // Hiç fiyat/stok gönderilmemiş ama veritabanındaki ürüne bağlı ilan = sistemin kendi açtığı ilan (gönderim kuyruğu). Elle eklenmiş sayılmaz
+  // (04.11: sunucudan gönderilen 17 bin Trendyol + 3,5 bin HB ilanı "elle eklenmiş" sanılıp bekletiliyordu). Elle eklenen bağsız ilan decideZero'da.
   return { action: "push" };
 }
 
