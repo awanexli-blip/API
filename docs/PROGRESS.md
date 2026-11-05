@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-06 (66) — Bezos seçenekleri, açıklama taraması, ana panel kararı
+- **Bezos varyantları:** XML `var_deger` ayrıştırıcıda kayboluyordu; `flattenVarDeger`, seçenek kodu, BZ barkodu, seçeneğe özel KDV'li maliyet. Varyant taraması ilk 3.000 ürünle sınırlıydı (kaldırıldı). Tek seçenekli ürün gerçek varyant sayılmaz (kod/barkod korunur). İçe aktarma: 5.403 seçenekli ürün, 110.292 varyant. Eski ilanlar stok 0 doğrulandı (TY 684, HB 833; 37 tek seçenekli geri açıldı). Eski ilanlar kaldı (silinmedi, bağlantısız).
+- **Yeniden gönderim** `trentakip-vcanli` (`replace_old`, günlük /tmp/vcanli.log): TY 409 ürün/2.496 seçenek (45 bin hedefi; kalan ~170 ürün bekliyor), HB 748/10.823. Fantezi/+18 76 ürün K kararına kadar gönderilmedi.
+- **Açıklama taraması (Gemini'siz):** 131 bin üründe kural + elle okuma, 179 aday, ~50 gerçek. Hepsibayi başlığında ondalık kaybı (XML'den bozuk): 18 ürün düzeltildi, TY 3 ilan content-update ile gitti; HB'de başlık güncelleme ucu yok (11 ilan eski başlıkla). Değer çelişkisi: 30 ilan durduruldu (product_overrides). Tarama fotoğraf gerektiren hataları bulmaz. Düzeltme tedarikçi güncellenince geri gelebilir.
+- **Gönderilemeyen neden:** HB 40.346 kategori yok, 11.440 zorunlu özellik; TY 2.460 / 1.900. Örn. tedarikçi "Telefon Kılıfı", HB "Kılıflar" (16102). Çözüm adayı: `category_map` yol eşlemesi; ölçüm yarım (catm betiği 560 sn'yi aştı). Sıradaki.
+- **K kararları açık:** ana panel duckdns + faturalar orada (sunucu DB siparişleri 31.10'da kalmış, panel.env'de GİB/GH/Telegram yok; tam taşıma gerekiyor, cutover.sh ilan/iş satırlarını korumuyor: önce düzelt). Panel ürün ekleme 4 madde önerisi onayı. Trendyol silme kapsamı (1.722 kapalı önerildi). Fantezi kostüm iç giyim mi.
+- Sunucu 05.11 yeniden başlamış (çekirdek 6.8.0-71 -> 147; günlük 06:13'te bitiyor, açılış 11:05): neden doğrulanmadı.
+
 ## 2026-11-05 (65) — HB ilan kaydı hatası, Bezos varyantları, Bezos API
 - **Elle değişti yanlış alarmı (2. kök neden):** HB listesinde tekrar eden barkod upsert'i düşürüyordu ("cannot affect row a second time"), 5.000. satırdan sonrası 03.11'den beri yazılmıyordu. `listings.ts` tekrarları ayıklar, paket hatası kalanı durdurmaz; `holds.ts` hedefle aynı fiyat ve +3 adede kadar stok artışı elle sayılmaz. Sunucuda doğrulandı (yazılan 45.592, hata yok, yeni tespit 0). Supabase'de bekleyenleri K SQL ile serbest bıraktı; yeni kodlu Supabase çalışması henüz doğrulanmadı.
 - **Bezos varyantları alınmıyor:** eşlemede varyant yok; 13.638 aktif seçenekli ürün tek seçenekli açılmış. Satışta/onayda TY 684, HB 838 ilan (201'inde pahalı seçenek). K kararı bekleniyor (durdur / yalnız pahalıları / önce düzelt).
