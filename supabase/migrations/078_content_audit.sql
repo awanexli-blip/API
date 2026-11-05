@@ -13,18 +13,23 @@ create index if not exists content_audit_score_idx on public.content_audit (scor
 alter table public.content_audit enable row level security;
 notify pgrst, 'reload schema';
 
--- Aday: satıştaki ilanı olan aktif ürün (ilan ürüne bağlı ya da varyant barkodu = ilan anahtarı; toptancim kopyası bağsız), 30 günde denetlenmemiş
+-- Aday: satıştaki ilanı olan aktif ürün (ilan ürüne bağlı ya da varyant barkodu = ilan anahtarı; toptancim kopyası bağsız), 30 günde denetlenmemiş.
+-- İki ayrı eşleşme birleştirilir (tek birleştirmede "veya" koşulu dakikalar sürüyordu).
 create or replace function public.content_audit_candidates(p_limit int)
 returns table (id uuid, title text, description text, category text, attributes jsonb, mp_category text)
 language sql stable as $$
-  select p.id, p.title, p.description, p.category, p.attributes, max(l.category_name) mp_category
-  from public.products p
-  join public.product_variants v on v.product_id = p.id
-  join public.marketplace_listings l on l.status = 'live' and (l.product_id = p.id or l.listing_key = v.barcode)
-  where p.status = 'active'
-    and not exists (select 1 from public.content_audit a where a.product_id = p.id and a.checked_at > now() - interval '30 days')
-  group by p.id
-  order by max(coalesce(l.stock, 0)) desc, p.id
+  with live as (
+    select l.product_id pid, l.category_name, l.stock from public.marketplace_listings l where l.status = 'live' and l.product_id is not null
+    union all
+    select v.product_id, l.category_name, l.stock from public.marketplace_listings l join public.product_variants v on v.barcode = l.listing_key
+    where l.status = 'live' and l.product_id is null
+  ), c as (
+    select pid, max(category_name) mp_category, max(coalesce(stock, 0)) st from live group by pid
+  )
+  select p.id, p.title, p.description, p.category, p.attributes, c.mp_category
+  from c join public.products p on p.id = c.pid
+  where p.status = 'active' and not exists (select 1 from public.content_audit a where a.product_id = p.id and a.checked_at > now() - interval '30 days')
+  order by c.st desc, p.id
   limit p_limit
 $$;
 notify pgrst, 'reload schema';
