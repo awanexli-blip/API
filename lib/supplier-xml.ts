@@ -103,6 +103,18 @@ function variantContainers(items: any[], mapping: Record<string, Field>): string
   }
   return [...out];
 }
+// Bezos varyantı (K, 06.11): <var_deger isim="EBAT">80X80</var_deger> özniteliği ayrıştırıcıda kaybolur -> <name1>EBAT</name1><value1>80X80</value1> (pairValues).
+// Seçeneğin barkodu yok: kendi kodundan <var_barkod> üretilir (BZ önekli, K: Bezos barkodu BZ ile başlar; sabit, her okumada aynı).
+export function flattenVarDeger(xml: string): string {
+  if (!xml.includes("<var_deger")) return xml;
+  return xml.replace(/<varyasyon>[\s\S]*?<\/varyasyon>/g, (blk) => {
+    let i = 0;
+    const out = blk.replace(/<var_deger\s+isim="([^"]*)"\s*>([\s\S]*?)<\/var_deger>/g, (_m, n, v) => { i++; return `<name${i}>${n}</name${i}><value${i}>${v}</value${i}>`; });
+    const kod = /<kod>\s*(?:<!\[CDATA\[)?\s*([^<\]]+?)\s*(?:\]\]>)?\s*<\/kod>/.exec(blk)?.[1]?.replace(/[^A-Za-z0-9._-]/g, "");
+    return kod ? out.replace("</varyasyon>", `<var_barkod>${/^BZ/i.test(kod) ? kod : `BZ${kod}`}</var_barkod></varyasyon>`) : out;
+  });
+}
+
 // Varyant elemanındaki ad/değer çiftleri (name1=Renk, value1=Kırmızı; name2=Beden, value2=M) -> renk / beden
 function pairValues(el: any): { color?: string; size?: string } {
   const out: { color?: string; size?: string } = {};
@@ -112,7 +124,8 @@ function pairValues(el: any): { color?: string; size?: string } {
     const name = String(el[k] ?? "").trim(), val = String(el[`value${m[2]}`] ?? el[`deger${m[2]}`] ?? "").trim();
     if (!name || !val) continue;
     if (/renk|colou?r/i.test(name)) out.color ??= val;
-    else out.size ??= /^(beden|numara|size)$/i.test(name) ? val : `${name} ${val}`;
+    // SEÇENEK / EBAT değeri tek başına anlamlı ("Krem", "80X80"); "SEÇENEK Krem" yazılmaz
+    else out.size ??= /^(beden|numara|size|ebat|seçenek|secenek)$/i.test(name) ? val : `${name} ${val}`;
   }
   return out;
 }
@@ -185,6 +198,9 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
     if (!SKU_RE.test(sku) || used.has(sku.toLowerCase())) sku = `${p.sku}-${i + 1}`.slice(0, 64);
     used.add(sku.toLowerCase());
     const out: any = { sku, stock: Math.max(0, Math.min(1_000_000, Math.floor(Number(v.stock) || 0))) };
+    // Seçeneğin kendi fiyatı (Bezos: halı 80x80 975 TL, 300x400 11.283 TL): üründekinden farklıysa varyanta yazılır, fiyat motoru onu kullanır
+    const vc = Number(String(g.rows[i]?.values.cost_price ?? "").replace(/\s/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
+    if (vc > 0) { const c = Math.round((sup.price_includes_vat === false ? vc * (1 + p.vat_rate / 100) : vc) * 100) / 100; if (c !== p.cost_price) out.cost_price = c; }
     const b = String(v.barcode ?? "").replace(/\s/g, "");
     if (b && CODE_RE.test(b) && gtinOk(b) && !seenBarcodes.has(b.toLowerCase())) { out.barcode = b; seenBarcodes.add(b.toLowerCase()); }
     if (v.attributes) out.attributes = v.attributes;

@@ -51,3 +51,24 @@ test("Hepsibayi: tek varyantlı üründe 'RZ' renk sayılmaz; gerçek renk kalı
   assert.equal(b.variants[0].attributes?.Renk, "Beyaz");
   assert.equal(a.cost_price, 220.28);
 });
+
+import { flattenVarDeger } from "../lib/supplier-xml.ts";
+test("Bezos varyantı: seçenek adı/değeri, kendi kodu, BZ barkodu ve KDV eklenmiş kendi fiyatı", () => {
+  const xml = flattenVarDeger(`<urunler><urun><stok_kodu>RPPN06K</stok_kodu><isim>PARMA Halı</isim><barkod>BZCREA1</barkod><alis_fiyat>1000,00</alis_fiyat><kdv>10</kdv><stok>5</stok><varyasyonlar>
+    <varyasyon><kod>PN06K08080</kod><stok>3</stok><var_fiyat>1000,00</var_fiyat><var_deger isim="EBAT">80X80</var_deger></varyasyon>
+    <varyasyon><kod>BZPN06K200</kod><stok>2</stok><var_fiyat>2.500,50</var_fiyat><var_deger isim="EBAT">200X290</var_deger><var_deger isim="Renk">Krem</var_deger></varyasyon>
+  </varyasyonlar></urun><urun><stok_kodu>TEK1</stok_kodu><isim>Tek Ürün</isim><barkod>BZTEK1</barkod><alis_fiyat>100,00</alis_fiyat><kdv>20</kdv><stok>9</stok></urun></urunler>`);
+  const items = new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }).parse(xml).urunler.urun;
+  const m: any = { stok_kodu: "model", isim: "title", barkod: "barcode", alis_fiyat: "cost_price", kdv: "vat_rate", stok: "stock",
+    "varyasyonlar.varyasyon.kod": "variant_sku", "varyasyonlar.varyasyon.stok": "stock", "varyasyonlar.varyasyon.var_fiyat": "cost_price", "varyasyonlar.varyasyon.var_barkod": "barcode" };
+  const [a, b] = itemsToGroups(items, m).map((g) => supplierPayload(g, { code: "bezos", name: "Bezos", sku_prefix: "BZS", price_includes_vat: false } as any, new Set()).payload);
+  assert.equal(a.sku, "BZSRPPN06K");
+  assert.equal(a.cost_price, 1100);
+  assert.deepEqual(a.variants.map((v: any) => [v.sku, v.barcode, v.stock, v.cost_price, v.attributes]), [
+    ["BZSPN06K08080", "BZPN06K08080", 3, undefined, { Beden: "80X80" }],
+    ["BZSBZPN06K200", "BZPN06K200", 2, 2750.55, { Renk: "Krem", Beden: "200X290" }],
+  ]);
+  assert.equal(b.sku, "BZSTEK1", "seçeneksiz ürün eskisi gibi");
+  assert.equal(b.variants[0].barcode, "BZTEK1");
+  assert.equal(b.variants[0].cost_price, undefined);
+});

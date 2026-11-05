@@ -359,7 +359,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
           if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
           if (win && win.id !== p.id) { fail(key, p, v, `Tedarikçide aynı ürünün kopyası (kod ${win.sku}): stokta en ucuz olan o, yalnızca o gönderilir`); continue; }
-          if (!titleClaimed && ctx.lsTitles.has(normFull(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
+          // replace_old (K, 06.11): eski tek seçenekli ilan durduruldu (stok 0), yerine seçenekli ilan açılıyor: eski başlık engel sayılmaz
+          if (!titleClaimed && !job.payload?.replace_old && ctx.lsTitles.has(normFull(title))) { fail(key, p, v, `${ctx.mp.label}'da aynı başlıklı ürün var (çoklama riski)`); continue; }
           // Varyantın (rengin) kendi görselleri varsa onlar, yoksa ürünün görselleri (migration 063)
           const vImages: string[] = Array.isArray(v.images) && v.images.length ? v.images : images;
           if (!vImages.length) { fail(key, p, v, "Görsel yok"); continue; }
