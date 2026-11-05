@@ -1,0 +1,19 @@
+[Unit]
+Description=Trentakip: içerik denetimi (yapay zekâ başlık/açıklama/özellik çelişkisi, 80 altı inceleme listesi; worker/content-audit.ts, sunucu veritabanı)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+Environment=TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID= SUPABASE_DB_URL=
+WorkingDirectory=/opt/trentakip
+# Kota biterse durur; faturalandırma açılınca aynı iş hızlanır (AUDIT_N ile tur başı adet)
+ExecStart=/bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; exec /usr/bin/node --experimental-strip-types worker/content-audit.ts ${AUDIT_N:-150}"
+TimeoutStartSec=25min
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
