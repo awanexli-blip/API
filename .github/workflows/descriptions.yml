@@ -22,7 +22,8 @@ concurrency:
 jobs:
   draft:
     # Sunucu ana sistemken zamanlı çalışma sunucuda (docs/SUNUCU_PLAN.md)
-    if: vars.DESC_ENABLED != '0' && (github.event_name != 'schedule' || vars.ACTIVE_SITE != 'sunucu')
+    # K (05.11): "tedarikçinin açıklamasından fazla kendin bir şey oluşturma": zamanlı taslak kapalı (yalnızca DESC_ENABLED=1 ile açılır)
+    if: vars.DESC_ENABLED == '1' && (github.event_name != 'schedule' || vars.ACTIVE_SITE != 'sunucu')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
