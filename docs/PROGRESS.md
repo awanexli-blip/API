@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-05 (65) — HB ilan kaydı hatası, Bezos varyantları, Bezos API
+- **Elle değişti yanlış alarmı (2. kök neden):** HB listesinde tekrar eden barkod upsert'i düşürüyordu ("cannot affect row a second time"), 5.000. satırdan sonrası 03.11'den beri yazılmıyordu. `listings.ts` tekrarları ayıklar, paket hatası kalanı durdurmaz; `holds.ts` hedefle aynı fiyat ve +3 adede kadar stok artışı elle sayılmaz. Sunucuda doğrulandı (yazılan 45.592, hata yok, yeni tespit 0). Supabase'de bekleyenleri K SQL ile serbest bıraktı; yeni kodlu Supabase çalışması henüz doğrulanmadı.
+- **Bezos varyantları alınmıyor:** eşlemede varyant yok; 13.638 aktif seçenekli ürün tek seçenekli açılmış. Satışta/onayda TY 684, HB 838 ilan (201'inde pahalı seçenek). K kararı bekleniyor (durdur / yalnız pahalıları / önce düzelt).
+- **Bezos REST API:** doküman `kaynaklar/tedarikciler/bezos/API_notlari.md`. Mevcut okuyucu uyumlu. Anahtar sunucuda yok. Fiyat KDV dahil (XML hariç): geçişte price_includes_vat değişmeli. Sipariş ucu gerçek para: K onayı olmadan bağlanmaz.
+
 ## 2026-11-05 (64) — Yanlış tanıtım: özellik kopyalama, oyuncak uyumsuzluğu, içerik denetimi
 - Q klavyeye "F Klavye" (başka ilandan kopya): Trendyol zorunlu özellik sırası = tedarikçi > başlık/açıklama > Menşei TR > nötr ("Belirtilmemiş") > yalnızca başlığı benzer ilan; kategorideki rastgele ilandan kopya kaldırıldı.
 - Oyuncak saz "Bağlama", oyuncak süpürge "Araç İçi Süpürge", oyuncak blender "Bluetooth Kulaklık", oyuncak gitarlar: 10 ilan elle durduruldu (product_overrides hidden); `toyMismatch` (lib/scope.ts): tedarikçide oyuncak, pazaryerinde oyuncak dışı kategori -> satılmaz/gönderilmez (~158 TY ilanı).
