@@ -147,7 +147,9 @@ export function itemsToGroups(items: any[], mapping: Record<string, Field>): Gro
       const values: Partial<Record<Field, string>> = {};
       const images: string[] = [];
       // Önce varyant yolları, sonra ürün yolları (aynı alana ikisi de eşlenmişse varyantınki geçerli)
-      const entries = Object.entries(mapping).sort(([a], [b]) => Number(!!cont && b.startsWith(cont + ".")) - Number(!!cont && a.startsWith(cont + ".")));
+      // Tek seçenekli ürün (Bezos: 8 bin model) gerçek varyant değil: model kodu ve barkodu kalır, satıştaki ilan kopmaz; stok/fiyat seçenekten gelir
+      const one = els.length === 1 && !!el;
+      const entries = Object.entries(mapping).filter(([path, field]) => !(one && (field === "variant_sku" || path.endsWith(".var_barkod")))).sort(([a], [b]) => Number(!!cont && b.startsWith(cont + ".")) - Number(!!cont && a.startsWith(cont + ".")));
       for (const [path, field] of entries) {
         const v = flat[path];
         if (v == null) continue;

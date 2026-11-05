@@ -80,3 +80,16 @@ test("varyantlı ürün listenin ilerisinde olsa da görülür (3.000 sınırı 
   const g = itemsToGroups(items, m).find((x) => x.model === "V1")!;
   assert.equal(g.rows.length, 2);
 });
+
+test("tek seçenekli Bezos ürünü: model kodu ve barkodu korunur, stok/fiyat seçenekten", () => {
+  const xml = flattenVarDeger(`<urunler><urun><stok_kodu>TEK9</stok_kodu><isim>Tek Secenek</isim><barkod>BZTEK9</barkod><alis_fiyat>100,00</alis_fiyat><kdv>20</kdv><stok>9</stok><varyasyonlar><varyasyon><kod>XX1</kod><stok>4</stok><var_fiyat>110,00</var_fiyat><var_deger isim="RENK">Krem</var_deger></varyasyon></varyasyonlar></urun><urun><stok_kodu>V2</stok_kodu><isim>Iki</isim><barkod>BZV2</barkod><alis_fiyat>100,00</alis_fiyat><kdv>20</kdv><stok>2</stok><varyasyonlar><varyasyon><kod>A1</kod><stok>1</stok><var_fiyat>100,00</var_fiyat></varyasyon><varyasyon><kod>A2</kod><stok>1</stok><var_fiyat>100,00</var_fiyat></varyasyon></varyasyonlar></urun></urunler>`);
+  const items = new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }).parse(xml).urunler.urun;
+  const m: any = { stok_kodu: "model", isim: "title", barkod: "barcode", alis_fiyat: "cost_price", kdv: "vat_rate", stok: "stock",
+    "varyasyonlar.varyasyon.kod": "variant_sku", "varyasyonlar.varyasyon.stok": "stock", "varyasyonlar.varyasyon.var_fiyat": "cost_price", "varyasyonlar.varyasyon.var_barkod": "barcode" };
+  const p = supplierPayload(itemsToGroups(items, m)[0], { code: "bezos", sku_prefix: "BZS", price_includes_vat: false } as any, new Set()).payload;
+  assert.equal(p.sku, "BZSTEK9");
+  assert.equal(p.variants[0].sku, "BZSTEK9");
+  assert.equal(p.variants[0].barcode, "BZTEK9");
+  assert.equal(p.variants[0].stock, 4);
+  assert.equal(p.cost_price, 132);
+});
