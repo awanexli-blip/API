@@ -34,8 +34,10 @@ export function decide(it: InventoryItem, ls: Listing | undefined, s: Sent | und
     // (bir önceki görüntü = gönderdiğimiz). Pazaryerinin uygulamadığı / geciktirdiği güncelleme (HB stok 0'ı uygulamadı: 1.998 kaldı) elle değildir.
     const priceApplied = prevP != null && sp != null && Math.abs(prevP - sp) <= 0.01;
     const qtyApplied = prevQ != null && sq != null && prevQ === sq;
-    const priceEdited = priceApplied && lp != null && Math.abs(lp - sp!) > 0.01;
-    const qtyUp = qtyApplied && lq != null && lq > sq!;
+    // 05.11: pazaryeri zaten sistemin göndereceği fiyattaysa ezilecek bir şey yok, elle sayılmaz
+    const priceEdited = priceApplied && lp != null && Math.abs(lp - sp!) > 0.01 && (it.price == null || Math.abs(lp - it.price) > 0.01);
+    // Az artış (3 adede kadar) iptal/iade dönüşüdür, elle değil (HB 22 -> 23)
+    const qtyUp = qtyApplied && lq != null && lq > sq! + 3 && lq !== it.quantity;
     const qtyZero = qtyApplied && lq === 0 && sq! >= 3 && opts.soldRecently === 0;
     return priceEdited || qtyUp || qtyZero ? { action: "skip", detect: "edited" } : { action: "push" };
   }

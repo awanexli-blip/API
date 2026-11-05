@@ -11,6 +11,8 @@ const sent = (o: Partial<any> = {}): any => ({ sent_price: 299.9, sent_qty: 12, 
 const o = { fresh: false, soldRecently: 0 };
 
 check("değişiklik yok: gönderilir", decide(it, ls(299.9, 12), sent(), undefined, o).action === "push");
+check("pazaryeri fiyatı sistemin göndereceği fiyat (kayıt eski): elle sayılmaz", decide({ id: "K1", price: 486.07, quantity: 147 }, ls(486.07, 147), sent({ sent_price: 462.93, sent_qty: 147, price: 462.93, stock: 147 }), undefined, o).action === "push");
+check("iptal/iade dönüşü (stok +1): elle sayılmaz", decide({ id: "K1", price: 299.9, quantity: 12 }, ls(299.9, 13), sent(), undefined, o).action === "push");
 check("satış stoğu düşürdü: elle sayılmaz", decide(it, ls(299.9, 9), sent(), undefined, o).action === "push");
 check("gecikme (pazaryeri hâlâ eski değerde): elle sayılmaz", decide(it, ls(289.9, 10), sent({ price: 289.9, stock: 10 }), undefined, o).action === "push");
 check("pazaryeri güncellemeyi uygulamadı (HB stok 0 gönderildi, 1998 kaldı): elle sayılmaz", decide(it, ls(919.9, 1999), sent({ sent_price: 919.9, sent_qty: 0, price: 919.9, stock: 1998 }), undefined, o).action === "push");

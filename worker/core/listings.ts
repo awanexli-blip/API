@@ -25,7 +25,9 @@ export function listingRows(marketplace: string, listings: Listing[], now: strin
 // sent: bu çalışmada gönderilen fiyat/stok (migration 074; elle değişiklik algılaması). Fiyat gönderilmediyse (null) son gönderilen korunur.
 export async function snapshotListings(db: any, marketplace: string, listings: Listing[], calc?: Map<string, ListingCalc>, sent?: Map<string, { price: number | null; qty: number }>): Promise<Record<string, unknown>> {
   const now = new Date().toISOString();
-  const rows: Record<string, unknown>[] = listingRows(marketplace, listings, now, calc);
+  // 05.11: pazaryeri listesinde aynı barkod iki kez gelebiliyor (sayfalama sırasında liste değişince): aynı paketteki tekrar upsert'i
+  // "cannot affect row a second time" ile düşürüyor, 5.000. satırdan sonrası günlerce yazılmıyordu -> son kayıt kalır
+  const rows: Record<string, unknown>[] = [...new Map(listingRows(marketplace, listings, now, calc).map((r) => [r.listing_key as string, r])).values()];
   if (sent?.size) for (const r of rows) {
     const x = sent.get(r.listing_key as string);
     if (x) Object.assign(r, { sent_qty: x.qty, pushed_at: now }, x.price != null ? { sent_price: x.price } : {});
@@ -33,14 +35,17 @@ export async function snapshotListings(db: any, marketplace: string, listings: L
   // Toplu upsert'te satırda olmayan kolon NULL yazılır: kolon kümesi aynı olan satırlar birlikte gönderilir
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const r of rows) { const k = Object.keys(r).sort().join(","); (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
-  let written = 0;
+  let written = 0, firstError: string | null = null;
   for (const g of groups.values()) for (const part of chunk(g, 500)) {
     let { error } = await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
     // migration 074 öncesi: gönderim kolonları yok, onlarsız yaz
     if (error && /sent_|pushed_at/.test(error.message)) ({ error } = await db.from("marketplace_listings").upsert(part.map(({ sent_price, sent_qty, pushed_at, ...rest }: any) => rest), { onConflict: "marketplace,listing_key" }));
-    if (error) return { error: error.message, written };
+    // Tek paketin hatası kalan ilanları durdurmaz (yazılmayan paket sonraki çalışmada yazılır)
+    if (error) { firstError ??= error.message; continue; }
     written += part.length;
   }
+  // Eksik yazıldıysa "kalkmış ilan" işaretlenmez (görülmedi sanılıp yanlış kapanmasın)
+  if (firstError) return { error: firstError, written, total: rows.length };
   // Bu çalışmada görülmeyen ilanlar pazaryerinden kalkmış (yalnızca liste tam geldiyse)
   let gone = 0;
   if (rows.length > 0) {
