@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-05 (64) — Yanlış tanıtım: özellik kopyalama, oyuncak uyumsuzluğu, içerik denetimi
+- Q klavyeye "F Klavye" (başka ilandan kopya): Trendyol zorunlu özellik sırası = tedarikçi > başlık/açıklama > Menşei TR > nötr ("Belirtilmemiş") > yalnızca başlığı benzer ilan; kategorideki rastgele ilandan kopya kaldırıldı.
+- Oyuncak saz "Bağlama", oyuncak süpürge "Araç İçi Süpürge", oyuncak blender "Bluetooth Kulaklık", oyuncak gitarlar: 10 ilan elle durduruldu (product_overrides hidden); `toyMismatch` (lib/scope.ts): tedarikçide oyuncak, pazaryerinde oyuncak dışı kategori -> satılmaz/gönderilmez (~158 TY ilanı).
+- Açıklamalar: sistem tedarikçi metnini aynen kullanıyor (toptancim `detail` birebir doğrulandı; onaylı yapay zekâ açıklaması yok). Yapay zekâ açıklama taslağı (descriptions.yml) varsayılan kapalı (DESC_ENABLED=1).
+- İçerik denetimi (yalnızca sunucu): migration 078 `content_audit` + `content_audit_candidates`, `worker/content-audit.ts` (report), `trentakip-content-audit.timer` (30 dk). İlk sonuç: kedi oyuncağı açıklaması çelişkili (50). Gemini ücretsiz kotası ai-fill ile paylaşılıyor: günde birkaç ürün. K: faturalandırma + 80 altı için eylem kararı.
+
 ## 2026-11-04 (63) — Elle değişiklik yanlış alarmı, fatura KDV, gıda filtresi, HB yeniden gönderim
 - **Elle değişiklik yanlış alarmı** (K: "ben bir şey yapmıyorum"): HB stok 0'ı / kampanyalı fiyatı uygulamayınca "elle artırıldı" sanılıyordu (Supabase 2.240 HB); sunucuda sistemin kendi açtığı 17.358 TY + 3.488 HB ilanı "elle eklenmiş" sanılıp stok/fiyatı güncellenmiyordu. `holds.ts`: değişiklik ancak gönderdiğimiz değer pazaryerinde görüldükten sonra olursa elle; ürüne bağlı ilan elle eklenmiş sayılmaz; kayıtlar readAll (1000 satır sınırı). Bekleyenler "sync" yapıldı -> çözüldü (yeni tespit 0).
 - **Fatura KDV:** migration 077 `order_lines.vat_rate` (K SQL Editor'de çalıştırdı; MCP izni reddedildi). Sunucu Bezos/Hepsibayi satırlarına ürünün KDV oranını yazar; oran bilinmeyen sunucu ürününde fatura taslağı açılmaz (%20 varsayılmaz). KDV kaynağı tedarikçi XML alanı (alış faturasıyla karşılaştırma yok: K ilk faturalarla kontrol edecek).
