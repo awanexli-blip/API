@@ -72,3 +72,11 @@ test("Bezos varyantı: seçenek adı/değeri, kendi kodu, BZ barkodu ve KDV ekle
   assert.equal(b.variants[0].barcode, "BZTEK1");
   assert.equal(b.variants[0].cost_price, undefined);
 });
+
+test("varyantlı ürün listenin ilerisinde olsa da görülür (3.000 sınırı yok)", () => {
+  const plain = Array.from({ length: 3100 }, (_, i) => ({ stok_kodu: `P${i}`, isim: `Urun ${i}`, stok: "1" }));
+  const items = [...plain, { stok_kodu: "V1", isim: "Secenekli", stok: "5", varyasyonlar: { varyasyon: [{ kod: "A", stok: "2" }, { kod: "B", stok: "3" }] } }];
+  const m: any = { stok_kodu: "model", isim: "title", stok: "stock", "varyasyonlar.varyasyon.kod": "variant_sku", "varyasyonlar.varyasyon.stok": "stock" };
+  const g = itemsToGroups(items, m).find((x) => x.model === "V1")!;
+  assert.equal(g.rows.length, 2);
+});

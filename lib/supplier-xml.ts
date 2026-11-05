@@ -98,7 +98,8 @@ function variantContainers(items: any[], mapping: Record<string, Field>): string
     const segs = key.split(".");
     for (let n = segs.length - 1; n >= 1; n--) {
       const pre = segs.slice(0, n).join(".");
-      if (items.slice(0, 3000).some((it) => { const v = at(it, pre); return Array.isArray(v) && v.some(isObj); })) { out.add(pre); break; }
+      // Tüm ürünlere bakılır (06.11: Bezos'ta seçenekli ürünler ilk 3.000'den sonra başlıyordu, varyantlar hiç görülmüyordu)
+      if (items.some((it) => { const v = at(it, pre); return Array.isArray(v) && v.some(isObj); })) { out.add(pre); break; }
     }
   }
   return [...out];
