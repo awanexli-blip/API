@@ -4,6 +4,7 @@
 //   node --experimental-strip-types worker/attr-fix.ts push [--key BARKOD] [--limit N] [--apply]   yayındaki Trendyol ilanlarını düzelt
 // Yalnızca tedarikçi ürünleri (xml:*); K'nın elle girdiği ürünlere dokunulmaz. Değer yalnızca başlık + tedarikçi kategorisinden (core/attr-infer.ts).
 // Çalıştığı veritabanı: ortamdaki SUPABASE_URL (sunucu için trentakip-vps ile). Müşteri verisi okumaz.
+import { writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { wantedAudience as wanted } from "./core/attr-infer.ts";
 import { env, readAll, chunk } from "./core/util.ts";
@@ -34,6 +35,8 @@ if (cmd === "plan" || cmd === "db") {
   console.log(JSON.stringify({ tarananUrun: all.length, duzeltilecek: fix.length }));
   for (const [k, g] of [...pairs].sort((a, b) => b[1].n - a[1].n)) console.log(g.n, k, JSON.stringify(g.ex));
   if (cmd === "db" && apply) {
+    // Geri dönüş için eski değerler dosyaya (yalnızca ürün kimliği ve bu iki özellik)
+    writeFileSync(`/tmp/attr-fix-eski-${Date.now()}.json`, JSON.stringify(fix.map(({ p, set }) => ({ id: p.id, eski: Object.fromEntries(Object.keys(set).map((k) => [k, p.attributes[k]])), yeni: set }))));
     let ok = 0, err = 0;
     for (const { p, set } of fix) {
       const { error } = await db.from("products").update({ attributes: { ...p.attributes, ...set } }).eq("id", p.id);
