@@ -682,6 +682,7 @@ export function createTrendyol(): Marketplace {
     // Reddedilen ürünü düzeltip yeniden onaya gönder: yalnızca değişen alanlar (gönderilmeyen alan korunur)
     async updateRejected(items) {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      const opt = (k: string) => (process.env[k] ? Number(process.env[k]) : undefined);
       const shipmentAddressId = opt("TRENDYOL_SHIPMENT_ADDRESS_ID");
       const returningAddressId = opt("TRENDYOL_RETURN_ADDRESS_ID");
       const body = items.map((p) => {
