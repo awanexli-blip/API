@@ -89,3 +89,12 @@ export function trendyolRuleBlock(title: string | null | undefined): string | nu
   const m = String(title ?? "").toLocaleLowerCase("tr").match(TY_RULE);
   return m ? `Trendyol satış kuralı: "${m[1]}" içeren ürün kabul edilmiyor` : null;
 }
+
+// +18 uyumsuzluğu (K, 06.11: "ceza riski yüksekse kapat"): tedarikçide +18 / cinsel sağlık / fantezi olan ürün pazaryerinde bebek, çocuk, oyuncak kategorisinde satılmaz (240 ilan "Bebek Sağlık Ürünleri"ne düşmüştü).
+const ADULT_SUP = /(\+18|cinsel|fantezi|fantazi)/u;
+const KID_MP = /(bebek|çocuk|oyuncak|anne)/u;
+export function adultMismatch(supplierCat: string | null | undefined, mpCat: string | null | undefined): string | null {
+  const s = String(supplierCat ?? "").toLocaleLowerCase("tr"), m = String(mpCat ?? "").toLocaleLowerCase("tr");
+  return m.trim() && ADULT_SUP.test(s) && KID_MP.test(m) ? `tedarikçide +18, pazaryerinde "${mpCat}" (ceza riski)` : null;
+}
+

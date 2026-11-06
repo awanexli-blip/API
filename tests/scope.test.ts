@@ -67,3 +67,12 @@ test("Trendyol satış kuralı: çakmak, küllük, nargile, silah", () => {
   for (const t of ["Çakmaklı Değil Kalem", "Sigaralık", "Silahşör Figürü", "Saç Kurutma Makinesi"]) assert.ok(!trendyolRuleBlock(t), t);
 });
 
+import { adultMismatch } from "../lib/scope.ts";
+test("+18 ürün bebek/çocuk/oyuncak kategorisinde satılmaz", () => {
+  assert.ok(adultMismatch("Ev & Yaşam Ürünleri > +18 Ürünler > Cinsel Sağlık", "Diğer Bebek Sağlık Ürünleri"));
+  assert.ok(adultMismatch("Fantezi Giyim", "Eğitici Oyuncak"));
+  assert.ok(!adultMismatch("+18 Ürünler > Masaj Yağı", "Masaj Yağı"));
+  assert.ok(!adultMismatch("Anne Bebek > Bebek Bakım", "Diğer Bebek Sağlık Ürünleri"), "gerçek bebek ürünü");
+  assert.ok(!adultMismatch("+18 Ürünler", null), "kategori yok");
+});
+
