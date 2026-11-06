@@ -132,6 +132,7 @@ function Panel({ token, email }: { token: string; email: string }) {
     { path: "panel", label: "Gösterge paneli", icon: "home", show: true, active: section === "panel" },
     { path: "satis", label: "Satış raporu", icon: "activity", show: canEdit, active: section === "satis" },
     { path: "siparisler", label: "Siparişler", icon: "cart", show: canEdit, active: section === "siparisler" },
+    { path: "faturalar", label: "Faturalar", icon: "list", show: isAdmin, active: section === "faturalar" },
     { path: "sorular", label: "Müşteri soruları", icon: "info", show: canEdit, active: section === "sorular" },
     { path: "urunler", label: "Ürünler", icon: "box", show: true, group: "Katalog", active: section === "urunler" },
     { path: "aciklamalar", label: "Açıklamalar", icon: "list", show: canEdit, active: section === "aciklamalar" },
@@ -168,7 +169,8 @@ function Panel({ token, email }: { token: string; email: string }) {
   if (!role) page = <div className="card"><div className="skeleton" style={{ width: "40%", marginBottom: 10 }} /><div className="skeleton" style={{ width: "70%" }} /></div>;
   else if (section === "panel") page = <Dashboard api={api} notify={notify} role={role} go={nav} />;
   else if (section === "satis" && canEdit) page = <SalesReport api={api} notify={notify} go={nav} />;
-  else if (section === "siparisler" && canEdit) page = <>{isAdmin && <Invoices api={api} notify={notify} />}<Orders api={api} notify={notify} /></>;
+  else if (section === "siparisler" && canEdit) page = <Orders api={api} notify={notify} />;
+  else if (section === "faturalar" && isAdmin) page = <Invoices api={api} notify={notify} />;
   else if (section === "sorular" && canEdit) page = <Inbox api={api} notify={notify} />;
   else if (section === "urunler") page = <Products api={api} notify={notify} />;
   else if (section === "aciklamalar" && canEdit) page = <Descriptions api={api} notify={notify} isAdmin={isAdmin} />;

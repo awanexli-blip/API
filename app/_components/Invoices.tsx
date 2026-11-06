@@ -1,63 +1,104 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { tl, when, type Api, type Notify, type Row } from "./shared";
 
 // Faturalar (GİB e-Arşiv portalı, /api/invoices): sistem taslak oluşturur, K portalda toplu seçip tek SMS ile imzalar,
-// "İmzalananları kontrol et" durumu okur. Sistem fatura imzalamaz.
-const IST: Record<string, [string, string]> = { none: ["Kesilmedi", ""], creating: ["Oluşturuluyor", "info"], draft: ["Taslak: portalda imzala", "info"], signed: ["Kesildi", "ok"], uploaded: ["Trendyol'a yüklendi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "partial"] };
+// "İmzalananları kontrol et" durumu okur, imzalılar denemeden sonra Trendyol'a yüklenir. Sistem fatura imzalamaz.
+// Ekran (K, 06.11 "daha kullanışlı"): üstte tek "sıradaki adım", yapılacak sayıları, işe göre sekmeler; seyrek araçlar "Diğer araçlar"da.
+const PORTAL_URL = "https://earsivportal.efatura.gov.tr/intragiris.html";
+const IST: Record<string, [string, string]> = { none: ["Kesilmedi", ""], creating: ["Oluşturuluyor", "info"], draft: ["İmza bekliyor", "info"], signed: ["Kesildi", "ok"], uploaded: ["Trendyol'a yüklendi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "partial"] };
+type Tab = "todo" | "sign" | "upload" | "warn" | "all" | "hb";
+const dup = (r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "");
+const inTab: Record<Tab, (r: Row) => boolean> = {
+  todo: (r) => !r.invoice || ["error", "deleted", "creating"].includes(r.invoice.status),
+  sign: (r) => r.invoice?.status === "draft",
+  upload: (r) => r.invoice?.status === "signed" && r.marketplace === "trendyol" && !dup(r),
+  warn: (r) => !!r.invoice?.error,
+  all: () => true,
+  hb: (r) => r.marketplace === "hepsiburada" && ["signed", "uploaded"].includes(r.invoice?.status),
+};
+const EMPTY: Record<Tab, string> = { todo: "Fatura kesilecek sipariş yok.", sign: "İmza bekleyen taslak yok.", upload: "Trendyol'a yüklenecek fatura yok.", warn: "Uyarı yok.", all: "Son 60 günde sipariş yok.", hb: "Hepsiburada faturası yok." };
+const daysAgo = (t?: string) => (t ? Math.floor((Date.now() - Date.parse(t)) / 86400000) : 0);
+const oldTag = (t?: string) => (daysAgo(t) >= 1 ? ` (${daysAgo(t)} gün önce, eski)` : "");
 
 export default function Invoices({ api, notify }: { api: Api; notify: Notify }) {
   const [d, setD] = useState<Row | null>(null);
-  const [open, setOpen] = useState(true);
+  const [failed, setFailed] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState("");
-  const [filter, setFilter] = useState<"todo" | "warn" | "all" | "hb">("todo");
-  const load = useCallback(() => api("/api/invoices").then(setD).catch((e) => notify("err", e.message)), [api, notify]);
-  useEffect(() => { if (open) load(); }, [open, load]);
+  const [tab, setTab] = useState<Tab | null>(null);
+  const [waiting, setWaiting] = useState("");
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const load = useCallback(() => api("/api/invoices").then((x: Row) => { setD(x); setFailed(""); }).catch((e: any) => { setFailed(e.message); notify("err", e.message); }), [api, notify]);
+  useEffect(() => { load(); return () => { if (timer.current) clearInterval(timer.current); }; }, [load]);
 
-  const rows: Row[] = (d?.rows ?? []).filter((r: Row) => filter === "all" || (filter === "warn" ? !!r.invoice?.error : filter === "hb" ? r.marketplace === "hepsiburada" && ["signed", "uploaded"].includes(r.invoice?.status) : !r.invoice || ["error", "deleted", "draft", "creating"].includes(r.invoice.status)));
+  const all: Row[] = d?.rows ?? [];
+  const n = (t: Tab) => all.filter(inTab[t]).length;
   const selectable = (r: Row) => r.has_customer && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
+  // Kullanıcı sekme seçmediyse yapılacak iş olan ilk sekme
+  const cur: Tab = tab ?? (n("todo") ? "todo" : n("sign") ? "sign" : n("upload") ? "upload" : "todo");
+  const rows = all.filter(inTab[cur]);
   const c = d?.counts ?? {};
-  const dupRows: Row[] = (d?.rows ?? []).filter((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "") && ["signed", "uploaded"].includes(r.invoice?.status));
-  const daysAgo = (t?: string) => (t ? Math.floor((Date.now() - Date.parse(t)) / 86400000) : 0);
+  const dupSigned = all.filter((r) => dup(r) && ["signed", "uploaded"].includes(r.invoice?.status));
+  const selectedRows = all.filter((r) => sel.has(r.id));
+  const selectedTotal = selectedRows.reduce((t, r) => t + Number(r.total ?? 0), 0);
+  const selectableNow = rows.filter(selectable);
+  const dryFresh = d?.upload?.mode === "dry" && Date.now() - Date.parse(d.upload.at) < 24 * 3600000;
+  const canGib = !!d?.configured, canGh = !!d?.uploadReady;
+
+  // Arka plandaki iş (GitHub Actions, 2-5 dk) bitene kadar raporu kendisi yeniler; en fazla 8 dk
+  function watch(label: string) {
+    setWaiting(label);
+    if (timer.current) clearInterval(timer.current);
+    let k = 0;
+    timer.current = setInterval(() => { k++; load(); if (k >= 16) { clearInterval(timer.current!); timer.current = null; setWaiting(""); } }, 30000);
+  }
+
+  async function post(body: Row, timeoutMs?: number) { return api("/api/invoices", { method: "POST", body: JSON.stringify(body), ...(timeoutMs ? { timeoutMs } : {}) } as any); }
 
   async function draft() {
     const ids = [...sel];
     if (!ids.length) return;
-    if (!confirm(`${ids.length} sipariş için GİB e-Arşiv portalında TASLAK fatura oluşturulacak (imzalanmaz). Sonra portalda taslakları kontrol edip toplu imzalayacaksın. Devam?`)) return;
+    if (!confirm(`${ids.length} sipariş için GİB e-Arşiv portalında TASLAK fatura oluşturulacak (toplam ${tl(selectedTotal)}). İmzalanmaz: imzayı portalda sen atarsın. Devam?`)) return;
     let ok = 0; const errs: string[] = [];
+    // Hatalı / silinmiş kaydı olan sipariş önce açılır (yoksa "zaten taslak var" der); sunucu yalnızca bu durumları siler
+    for (const r of selectedRows) if (r.invoice && ["error", "deleted"].includes(r.invoice.status)) { try { await post({ action: "reset", order_id: r.id }); } catch (e: any) { errs.push(`${r.order_no}: ${e.message}`); } }
     // 5'erli: her taslak portalda 3 istek; 30.10'da 25'lik istek panelin 25 sn bekleme süresini aştı (sunucu arka planda bitirdi)
     for (let i = 0; i < ids.length; i += 5) {
       setBusy(`Taslaklar oluşturuluyor (${Math.min(i + 5, ids.length)}/${ids.length})...`);
       try {
-        const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "draft", order_ids: ids.slice(i, i + 5) }), timeoutMs: 120000 } as any);
+        const r = await post({ action: "draft", order_ids: ids.slice(i, i + 5) }, 120000);
         ok += r.created; for (const x of r.results ?? []) if (!x.ok) errs.push(`${x.order_no ?? ""}: ${x.error}`);
       } catch (e: any) { errs.push(e.message); break; }
     }
-    setBusy(""); setSel(new Set()); load();
-    notify(errs.length ? "err" : "good", `${ok} taslak oluşturuldu.${ok ? " Şimdi e-Arşiv portalında Düzenlenen Belgeler'den taslakları seçip toplu imzala (tek SMS), sonra \"İmzalananları kontrol et\"." : ""}${errs.length ? ` Hata (${errs.length}): ${errs.slice(0, 3).join(" · ")}` : ""}`);
+    setBusy(""); setSel(new Set()); await load();
+    if (ok) setTab("sign");
+    notify(errs.length ? "err" : "good", `${ok} taslak oluşturuldu.${ok ? " Şimdi portalda imzala, sonra \"İmzalananları kontrol et\"e bas." : ""}${errs.length ? ` Hata (${errs.length}): ${errs.slice(0, 3).join(" · ")}` : ""}`);
   }
   async function sync() {
     setBusy("Portal okunuyor...");
-    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "sync" }), timeoutMs: 120000 } as any); notify(r.duplicate ? "err" : "good", `${r.duplicate ? `⚠️ ${r.duplicate} taslak MÜKERRER (o siparişler için portalda elle kesilmiş/oluşturulmuş belge var): ikisini birden imzalama. ` : ""}İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş: ${r.deleted}` : ""}${r.missing ? `, portal listesinde görünmeyen (dokunulmadı): ${r.missing}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`); load(); }
-    catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+    try {
+      const r = await post({ action: "sync" }, 120000);
+      notify(r.duplicate ? "err" : "good", `${r.duplicate ? `⚠️ ${r.duplicate} taslak MÜKERRER (o siparişler için portalda elle kesilmiş/oluşturulmuş belge var): ikisini birden imzalama. ` : ""}İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş: ${r.deleted}` : ""}${r.missing ? `, portal listesinde görünmeyen (dokunulmadı): ${r.missing}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`);
+      await load();
+    } catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function delDup() {
-    const n = (d?.rows ?? []).filter((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "")).length;
-    if (!n || !confirm(`${n} mükerrer TASLAK portaldan silinecek (yalnızca imzalanmamış taslaklar; senin kestiğin faturalara dokunulmaz). Devam?`)) return;
+    const m = all.filter((r) => dup(r) && r.invoice?.status === "draft").length;
+    if (!m || !confirm(`${m} mükerrer TASLAK portaldan silinecek (yalnızca imzalanmamış taslaklar; kestiğin faturalara dokunulmaz). Devam?`)) return;
     setBusy("Mükerrer taslaklar siliniyor...");
-    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "delete_duplicates" }), timeoutMs: 120000 } as any); notify("good", `${r.deleted} mükerrer taslak silindi. Şimdi "İmzalananları kontrol et" ile elle kestiklerin siparişlere bağlanır.`); load(); }
+    try { const r = await post({ action: "delete_duplicates" }, 120000); notify("good", `${r.deleted} mükerrer taslak silindi. Şimdi "İmzalananları kontrol et" ile elle kestiklerin siparişlere bağlanır.`); await load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function logoutGib() {
     setBusy("e-Arşiv oturumu kapatılıyor...");
-    try { const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "logout" }), timeoutMs: 60000 } as any); notify(r.ok ? "good" : "err", r.message); }
+    try { const r = await post({ action: "logout" }, 60000); notify(r.ok ? "good" : "err", r.message); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function audit() {
     setBusy("Denetim başlatılıyor...");
-    try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "upload", mode: "audit" }) }); notify("good", "Mükerrer fatura denetimi başladı (salt okunur, 2-4 dk). Bu sırada e-Arşiv portalından çıkış yap. Bitince \"Raporu yenile\"."); }
+    try { await post({ action: "upload", mode: "audit" }); notify("good", "Mükerrer fatura kontrolü başladı. Portalda oturum açık olmasın. Rapor gelince ekran kendisi güncellenir."); watch("Mükerrer kontrolü çalışıyor (2-4 dk)"); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function upload(mode: "dry" | "apply") {
@@ -65,21 +106,22 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     // İlk gerçek yükleme tek fatura: K Trendyol panelinde doğru pakette doğru PDF'i görünce kalanlar gider
     const first = mode === "apply" && !(c.uploaded ?? 0);
     const count = first ? 1 : 200;
-    if (mode === "apply" && !confirm(first ? "İLK yükleme: yalnızca 1 fatura Trendyol'a yüklenecek. Trendyol panelinde o siparişte faturanın doğru göründüğünü kontrol et, sonra bu düğmeyle kalanları yükle. Devam?"
+    if (mode === "apply" && !confirm(first ? "İLK yükleme: yalnızca 1 fatura Trendyol'a yüklenecek. Trendyol panelinde o siparişte faturanın doğru göründüğünü kontrol et, sonra kalanları yükle. Devam?"
       : `Son denemede uygun çıkan ${u?.ok ?? 0} fatura Trendyol'a yüklenecek (kontroller yeniden yapılır, tutmayan atlanır). Trendyol aynı pakete ikinci faturayı kabul etmez. Devam?`)) return;
     setBusy(mode === "dry" ? "Deneme başlatılıyor..." : "Yükleme başlatılıyor...");
     try {
-      await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "upload", mode, count }) });
-      notify("good", `${mode === "dry" ? "Deneme" : "Yükleme"} başladı (GitHub Actions, 2-5 dk). Bu sırada e-Arşiv portalından çıkış yap (tek oturum). Bitince "Raporu yenile".`);
+      await post({ action: "upload", mode, count });
+      notify("good", `${mode === "dry" ? "Deneme" : "Yükleme"} başladı. Portalda oturum açık olmasın. Bitince ekran kendisi güncellenir.`);
+      watch(mode === "dry" ? "Deneme çalışıyor (2-5 dk)" : "Yükleme çalışıyor (2-5 dk)");
     } catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
-  // İmzalı faturayı yeni pencerede aç ve yazdır (PDF olarak kaydet); pencere başlığı = dosya adı (alıcı adı, ör. "kamil kilic")
+  // İmzalı faturayı yeni pencerede aç ve yazdır (PDF olarak kaydet); pencere başlığı = dosya adı (alıcı adı)
   async function openPdf(id: string) {
     const w = window.open("", "_blank"); // tıklama anında açılmalı (açılır pencere engeli)
     if (!w) return notify("err", "Tarayıcı yeni pencereyi engelledi: bu site için açılır pencereye izin ver");
     w.document.write("<p style='font-family:sans-serif'>Fatura GİB'den alınıyor...</p>");
     try {
-      const r = await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "html", order_id: id }), timeoutMs: 60000 } as any);
+      const r = await post({ action: "html", order_id: id }, 60000);
       const title = `<title>${String(r.name).replace(/[<>&]/g, "")}</title>`;
       const html = /<title>[\s\S]*?<\/title>/i.test(r.html) ? r.html.replace(/<title>[\s\S]*?<\/title>/i, title) : /<head[^>]*>/i.test(r.html) ? r.html.replace(/<head[^>]*>/i, (m: string) => m + title) : title + r.html;
       w.document.open(); w.document.write(html); w.document.close();
@@ -89,104 +131,131 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   }
   async function clearReport(report: "audit" | "upload") {
     if (!confirm("Bu rapor ekrandan kaldırılacak. Faturalara, GİB portalına ve Trendyol'a dokunulmaz. Devam?")) return;
-    try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "clear_report", report }) }); load(); } catch (e: any) { notify("err", e.message); }
+    try { await post({ action: "clear_report", report }); await load(); } catch (e: any) { notify("err", e.message); }
   }
   async function reset(id: string) {
-    try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "reset", order_id: id }) }); load(); } catch (e: any) { notify("err", e.message); }
+    try { await post({ action: "reset", order_id: id }); await load(); } catch (e: any) { notify("err", e.message); }
   }
 
+  if (!d) return <div className="card">{failed ? <><p style={{ color: "var(--bad)" }}>Faturalar yüklenemedi: {failed}</p><button className="btn" onClick={load}>Yeniden dene</button></> : <p className="muted">Yükleniyor...</p>}</div>;
+
+  const stat = (t: Tab, label: string, hint: string, tone?: string) => (
+    <button key={t} onClick={() => setTab(t)} aria-pressed={cur === t} style={{ textAlign: "left", font: "inherit", cursor: "pointer", background: "var(--panel)", color: "var(--ink)", border: `1px solid ${cur === t ? "var(--accent)" : "var(--line)"}`, borderRadius: "var(--radius)", padding: "12px 14px" }}>
+      <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, color: tone && n(t) ? tone : undefined }}>{n(t)}</div>
+      <div style={{ fontWeight: 600, fontSize: 14, marginTop: 4 }}>{label}</div>
+      <div className="muted" style={{ fontSize: 12 }}>{hint}</div>
+    </button>
+  );
+  // Sıradaki adım: duruma göre tek öneri
+  const next: { text: string; tone?: string; act: ReactNode } = !canGib ? { text: "Önce bu panele GİB kullanıcı kodu ve şifresi tanımlanmalı (GIB_PORTAL_USER, GIB_PORTAL_PASS). O zamana kadar taslak ve kontrol kapalı.", tone: "var(--bad)", act: null }
+    : dupSigned.length ? { text: `${dupSigned.length} siparişte çift fatura uyarısı var${d.audit ? ` (son kontrol ${daysAgo(d.audit.at)} gün önce)` : ""}. Portalda iptal ettiysen kontrol et: artık çift olmayanların uyarısı kendiliğinden kalkar. Gerçekten çift olan kalır ve Trendyol'a yüklenmez.`, tone: "var(--bad)", act: <button className="btn primary" disabled={!!busy || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button> }
+    : n("sign") ? { text: `${n("sign")} taslak imzanı bekliyor. Portalda Düzenlenen Belgeler'den seçip imzala (tek SMS), sonra buraya dönüp kontrol et.`, act: <><a className="btn" href={PORTAL_URL} target="_blank" rel="noreferrer">e-Arşiv portalını aç</a><button className="btn primary" disabled={!!busy} onClick={sync}>İmzalananları kontrol et</button></> }
+    : n("upload") ? { text: dryFresh && d.upload?.ok ? `Son denemede ${d.upload.ok} fatura uygun çıktı, yükleyebilirsin.` : `${n("upload")} kesilmiş fatura Trendyol'a yüklenmeyi bekliyor. Önce deneme: hiçbir şey yüklenmez, her fatura tek tek karşılaştırılır.`,
+        act: dryFresh && d.upload?.ok ? <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload.ok})</button> : <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("dry")}>Deneme başlat</button> }
+    : n("todo") ? { text: `${n("todo")} siparişin faturası kesilmedi. Aşağıdan seç, taslak oluştur.`, act: null }
+    : { text: "Her şey tamam, bekleyen fatura işi yok.", tone: "var(--ok)", act: null };
+
   return (
-    <div className="card">
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>Faturalar (e-Arşiv)</h3>
-        <button className="btn ghost" onClick={() => setOpen(!open)}>{open ? "Gizle" : "Aç"}</button>
+    <>
+      <div className="card">
+        <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 280px" }}>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>SIRADAKİ ADIM</div>
+            <div style={{ color: next.tone, fontWeight: 500 }}>{next.text}</div>
+          </div>
+          {next.act && <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{next.act}</div>}
+        </div>
+        {!canGh && canGib && <p style={{ color: "var(--bad)", fontSize: 13, margin: "8px 0 0" }}>Bu panelde GH_TOKEN tanımlı değil: deneme, yükleme ve mükerrer kontrolü başlatılamaz.</p>}
+        {(busy || waiting) && <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }} role="status">{busy || `${waiting}. Ekran 30 saniyede bir yenilenir.`}</p>}
       </div>
-      {open && !d && <p className="muted">Yükleniyor...</p>}
-      {open && d && <>
-        {!d.configured && <p style={{ color: "var(--bad)", fontSize: 13 }}>Bu panelde GİB kullanıcı kodu / şifresi tanımlı değil (GIB_PORTAL_USER, GIB_PORTAL_PASS). Tanımlanana kadar taslak oluşturma ve kontrol kapalı; listeyi görebilirsin.</p>}
-        <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
-          <span className="muted">Kesilmedi: {c.none ?? 0} · İmza bekleyen taslak: {c.draft ?? 0} · Kesildi: {(c.signed ?? 0) + (c.uploaded ?? 0)} (Trendyol'a yüklenen {c.uploaded ?? 0}) · Hata: {c.error ?? 0}</span>
-          {busy && <span className="muted">{busy}</span>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
+        {stat("todo", "Kesilecek", "Taslak oluştur")}
+        {stat("sign", "İmza bekliyor", "Portalda imzala")}
+        {stat("upload", "Yüklenecek", "Trendyol'a gönder")}
+        {stat("warn", "Uyarı", "Kontrol gerekiyor", "var(--bad)")}
+      </div>
+
+      <div className="card">
+        <div className="tabs" role="tablist">
+          {([["todo", "Kesilecek"], ["sign", "İmza bekliyor"], ["upload", "Yüklenecek"], ["warn", "Uyarı"], ["hb", "Hepsiburada"], ["all", "Tümü (60 gün)"]] as [Tab, string][]).map(([t, label]) => (
+            <button key={t} role="tab" aria-selected={cur === t} className="tab" onClick={() => setTab(t)}>{label} ({n(t)})</button>
+          ))}
         </div>
 
-        {dupRows.length > 0 && <div style={{ border: "1px solid var(--bad)", borderRadius: 8, padding: 10, margin: "8px 0", fontSize: 13 }}>
-          <b style={{ color: "var(--bad)" }}>⚠️ {dupRows.length} siparişte çift fatura uyarısı</b>
-          <div className="muted" style={{ margin: "4px 0" }}>Bu notlar en son denetimden geliyor{d.audit ? ` (${daysAgo(d.audit.at)} gün önce)` : ""}. Portalda iptal ettiysen <b>Mükerrer fatura kontrolü</b>ne bas: artık çift olmayanların uyarısı kendiliğinden kalkar. Gerçekten çift olan kalır ve Trendyol'a yüklenmez.</div>
-          <div>{dupRows.map((r) => `${r.order_no} (${r.invoice?.belge_no ?? "-"})`).join(" · ")}</div>
+        {cur === "todo" && <div className="row" style={{ gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+          <button className="btn primary" disabled={!!busy || !sel.size || !canGib} onClick={draft}>{sel.size ? `${sel.size} sipariş için taslak oluştur (${tl(selectedTotal)})` : "Taslak için sipariş seç"}</button>
+          {selectableNow.length > 0 && <button className="btn ghost" onClick={() => setSel(selectableNow.every((r) => sel.has(r.id)) ? new Set() : new Set(selectableNow.map((r) => r.id)))}>{selectableNow.every((r) => sel.has(r.id)) ? "Seçimi kaldır" : `Tümünü seç (${selectableNow.length})`}</button>}
+          <span className="muted" style={{ fontSize: 12 }}>Alıcı TC 11111111111, tutar satış geliri, KDV ürünün oranı. 30 günden eski siparişin alıcı bilgisi silinir, onlar seçilemez.</span>
         </div>}
+        {cur === "sign" && <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <a className="btn" href={PORTAL_URL} target="_blank" rel="noreferrer">e-Arşiv portalını aç</a>
+          <button className="btn primary" disabled={!!busy || !canGib} onClick={sync}>İmzalananları kontrol et</button>
+          {all.some((r) => dup(r) && r.invoice?.status === "draft") && <button className="btn danger" disabled={!!busy} onClick={delDup}>Mükerrer taslakları sil</button>}
+        </div>}
+        {cur === "upload" && <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <button className={dryFresh && d.upload?.ok ? "btn" : "btn primary"} disabled={!!busy || !n("upload") || !canGh} onClick={() => upload("dry")}>Deneme (yüklemeden kontrol)</button>
+          <button className={dryFresh && d.upload?.ok ? "btn primary" : "btn"} disabled={!!busy || !canGh || !(dryFresh && d.upload?.ok)} onClick={() => upload("apply")}>Uygun olanları yükle ({dryFresh ? d.upload?.ok ?? 0 : 0})</button>
+          {!dryFresh && <span className="muted" style={{ fontSize: 12 }}>Yükleme için son 24 saatte deneme gerekir.</span>}
+        </div>}
+        {cur === "warn" && dupSigned.length > 0 && <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <button className="btn primary" disabled={!!busy || !canGib || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button>
+          <span className="muted" style={{ fontSize: 12 }}>GİB'de ve Trendyol'da hiçbir şey değiştirmez; yalnızca buradaki rapor ve uyarıları günceller.</span>
+        </div>}
+        {cur === "hb" && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Hepsiburada faturaları buradan yüklenmez: PDF'i açıp Hepsiburada paneline elle yükle.</p>}
 
-        <div style={{ borderTop: "1px solid var(--line)", padding: "8px 0", margin: "8px 0" }}>
-          <b>1. Taslak oluştur</b>
-          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>Aşağıdaki listeden siparişleri seç. Sistem portalda yalnızca <b>taslak</b> açar (alıcı TC 11111111111, tutar = satış geliri, KDV ürünün oranı). Alıcı adı/adresi 30 günden eski siparişler seçilemez.</p>
-          <button className="btn" disabled={!!busy || !sel.size || !d.configured} onClick={draft}>Seçilenlere taslak oluştur ({sel.size})</button>
-        </div>
-        <div style={{ borderTop: "1px solid var(--line)", padding: "8px 0", margin: "8px 0" }}>
-          <b>2. Portalda imzala, sonra kontrol et</b>
-          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}><b>İmza sende:</b> e-Arşiv portalı → Düzenlenen Belgeler → taslakları seç → İmzala (tek SMS). Sonra buraya dönüp kontrol et.</p>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" disabled={!!busy || !d.configured} onClick={sync}>İmzalananları kontrol et</button>
-            {(d.rows ?? []).some((r: Row) => r.invoice?.status === "draft" && /^MÜKERRER/.test(r.invoice?.error ?? "")) && <button className="btn" disabled={!!busy} onClick={delDup}>Mükerrer taslakları sil</button>}
-            <button className="btn ghost" disabled={!!busy || !d.configured} onClick={logoutGib} title="Portal aynı anda tek oturuma izin veriyor: 'birden fazla kişi giriş yapamaz' diyorsa bas">e-Arşiv oturumunu kapat</button>
-          </div>
-        </div>
-        <div style={{ borderTop: "1px solid var(--line)", padding: "8px 0", margin: "8px 0" }}>
-          <b>3. Trendyol'a yükle</b>
-          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>
-            Önce <b>deneme</b>: GİB belgesindeki ETTN, belge no, sipariş no, alıcı adı ve tutar sistemle ve Trendyol'daki paketle karşılaştırılır, hiçbir şey yüklenmez. <b>Yükle</b> yalnızca denemede uygun çıkanları gönderir. Çalışırken portalda oturum açık olmasın. Hepsiburada faturaları burada yüklenmez.
-          </p>
-          {!d.uploadReady && <p style={{ color: "var(--bad)", fontSize: 13, margin: "4px 0" }}>Bu panelde GH_TOKEN tanımlı değil: deneme, yükleme ve mükerrer kontrolü başlatılamaz.</p>}
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn ghost" disabled={!!busy || !c.signed || !d.uploadReady} onClick={() => upload("dry")}>Deneme (yüklemeden kontrol)</button>
-            <button className="btn" disabled={!!busy || !d.uploadReady || !(d.upload?.mode === "dry" && d.upload?.ok && Date.now() - Date.parse(d.upload.at) < 24 * 3600000)} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload?.mode === "dry" && Date.now() - Date.parse(d.upload.at) < 24 * 3600000 ? d.upload.ok : 0})</button>
-            <button className="btn ghost" disabled={!!busy || !d.configured || !d.uploadReady} onClick={audit} title="Portalda elle kestiğin faturalarla sistemin faturalarını karşılaştırır; GİB'de ve Trendyol'da hiçbir şey değiştirmez, eskiyen uyarıları kaldırır">Mükerrer fatura kontrolü</button>
-            <button className="btn ghost" disabled={!!busy} onClick={load}>Yenile</button>
-          </div>
-          {d.upload && <details style={{ fontSize: 13, marginTop: 6 }}>
-            <summary className="muted">Son {d.upload.mode === "dry" ? "deneme" : "yükleme"} raporu: {when(d.upload.at)}{daysAgo(d.upload.at) >= 1 ? ` (${daysAgo(d.upload.at)} gün önce, eski)` : ""} · uygun {d.upload.ok} · atlanan {d.upload.failed}</summary>
-            <div className="muted">Toplam {d.upload.total}{d.upload.mode === "apply" ? ` · yüklendi ${d.upload.uploaded} · zaten vardı ${d.upload.already}` : ""}</div>
-            {(d.upload.rows ?? []).filter((x: Row) => !x.ok).length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
-              {(d.upload.rows ?? []).filter((x: Row) => !x.ok).map((x: Row) => <li key={x.belge_no}>{x.belge_no} / {x.order_no}: <span style={{ color: "var(--bad)" }}>{x.reason}</span></li>)}
-            </ul>}
-            <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => clearReport("upload")}>Raporu kaldır</button>
-          </details>}
-          {d.audit && <details style={{ fontSize: 13, marginTop: 6 }}>
-            <summary className="muted">Mükerrer kontrol raporu: {when(d.audit.at)}{daysAgo(d.audit.at) >= 1 ? ` (${daysAgo(d.audit.at)} gün önce, eski)` : ""} · çift fatura {d.audit.duplicateSigned ?? 0}</summary>
-            <div className="muted">Portalda {d.audit.portalDocs} belge (sistemin {d.audit.ourDocs}, elle {d.audit.foreign}, elle imzalı {d.audit.foreignSigned}){d.audit.notes ? ` · kalkan uyarı ${d.audit.notes.cleared} · yeni uyarı ${d.audit.notes.flagged} · iptal ${d.audit.notes.cancelled}${d.audit.notes.portalOk ? "" : " · portal listesi eksikti, uyarılar değiştirilmedi"}` : ""}</div>
-            {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
-              {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").map((x: Row, i: number) => <li key={i}>Elle: {x.belge_no} ({x.onay}) · sipariş {x.order_no} · sistem: {x.our_belge_no ?? "-"} ({x.our_status ?? "yok"}) · <b style={{ color: /^MÜKERRER/.test(x.kind) ? "var(--bad)" : undefined }}>{x.kind}</b></li>)}
-            </ul>}
-            {(d.audit.rows ?? []).some((x: Row) => x.kind === "siparişle eşleşmedi") && <div className="muted">Siparişle eşleşmeyen elle belgeler: {(d.audit.rows ?? []).filter((x: Row) => x.kind === "siparişle eşleşmedi").map((x: Row) => x.belge_no).join(", ")}</div>}
-            <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => clearReport("audit")}>Raporu kaldır</button>
-          </details>}
-        </div>
-        <div className="row" style={{ gap: 8, margin: "8px 0" }}>
-          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="warn">Uyarılı olanlar</option><option value="all">Tümü (60 gün)</option><option value="hb">Hepsiburada faturaları</option></select>
-        </div>
-        <div className="scroll"><table className="cards">
+        {rows.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{EMPTY[cur]}</p> : <div className="scroll"><table className="cards">
           <thead><tr>
-            <th><input type="checkbox" aria-label="Seçilebilenlerin hepsi" checked={rows.some(selectable) && rows.filter(selectable).every((r) => sel.has(r.id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.filter(selectable).map((r) => r.id)) : new Set())} /></th>
+            {cur === "todo" && <th aria-label="Seç"></th>}
             <th>Sipariş</th><th>Tarih</th><th>Ürünler</th><th className="n">Tutar</th><th>Fatura</th>
           </tr></thead>
           <tbody>{rows.map((r) => {
             const st = IST[r.invoice?.status ?? "none"] ?? [r.invoice?.status, ""];
             return (
               <tr key={r.id}>
-                <td><input type="checkbox" disabled={!selectable(r)} checked={sel.has(r.id)} onChange={(e) => { const s = new Set(sel); if (e.target.checked) s.add(r.id); else s.delete(r.id); setSel(s); }} /></td>
+                {cur === "todo" && <td><input type="checkbox" aria-label={`${r.order_no} seç`} disabled={!selectable(r)} checked={sel.has(r.id)} onChange={(e) => { const s = new Set(sel); if (e.target.checked) s.add(r.id); else s.delete(r.id); setSel(s); }} /></td>}
                 <td data-label="Sipariş">{r.order_no}<br /><span className="muted" style={{ fontSize: 12 }}>{r.marketplace}</span></td>
                 <td data-label="Tarih">{when(r.ordered_at)}</td>
                 <td data-label="Ürünler" style={{ fontSize: 13 }}>{r.items}</td>
-                <td data-label="Tutar" className="n">{tl(Number(r.invoice?.amount ?? r.total))}</td>
+                <td data-label="Tutar" className="n" style={{ whiteSpace: "nowrap" }}>{tl(Number(r.invoice?.amount ?? r.total))}</td>
                 <td data-label="Fatura"><span className={`pill ${st[1]}`}>{st[0]}</span>
-                  {!r.has_customer && !r.invoice && <div className="muted" style={{ fontSize: 12 }}>alıcı bilgisi yok: elle kes</div>}
+                  {r.invoice?.belge_no && <div className="muted" style={{ fontSize: 12 }}>{r.invoice.belge_no}</div>}
+                  {!r.has_customer && !r.invoice && <div className="muted" style={{ fontSize: 12 }}>Alıcı bilgisi silinmiş: portalda elle kes</div>}
                   {r.invoice?.error && <div style={{ color: "var(--bad)", fontSize: 12 }}>{r.invoice.error}</div>}
-                  {["signed", "uploaded"].includes(r.invoice?.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openPdf(r.id)} title="Yazdır penceresinde 'PDF olarak kaydet' seç">Faturayı aç / PDF</button>}
-                  {["error", "deleted", "creating"].includes(r.invoice?.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => reset(r.id)}>Yeniden dene</button>}
+                  {["signed", "uploaded"].includes(r.invoice?.status) && <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openPdf(r.id)} title="Yazdır penceresinde 'PDF olarak kaydet' seç">Faturayı aç / PDF</button></div>}
+                  {r.invoice?.status === "creating" && <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => reset(r.id)}>Takıldı, yeniden dene</button></div>}
                 </td>
               </tr>
             );
           })}</tbody>
-        </table></div>
-      </>}
-    </div>
+        </table></div>}
+      </div>
+
+      <details className="card">
+        <summary>Diğer araçlar ve raporlar</summary>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
+          <button className="btn" disabled={!!busy || !canGib || !canGh} onClick={audit} title="Portalda elle kestiğin faturalarla sistemin faturalarını karşılaştırır">Mükerrer fatura kontrolü</button>
+          <button className="btn" disabled={!!busy || !canGib} onClick={sync}>İmzalananları kontrol et</button>
+          <button className="btn" disabled={!!busy || !canGib} onClick={logoutGib} title="Portal aynı anda tek oturuma izin veriyor: 'birden fazla kişi giriş yapamaz' diyorsa bas">e-Arşiv oturumunu kapat</button>
+          <button className="btn ghost" disabled={!!busy} onClick={load}>Yenile</button>
+        </div>
+        {d.upload && <div style={{ fontSize: 13, marginTop: 10 }}>
+          <b>Son {d.upload.mode === "dry" ? "deneme" : "yükleme"}:</b> <span className="muted">{when(d.upload.at)}{oldTag(d.upload.at)} · toplam {d.upload.total} · uygun {d.upload.ok}{d.upload.mode === "apply" ? ` · yüklendi ${d.upload.uploaded} · zaten vardı ${d.upload.already}` : ""} · atlanan {d.upload.failed}</span>
+          {(d.upload.rows ?? []).filter((x: Row) => !x.ok).length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+            {(d.upload.rows ?? []).filter((x: Row) => !x.ok).map((x: Row) => <li key={x.belge_no}>{x.belge_no} / {x.order_no}: <span style={{ color: "var(--bad)" }}>{x.reason}</span></li>)}
+          </ul>}
+          <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => clearReport("upload")}>Raporu kaldır</button></div>
+        </div>}
+        {d.audit && <div style={{ fontSize: 13, marginTop: 10 }}>
+          <b>Mükerrer kontrolü:</b> <span className="muted">{when(d.audit.at)}{oldTag(d.audit.at)} · portalda {d.audit.portalDocs} belge (sistemin {d.audit.ourDocs}, elle {d.audit.foreign}, elle imzalı {d.audit.foreignSigned}) · çift fatura {d.audit.duplicateSigned ?? 0}{d.audit.notes ? ` · kalkan uyarı ${d.audit.notes.cleared} · yeni uyarı ${d.audit.notes.flagged} · iptal ${d.audit.notes.cancelled}${d.audit.notes.portalOk ? "" : " · portal listesi eksikti, uyarılar değiştirilmedi"}` : ""}</span>
+          {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+            {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").map((x: Row, i: number) => <li key={i}>Elle: {x.belge_no} ({x.onay}) · sipariş {x.order_no} · sistem: {x.our_belge_no ?? "-"} ({x.our_status ?? "yok"}) · <b style={{ color: /^MÜKERRER/.test(x.kind) ? "var(--bad)" : undefined }}>{x.kind}</b></li>)}
+          </ul>}
+          {(d.audit.rows ?? []).some((x: Row) => x.kind === "siparişle eşleşmedi") && <div className="muted">Siparişle eşleşmeyen elle belgeler: {(d.audit.rows ?? []).filter((x: Row) => x.kind === "siparişle eşleşmedi").map((x: Row) => x.belge_no).join(", ")}</div>}
+          <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => clearReport("audit")}>Raporu kaldır</button></div>
+        </div>}
+        {!d.upload && !d.audit && <p className="muted" style={{ fontSize: 13 }}>Kayıtlı rapor yok.</p>}
+      </details>
+    </>
   );
 }
