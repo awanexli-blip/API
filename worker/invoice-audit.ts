@@ -51,10 +51,30 @@ for (const d of foreign) {
   }
 }
 const count = (k: string) => rows.filter((r) => r.kind.startsWith(k)).length;
+// Satır notlarını denetimle eşitle (K, 06.11: "ilk seferden kalan uyarılar duruyor, silemiyorum"): portalda artık çift olmayan siparişin MÜKERRER notu kalkar, gerçekten çift olana yazılır.
+// Portalda iptal/silinmiş sistem faturası "silinmiş" olur. Liste eksik dönmüş olabilirse (sistem belgelerinin yarısından azı görünüyorsa) hiçbir not değişmez.
+const signedOurs = inv.data.filter((r) => r.ettn && ["signed", "uploaded"].includes(r.status));
+const portalOk = all.filter((d) => ours.has(d.ettn)).length >= Math.ceil(signedOurs.length / 2);
+let cleared = 0, flagged = 0, cancelled = 0;
+if (portalOk) {
+  const orderNoToId = new Map<string, string>(ord.data.map((o) => [String(o.order_no), o.id]));
+  const dup = new Set(rows.filter((r) => r.kind.startsWith("MÜKERRER")).map((r) => orderNoToId.get(String(r.order_no))).filter(Boolean) as string[]);
+  const notes = await readAll<any>((a, b) => db.from("order_invoices").select("order_id, ettn, status, error").in("status", ["signed", "uploaded"]).order("order_id").range(a, b));
+  if (notes.error) throw new Error(notes.error.message);
+  const now = new Date().toISOString();
+  const MSG = "MÜKERRER: bu sipariş için portalda elle kesilmiş imzalı fatura da var; biri iptal edilmeli. Trendyol'a yüklenmez.";
+  for (const r of notes.data) {
+    const doc = docs.get(r.ettn);
+    const marked = /^MÜKERRER/.test(r.error ?? "");
+    if (doc && isDeleted(doc) && r.status === "signed") { cancelled++; await db.from("order_invoices").update({ status: "deleted", error: "Fatura portalda iptal/silinmiş", updated_at: now }).eq("order_id", r.order_id); continue; }
+    if (dup.has(r.order_id) && !marked && r.status === "signed") { flagged++; await db.from("order_invoices").update({ error: MSG, updated_at: now }).eq("order_id", r.order_id); }
+    else if (!dup.has(r.order_id) && marked) { cleared++; await db.from("order_invoices").update({ error: null, updated_at: now }).eq("order_id", r.order_id); }
+  }
+}
 const summary = { at: new Date().toISOString(), portalDocs: all.length, ourDocs: all.filter((d) => ours.has(d.ettn)).length, foreign: foreign.length,
-  foreignSigned: foreign.filter(isSigned).length, duplicateSigned: count("MÜKERRER"), fieldKeys, rows };
+  foreignSigned: foreign.filter(isSigned).length, duplicateSigned: count("MÜKERRER"), notes: { portalOk, cleared, flagged, cancelled }, fieldKeys, rows };
 const w = await db.from("app_state").upsert({ key: "invoice_audit_report", value: JSON.stringify(summary), updated_at: summary.at });
 if (w.error) console.error(`Rapor yazılamadı: ${w.error.message}`);
-const line = `Portal belgeleri ${summary.portalDocs} · sistemin ${summary.ourDocs} · elle ${summary.foreign} (imzalı ${summary.foreignSigned}) · iki imzalı fatura olan sipariş: ${summary.duplicateSigned}`;
+const line = `Portal belgeleri ${summary.portalDocs} · sistemin ${summary.ourDocs} · elle ${summary.foreign} (imzalı ${summary.foreignSigned}) · iki imzalı fatura olan sipariş: ${summary.duplicateSigned} · kalkan uyarı ${cleared}, yeni uyarı ${flagged}, iptal ${cancelled}${portalOk ? "" : " · PORTAL LİSTESİ EKSİK: uyarılar değiştirilmedi"}`;
 console.log(line);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Mükerrer fatura denetimi (salt okunur)\n\n${line}\n\nAyrıntı veritabanında (app_state.invoice_audit_report).\n`);

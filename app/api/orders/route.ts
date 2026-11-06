@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { admin, requireRole, forbidden, bad, MARKETPLACES } from "@/lib/server";
+import { orderDb, requireRole, forbidden, bad, MARKETPLACES } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ const COLS = "id, marketplace, order_no, status, marketplace_status, total, curr
 export async function GET(req: NextRequest) {
   if (!(await requireRole(req, "editor"))) return forbidden("editor");
   const sp = req.nextUrl.searchParams;
-  const db = admin();
+  const db = orderDb();
   const id = sp.get("id");
   if (id) {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return bad("Geçersiz sipariş");
@@ -58,7 +58,7 @@ export async function PUT(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const id = String(b.id ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(id)) return bad("Geçersiz sipariş");
-  const db = admin();
+  const db = orderDb();
   const now = new Date().toISOString();
   const note = b.note != null ? String(b.note).trim().slice(0, 500) || null : undefined;
   let patch: Record<string, unknown>, event: Record<string, unknown>;

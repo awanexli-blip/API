@@ -7,6 +7,13 @@ import { readAll } from "@/worker/core/util";
 const make = () => createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 let client: ReturnType<typeof make> | null = null;
 export const admin = () => (client ??= make());
+// Sipariş ve fatura kayıtları TEK yerde (K, 06.11): sunucu paneli de Vercel paneliyle aynı kayıtları kullanır, yoksa aynı siparişe iki panelden ayrı fatura kesilebilir.
+// ORDERS_SUPABASE_URL tanımlı değilse panelin kendi veritabanı (Vercel). Tam geçişte bu iki değişken kaldırılır.
+let ordersClient: ReturnType<typeof make> | null = null;
+export const orderDb = () => {
+  if (!process.env.ORDERS_SUPABASE_URL || !process.env.ORDERS_SERVICE_ROLE_KEY) return admin();
+  return (ordersClient ??= createClient(process.env.ORDERS_SUPABASE_URL, process.env.ORDERS_SERVICE_ROLE_KEY, { auth: { persistSession: false } }) as ReturnType<typeof make>);
+};
 
 // Rol bazlı erişim: ADMIN_EMAIL her zaman admin; diğer kullanıcılar user_roles tablosundan. E-postası doğrulanmamış kullanıcı reddedilir.
 export type { Role };

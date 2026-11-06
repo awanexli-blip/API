@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { admin, guard, unauthorized, bad } from "@/lib/server";
+import { orderDb, guard, unauthorized, bad } from "@/lib/server";
 import { EarsivClient, isDeleted, isSigned } from "@/lib/earsiv";
 import { buildInvoice, trDateTime } from "@/lib/invoice-build";
 import { matchManualInvoices, docName, docTime } from "@/lib/invoice-match";
@@ -17,7 +17,7 @@ const OPEN = ["new", "ready", "sent_to_supplier", "shipped", "delivered", "probl
 
 export async function GET(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
-  const db = admin();
+  const db = orderDb();
   const since = new Date(Date.now() - 60 * 86400000).toISOString();
   const [{ data: orders, error }, inv, rep, aud] = await Promise.all([
     db.from("orders").select("id, marketplace, order_no, status, total, ordered_at, customer_name, order_lines(title, qty)").in("status", OPEN).gte("ordered_at", since).order("ordered_at", { ascending: true }).limit(1000),
@@ -38,14 +38,22 @@ export async function GET(req: NextRequest) {
   let upload: any = null, audit: any = null;
   try { upload = rep?.data?.value ? JSON.parse(rep.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
   try { audit = aud?.data?.value ? JSON.parse(aud.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
-  return NextResponse.json({ rows, counts, upload, audit, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS) });
+  return NextResponse.json({ rows, counts, upload, audit, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS), uploadReady: !!(process.env.GH_TOKEN && process.env.GH_REPO) });
 }
 
 export async function POST(req: NextRequest) {
   if (!(await guard(req))) return unauthorized();
   const b = await req.json().catch(() => ({}));
-  const db = admin();
+  const db = orderDb();
   const now = new Date().toISOString();
+
+  // Eski raporu ekrandan kaldır (yalnızca rapor; fatura kaydına, portala, Trendyol'a dokunmaz)
+  if (b.action === "clear_report") {
+    const key = b.report === "audit" ? "invoice_audit_report" : b.report === "upload" ? "invoice_upload_report" : null;
+    if (!key) return bad("Geçersiz rapor");
+    const { error } = await db.from("app_state").delete().eq("key", key);
+    return error ? bad(error.message) : NextResponse.json({ ok: true });
+  }
 
   if (b.action === "reset") {
     if (typeof b.order_id !== "string") return bad("order_id gerekli");

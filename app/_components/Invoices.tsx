@@ -9,16 +9,18 @@ const IST: Record<string, [string, string]> = { none: ["Kesilmedi", ""], creatin
 
 export default function Invoices({ api, notify }: { api: Api; notify: Notify }) {
   const [d, setD] = useState<Row | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState("");
-  const [filter, setFilter] = useState<"todo" | "all" | "hb">("todo");
+  const [filter, setFilter] = useState<"todo" | "warn" | "all" | "hb">("todo");
   const load = useCallback(() => api("/api/invoices").then(setD).catch((e) => notify("err", e.message)), [api, notify]);
   useEffect(() => { if (open) load(); }, [open, load]);
 
-  const rows: Row[] = (d?.rows ?? []).filter((r: Row) => filter === "all" || (filter === "hb" ? r.marketplace === "hepsiburada" && ["signed", "uploaded"].includes(r.invoice?.status) : !r.invoice || ["error", "deleted", "draft", "creating"].includes(r.invoice.status)));
+  const rows: Row[] = (d?.rows ?? []).filter((r: Row) => filter === "all" || (filter === "warn" ? !!r.invoice?.error : filter === "hb" ? r.marketplace === "hepsiburada" && ["signed", "uploaded"].includes(r.invoice?.status) : !r.invoice || ["error", "deleted", "draft", "creating"].includes(r.invoice.status)));
   const selectable = (r: Row) => r.has_customer && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
   const c = d?.counts ?? {};
+  const dupRows: Row[] = (d?.rows ?? []).filter((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "") && ["signed", "uploaded"].includes(r.invoice?.status));
+  const daysAgo = (t?: string) => (t ? Math.floor((Date.now() - Date.parse(t)) / 86400000) : 0);
 
   async function draft() {
     const ids = [...sel];
@@ -85,6 +87,10 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
       setTimeout(() => { try { w.focus(); w.print(); } catch { /* elle Ctrl+P */ } }, 600);
     } catch (e: any) { w.close(); notify("err", e.message); }
   }
+  async function clearReport(report: "audit" | "upload") {
+    if (!confirm("Bu rapor ekrandan kaldırılacak. Faturalara, GİB portalına ve Trendyol'a dokunulmaz. Devam?")) return;
+    try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "clear_report", report }) }); load(); } catch (e: any) { notify("err", e.message); }
+  }
   async function reset(id: string) {
     try { await api("/api/invoices", { method: "POST", body: JSON.stringify({ action: "reset", order_id: id }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
@@ -97,46 +103,64 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
       </div>
       {open && !d && <p className="muted">Yükleniyor...</p>}
       {open && d && <>
-        {!d.configured && <p style={{ color: "var(--bad)", fontSize: 13 }}>GİB portal kullanıcı kodu / şifresi Vercel'de tanımlı değil (GIB_PORTAL_USER, GIB_PORTAL_PASS).</p>}
-        <p className="muted" style={{ fontSize: 13 }}>
-          Sistem seçtiğin siparişler için portalda <b>taslak</b> açar (alıcı TC 11111111111, tutar = satış geliri, KDV ürünün oranı). <b>İmza sende:</b> portal → Düzenlenen Belgeler → taslakları seç → İmzala (tek SMS).
-          Alıcı adı/adresi 30 günden eski siparişlerde silinmiş olur, onlar seçilemez.
-        </p>
+        {!d.configured && <p style={{ color: "var(--bad)", fontSize: 13 }}>Bu panelde GİB kullanıcı kodu / şifresi tanımlı değil (GIB_PORTAL_USER, GIB_PORTAL_PASS). Tanımlanana kadar taslak oluşturma ve kontrol kapalı; listeyi görebilirsin.</p>}
         <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
-          <span className="muted">Kesilmedi: {c.none ?? 0} · Taslak: {c.draft ?? 0} · Kesildi: {(c.signed ?? 0) + (c.uploaded ?? 0)} (Trendyol'a yüklenen {c.uploaded ?? 0}) · Hata: {c.error ?? 0}</span>
-          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="all">Tümü (60 gün)</option><option value="hb">Hepsiburada faturaları</option></select>
-          <button className="btn" disabled={!!busy || !sel.size || !d.configured} onClick={draft}>Seçilenlere taslak oluştur ({sel.size})</button>
-          <button className="btn ghost" disabled={!!busy || !d.configured} onClick={sync}>İmzalananları kontrol et</button>
-          {(d.rows ?? []).some((r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "")) && <button className="btn" disabled={!!busy} onClick={delDup}>Mükerrer taslakları sil</button>}
-          <button className="btn ghost" disabled={!!busy || !d.configured} onClick={logoutGib} title="Portal aynı anda tek oturuma izin veriyor: 'birden fazla kişi giriş yapamaz' diyorsa bas">e-Arşiv oturumunu kapat</button>
+          <span className="muted">Kesilmedi: {c.none ?? 0} · İmza bekleyen taslak: {c.draft ?? 0} · Kesildi: {(c.signed ?? 0) + (c.uploaded ?? 0)} (Trendyol'a yüklenen {c.uploaded ?? 0}) · Hata: {c.error ?? 0}</span>
           {busy && <span className="muted">{busy}</span>}
         </div>
+
+        {dupRows.length > 0 && <div style={{ border: "1px solid var(--bad)", borderRadius: 8, padding: 10, margin: "8px 0", fontSize: 13 }}>
+          <b style={{ color: "var(--bad)" }}>⚠️ {dupRows.length} siparişte çift fatura uyarısı</b>
+          <div className="muted" style={{ margin: "4px 0" }}>Bu notlar en son denetimden geliyor{d.audit ? ` (${daysAgo(d.audit.at)} gün önce)` : ""}. Portalda iptal ettiysen <b>Mükerrer fatura kontrolü</b>ne bas: artık çift olmayanların uyarısı kendiliğinden kalkar. Gerçekten çift olan kalır ve Trendyol'a yüklenmez.</div>
+          <div>{dupRows.map((r) => `${r.order_no} (${r.invoice?.belge_no ?? "-"})`).join(" · ")}</div>
+        </div>}
+
         <div style={{ borderTop: "1px solid var(--line)", padding: "8px 0", margin: "8px 0" }}>
-          <b>Trendyol'a yükle</b>
-          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>
-            Önce <b>deneme</b>: her imzalı faturada GİB belgesindeki ETTN, belge no, sipariş no, alıcı adı ve tutar sistemle; Trendyol'daki paket, durum ve tutar canlı olarak karşılaştırılır. Hiçbir şey yüklenmez.
-            Sonra <b>yükle</b> yalnızca denemede uygun çıkanları gönderir. Çalışırken e-Arşiv portalında oturum açık olmasın. Hepsiburada faturaları burada yüklenmez.
-          </p>
+          <b>1. Taslak oluştur</b>
+          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>Aşağıdaki listeden siparişleri seç. Sistem portalda yalnızca <b>taslak</b> açar (alıcı TC 11111111111, tutar = satış geliri, KDV ürünün oranı). Alıcı adı/adresi 30 günden eski siparişler seçilemez.</p>
+          <button className="btn" disabled={!!busy || !sel.size || !d.configured} onClick={draft}>Seçilenlere taslak oluştur ({sel.size})</button>
+        </div>
+        <div style={{ borderTop: "1px solid var(--line)", padding: "8px 0", margin: "8px 0" }}>
+          <b>2. Portalda imzala, sonra kontrol et</b>
+          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}><b>İmza sende:</b> e-Arşiv portalı → Düzenlenen Belgeler → taslakları seç → İmzala (tek SMS). Sonra buraya dönüp kontrol et.</p>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn ghost" disabled={!!busy || !c.signed} onClick={() => upload("dry")}>Deneme (yüklemeden kontrol)</button>
-            <button className="btn" disabled={!!busy || !(d.upload?.mode === "dry" && d.upload?.ok && Date.now() - Date.parse(d.upload.at) < 24 * 3600000)} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload?.mode === "dry" ? d.upload.ok : 0})</button>
-            <button className="btn ghost" disabled={!!busy} onClick={load}>Raporu yenile</button>
-            <button className="btn ghost" disabled={!!busy || !d.configured} onClick={audit} title="Portalda elle kestiğin faturalarla sistemin faturalarını karşılaştırır; hiçbir şey değiştirmez">Mükerrer fatura kontrolü</button>
+            <button className="btn" disabled={!!busy || !d.configured} onClick={sync}>İmzalananları kontrol et</button>
+            {(d.rows ?? []).some((r: Row) => r.invoice?.status === "draft" && /^MÜKERRER/.test(r.invoice?.error ?? "")) && <button className="btn" disabled={!!busy} onClick={delDup}>Mükerrer taslakları sil</button>}
+            <button className="btn ghost" disabled={!!busy || !d.configured} onClick={logoutGib} title="Portal aynı anda tek oturuma izin veriyor: 'birden fazla kişi giriş yapamaz' diyorsa bas">e-Arşiv oturumunu kapat</button>
           </div>
-          {d.audit && <div style={{ fontSize: 13, marginTop: 6 }}>
-            <span className="muted">Mükerrer kontrolü: {when(d.audit.at)} · portalda {d.audit.portalDocs} belge (sistemin {d.audit.ourDocs}, elle {d.audit.foreign}, elle imzalı {d.audit.foreignSigned})</span>
-            {d.audit.duplicateSigned > 0 && <div style={{ color: "var(--bad)", fontWeight: 600 }}>⚠️ {d.audit.duplicateSigned} siparişte iki imzalı fatura var: birini GİB portalından iptal etmelisin (aynı satış iki kez beyan edilmiş olur).</div>}
+        </div>
+        <div style={{ borderTop: "1px solid var(--line)", padding: "8px 0", margin: "8px 0" }}>
+          <b>3. Trendyol'a yükle</b>
+          <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>
+            Önce <b>deneme</b>: GİB belgesindeki ETTN, belge no, sipariş no, alıcı adı ve tutar sistemle ve Trendyol'daki paketle karşılaştırılır, hiçbir şey yüklenmez. <b>Yükle</b> yalnızca denemede uygun çıkanları gönderir. Çalışırken portalda oturum açık olmasın. Hepsiburada faturaları burada yüklenmez.
+          </p>
+          {!d.uploadReady && <p style={{ color: "var(--bad)", fontSize: 13, margin: "4px 0" }}>Bu panelde GH_TOKEN tanımlı değil: deneme, yükleme ve mükerrer kontrolü başlatılamaz.</p>}
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn ghost" disabled={!!busy || !c.signed || !d.uploadReady} onClick={() => upload("dry")}>Deneme (yüklemeden kontrol)</button>
+            <button className="btn" disabled={!!busy || !d.uploadReady || !(d.upload?.mode === "dry" && d.upload?.ok && Date.now() - Date.parse(d.upload.at) < 24 * 3600000)} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload?.mode === "dry" && Date.now() - Date.parse(d.upload.at) < 24 * 3600000 ? d.upload.ok : 0})</button>
+            <button className="btn ghost" disabled={!!busy || !d.configured || !d.uploadReady} onClick={audit} title="Portalda elle kestiğin faturalarla sistemin faturalarını karşılaştırır; GİB'de ve Trendyol'da hiçbir şey değiştirmez, eskiyen uyarıları kaldırır">Mükerrer fatura kontrolü</button>
+            <button className="btn ghost" disabled={!!busy} onClick={load}>Yenile</button>
+          </div>
+          {d.upload && <details style={{ fontSize: 13, marginTop: 6 }}>
+            <summary className="muted">Son {d.upload.mode === "dry" ? "deneme" : "yükleme"} raporu: {when(d.upload.at)}{daysAgo(d.upload.at) >= 1 ? ` (${daysAgo(d.upload.at)} gün önce, eski)` : ""} · uygun {d.upload.ok} · atlanan {d.upload.failed}</summary>
+            <div className="muted">Toplam {d.upload.total}{d.upload.mode === "apply" ? ` · yüklendi ${d.upload.uploaded} · zaten vardı ${d.upload.already}` : ""}</div>
+            {(d.upload.rows ?? []).filter((x: Row) => !x.ok).length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {(d.upload.rows ?? []).filter((x: Row) => !x.ok).map((x: Row) => <li key={x.belge_no}>{x.belge_no} / {x.order_no}: <span style={{ color: "var(--bad)" }}>{x.reason}</span></li>)}
+            </ul>}
+            <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => clearReport("upload")}>Raporu kaldır</button>
+          </details>}
+          {d.audit && <details style={{ fontSize: 13, marginTop: 6 }}>
+            <summary className="muted">Mükerrer kontrol raporu: {when(d.audit.at)}{daysAgo(d.audit.at) >= 1 ? ` (${daysAgo(d.audit.at)} gün önce, eski)` : ""} · çift fatura {d.audit.duplicateSigned ?? 0}</summary>
+            <div className="muted">Portalda {d.audit.portalDocs} belge (sistemin {d.audit.ourDocs}, elle {d.audit.foreign}, elle imzalı {d.audit.foreignSigned}){d.audit.notes ? ` · kalkan uyarı ${d.audit.notes.cleared} · yeni uyarı ${d.audit.notes.flagged} · iptal ${d.audit.notes.cancelled}${d.audit.notes.portalOk ? "" : " · portal listesi eksikti, uyarılar değiştirilmedi"}` : ""}</div>
             {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
               {(d.audit.rows ?? []).filter((x: Row) => x.kind !== "siparişle eşleşmedi").map((x: Row, i: number) => <li key={i}>Elle: {x.belge_no} ({x.onay}) · sipariş {x.order_no} · sistem: {x.our_belge_no ?? "-"} ({x.our_status ?? "yok"}) · <b style={{ color: /^MÜKERRER/.test(x.kind) ? "var(--bad)" : undefined }}>{x.kind}</b></li>)}
             </ul>}
             {(d.audit.rows ?? []).some((x: Row) => x.kind === "siparişle eşleşmedi") && <div className="muted">Siparişle eşleşmeyen elle belgeler: {(d.audit.rows ?? []).filter((x: Row) => x.kind === "siparişle eşleşmedi").map((x: Row) => x.belge_no).join(", ")}</div>}
-          </div>}
-          {d.upload && <div style={{ fontSize: 13, marginTop: 6 }}>
-            <span className="muted">Son {d.upload.mode === "dry" ? "deneme" : "yükleme"}: {when(d.upload.at)} · toplam {d.upload.total} · uygun {d.upload.ok}{d.upload.mode === "apply" ? ` · yüklendi ${d.upload.uploaded} · zaten vardı ${d.upload.already}` : ""} · atlanan {d.upload.failed}</span>
-            {(d.upload.rows ?? []).filter((x: Row) => !x.ok).length > 0 && <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
-              {(d.upload.rows ?? []).filter((x: Row) => !x.ok).map((x: Row) => <li key={x.belge_no}>{x.belge_no} / {x.order_no}: <span style={{ color: "var(--bad)" }}>{x.reason}</span></li>)}
-            </ul>}
-          </div>}
+            <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => clearReport("audit")}>Raporu kaldır</button>
+          </details>}
+        </div>
+        <div className="row" style={{ gap: 8, margin: "8px 0" }}>
+          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}><option value="todo">Bekleyenler</option><option value="warn">Uyarılı olanlar</option><option value="all">Tümü (60 gün)</option><option value="hb">Hepsiburada faturaları</option></select>
         </div>
         <div className="scroll"><table className="cards">
           <thead><tr>
