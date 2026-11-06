@@ -36,6 +36,15 @@ check("bebek banyo bebek", inferAttribute("Yaş Grubu", V("Çocuk", "Bebek", "Ye
 check("cinsiyet açıklamadan okunmaz", inferAttribute("Cinsiyet", V("Kadın / Kız", "Erkek", "Unisex"), "Kadın Siyah Dekolte Elbise", "erkekleri etkileyen tasarım"), "Kadın / Kız");
 check("bay bayan unisex", inferAttribute("Cinsiyet", V("Kadın / Kız", "Erkek", "Unisex"), "Bay Bayan Masaj Yağı"), "Unisex");
 check("ipucu yoksa unisex", inferAttribute("Cinsiyet", V("Kadın / Kız", "Erkek", "Unisex"), "316L Çelik Küpe"), "Unisex");
+import { wantedAudience } from "../core/attr-infer.ts";
+const wa = (t: string, c: string, a: Record<string, string>) => JSON.stringify(wantedAudience(t, c, a));
+const eq = (name: string, got: string, want: string) => check(name, { name: got } as any, want);
+eq("onarım: kadın elbise çocuk", wa("Kadın Şık Elbise", "Giyim > Kadın > Elbise", { "Yaş Grubu": "Çocuk", "Cinsiyet": "Kadın / Kız" }), JSON.stringify({ "Yaş Grubu": "Yetişkin" }));
+eq("onarım: Kadın değeri korunur", wa("Kadın Yüzük", "Takı", { "Cinsiyet": "Kadın" }), "{}");
+eq("onarım: unisex korunur", wa("Çelik Küpe", "KADIN > Küpe", { "Cinsiyet": "Unisex" }), "{}");
+eq("onarım: kadın ürünü erkek", wa("Kadın Deri Cüzdan", "Cüzdan", { "Cinsiyet": "Erkek" }), JSON.stringify({ "Cinsiyet": "Kadın / Kız" }));
+eq("onarım: oyuncak çocuk kalır", wa("Peluş Ayı", "Oyuncak > Peluş", { "Yaş Grubu": "Çocuk" }), "{}");
+eq("onarım: okul çantası çocuk kalır", wa("Okul Çantası", "Çanta", { "Yaş Grubu": "Çocuk" }), "{}");
 check("yaş metinden", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Seti 3+ Yaş"), "3 Yaş");
 check("yaş yoksa tüm yaşlar", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Balonu"), "Tüm Yaşlar");
 check("frekans 50 Hz", inferAttribute("Frekans", V("50 Hz", "60 Hz", "60 Hz / 50 Hz"), "Hava Nemlendirici"), "50 Hz");
