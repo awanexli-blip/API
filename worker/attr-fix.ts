@@ -4,7 +4,7 @@
 //   node --experimental-strip-types worker/attr-fix.ts push [--key BARKOD] [--limit N] [--apply]   yayındaki Trendyol ilanlarını düzelt
 // Yalnızca tedarikçi ürünleri (xml:*); K'nın elle girdiği ürünlere dokunulmaz. Değer yalnızca başlık + tedarikçi kategorisinden (core/attr-infer.ts).
 // Çalıştığı veritabanı: ortamdaki SUPABASE_URL (sunucu için trentakip-vps ile). Müşteri verisi okumaz.
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { wantedAudience as wanted } from "./core/attr-infer.ts";
 import { env, readAll, chunk } from "./core/util.ts";
@@ -44,6 +44,21 @@ if (cmd === "plan" || cmd === "db") {
     }
     console.log(JSON.stringify({ yazilan: ok, hata: err }));
   }
+} else if (cmd === "undo") {
+  // Yedek dosyadan: güncel kurala göre yapılmaması gereken "Yetişkin" değişikliklerini geri al (--apply ile yazar)
+  const rows = JSON.parse(readFileSync(argOf("--file")!, "utf8")) as { id: string; eski: Record<string, string>; yeni: Record<string, string> }[];
+  let back = 0, err = 0; const ex: string[] = [];
+  for (const part of chunk(rows.filter((r) => r.yeni["Yaş Grubu"]), 150)) {
+    const { data, error } = await db.from("products").select("id, title, category, attributes").in("id", part.map((r) => r.id));
+    if (error) throw new Error(error.message);
+    for (const p of (data ?? []) as any[]) {
+      const r = part.find((x) => x.id === p.id)!;
+      if ("Yaş Grubu" in wanted(String(p.title ?? ""), String(p.category ?? ""), { "Yaş Grubu": r.eski["Yaş Grubu"] })) continue; // güncel kural da Yetişkin diyor
+      back++; if (ex.length < 12) ex.push(`${String(p.title).slice(0, 45)} <${String(p.category).split(">").pop()?.trim().slice(0, 22)}> ${r.eski["Yaş Grubu"]}`);
+      if (apply) { const { error: e } = await db.from("products").update({ attributes: { ...p.attributes, "Yaş Grubu": r.eski["Yaş Grubu"] } }).eq("id", p.id); if (e) err++; }
+    }
+  }
+  console.log(JSON.stringify({ geriAlinacak: back, hata: err, deneme: !apply, ornek: ex }));
 } else if (cmd === "push") {
   const mp = getMarketplace("trendyol");
   const listings = (await mp.loadListings()).filter((l) => l.status === "active" && l.contentId && l.attributes);
@@ -81,4 +96,4 @@ if (cmd === "plan" || cmd === "db") {
     const c = await mp.checkBatches(r.batchIds);
     console.log(JSON.stringify({ parti: r.batchIds.length, hatali: c?.failed?.length ?? 0, nedenler: [...new Set((c?.failed ?? []).map((f: any) => String(f.reason).slice(0, 200)))].slice(0, 5) }));
   }
-} else console.log("kullanım: attr-fix.ts plan | db [--apply] | push [--key BARKOD] [--limit N] [--apply]");
+} else console.log("kullanım: attr-fix.ts plan | db [--apply] | undo --file YEDEK [--apply] | push [--key BARKOD] [--limit N] [--apply]");

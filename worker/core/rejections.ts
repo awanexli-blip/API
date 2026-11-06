@@ -39,11 +39,26 @@ export function stripBrandSuffix(title: string): { title: string; brand: string 
   return { title: tidy(m[1]), brand };
 }
 
+// Trendyol "yanıltıcı beyan" kuralı (K, 06.11): açıklamada iletişim bilgisi, başka siteye link, satış/iade koşulu olmaz. Geçtiği cümle silinir, ürün bilgisi kalır.
+const LINK = /(https?:\/\/\S*|www\.\S+|[\w.+-]+@[\w-]+\.[\w.]+)/giu;
+const POLICY = /(?<!\d)0?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}(?!\d)|whatsapp|instagram|ücretsiz kargo|kargo bedava|aynı gün kargo|ücretsiz iade|kolay iade|iade (hakk|koşul|süre)|değişim hakk|bize ulaş|iletişime geç|iletişim kurabilir|müşteri hizmet|toplu alım/iu;
+export function stripPolicyText(text: string): string {
+  if (!text) return text;
+  const masked = text.replace(LINK, "\u0001");
+  if (!masked.includes("\u0001") && !POLICY.test(masked)) return text;
+  const parts = masked.split(/(?<=[.!?\n>])|(?=<)/u).filter((seg) => !seg.includes("\u0001") && !POLICY.test(seg));
+  return parts.join("").replace(/[ \t]{2,}/g, " ").trim();
+}
+// Gerçek marka adı yasaklıysa (Logitech, The Ordinary) kelimeyi silip başka markayla satmak yanıltıcı olur: K'ya kalır
+const REAL_BRANDS = /^(logitech|the ordinary)$/i;
+// Silah çağrışımlı yasak kelime: silince ürün değişmez, Trendyol yine reddeder
+const RULE_WORDS = /^(mermi|mermı|kabza|silah|şarjör|banknot)$/i;
+
 // Yeni ürün metinlerini göndermeden temizle (ret almamak için)
 export const stripCodeSuffix = (t: string) => t.replace(/\s+[-–]\s*[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9._-]{5,}$/u, (m) => (/\d/.test(m) ? "" : m)).trim();
 export function cleanForMarketplace(title: string, description: string, banned: string[]) {
   const { title: t, brand } = stripBrandSuffix(stripCodeSuffix(title));
-  let d = description;
+  let d = stripPolicyText(description);
   if (brand) d = removeWords(d, [brand]);
   return { title: removeWords(t, banned) || title, description: removeWords(d, banned) || d };
 }
@@ -74,13 +89,19 @@ export function planFix(l: Listing, row: FixRow | undefined, ctx: { banned: stri
   if (/kategori/.test(types)) return { action: "needs_user", banned: newBanned, note: "Kategori yanlış: doğru kategoriyi seç" };
   if ((row?.attempts ?? 0) >= MAX_AUTO) return { action: "needs_user", banned: newBanned, note: `${MAX_AUTO} otomatik düzeltmeden sonra yine reddedildi: başlık/açıklama/görseli kontrol et` };
   const isBrand = /marka/.test(types);
-  // Görsel linki açılmadı (dönüştürücü/kaynak geçici erişilemedi; 27.10: 580 ilan): görseller yeniden gönderilir
-  if (!isBrand && /görsel|gorsel|resim|image|link/i.test(`${types} ${details}`) && !/marka|logo|filigran|watermark/i.test(details)) {
-    if (!ctx.images?.length) return { action: "needs_user", banned: newBanned, note: "Görsel reddedildi ve üründe görsel yok: görsel ekle" };
-    return { action: "resubmit", fromUser: false, banned: newBanned, note: "görsel linki yenilendi (geçici erişim sorunu)", update: { id: l.id, images: ctx.images } };
+  const wholeText = `${types} ${details}`;
+  // Fotoğrafın içeriği reddedildi (sunum biçimi, görseldeki yazı/telefon, logo, kalite): aynı fotoğrafı yeniden göndermek işe yaramaz
+  if (/sunum biçimi|kelimeleri ayrı|kelime öbeği|teknik standart|kalite kriter|logo|filigran|watermark/i.test(details)) return { action: "needs_user", banned: newBanned, note: "Fotoğraf reddedildi (içerik/yazı/kalite): yeni fotoğraf gerekiyor" };
+  // Görsel açılmadı / boyutu uygun değil: çağıran yalnızca açılan görselleri verir (ölü adres ve 1 KB altı elenmiş); hiçbiri açılmıyorsa K'ya kalır
+  if (!isBrand && /görsel linki|erişilemiyor|erişilememektedir|boyutuyla|linkin/i.test(wholeText)) {
+    if (!ctx.images?.length) return { action: "needs_user", banned: newBanned, note: "Tedarikçinin görselleri açılmıyor ya da çok küçük: yeni fotoğraf ekle" };
+    return { action: "resubmit", fromUser: false, banned: newBanned, note: "yalnızca açılan görseller yeniden gönderildi", update: { id: l.id, images: ctx.images } };
   }
+  if (newBanned.some((w) => REAL_BRANDS.test(w))) return { action: "needs_user", banned: newBanned, note: `Markalı ürün (${newBanned.join(", ")}): adı silinip başka markayla satılamaz` };
+  if (newBanned.some((w) => RULE_WORDS.test(w))) return { action: "needs_user", banned: newBanned, note: `Trendyol satış kuralı (${newBanned.join(", ")}): metinden silmek yetmez` };
   const isBanned = newBanned.length > 0;
-  if (!isBrand && !isBanned) return { action: "needs_user", banned: [], note: `Otomatik düzeltilemeyen ret: ${r.types.join(", ") || "neden belirtilmemiş"}` };
+  const isPolicy = /satış\/iade koşul|iletişim bilgileri/i.test(details);
+  if (!isBrand && !isBanned && !isPolicy) return { action: "needs_user", banned: [], note: `Otomatik düzeltilemeyen ret: ${r.types.join(", ") || "neden belirtilmemiş"}` };
 
   const baseTitle = r.title ?? l.title ?? ctx.xmlTitle ?? "";
   const baseDesc = r.description ?? ctx.xmlDetail ?? "";
@@ -90,11 +111,13 @@ export function planFix(l: Listing, row: FixRow | undefined, ctx: { banned: stri
   if (isBrand) { const s = stripBrandSuffix(title); title = s.title; brand = s.brand; if (brand && description) description = removeWords(description, [brand]); }
   title = removeWords(title, words) || title;
   if (description) description = removeWords(description, words) || description;
+  if (description) description = stripPolicyText(description) || description;
+  if (title !== baseTitle && (title.split(/\s+/).length < 2 || title.length < 8)) return { action: "needs_user", banned: newBanned, note: `Yasaklı kelime silinince başlık anlamsız kalıyor ("${title}"): elle düzelt` };
   const changed = title !== baseTitle || (description && description !== baseDesc);
-  if (!changed) return { action: "needs_user", banned: newBanned, note: isBrand ? "Marka uyuşmazlığı metinde bulunamadı: büyük olasılıkla görselde marka var, görseli değiştir" : "Yasaklı kelime metinde bulunamadı: elle düzelt" };
+  if (!changed) return { action: "needs_user", banned: newBanned, note: isBrand ? "Marka uyuşmazlığı metinde bulunamadı: büyük olasılıkla görselde marka var, görseli değiştir" : isPolicy ? "Açıklamada iletişim/link/koşul bulunamadı (görselde olabilir): elle kontrol et" : "Yasaklı kelime metinde bulunamadı: elle düzelt" };
   return {
     action: "resubmit", fromUser: false, banned: newBanned,
-    note: [brand && `başlıktaki "${brand}" markası silindi`, isBanned && `yasaklı kelime silindi: ${newBanned.join(", ")}`].filter(Boolean).join("; "),
+    note: [brand && `başlıktaki "${brand}" markası silindi`, isBanned && `yasaklı kelime silindi: ${newBanned.join(", ")}`, isPolicy && "iletişim/link/koşul cümleleri silindi"].filter(Boolean).join("; "),
     update: { id: l.id, title: title !== baseTitle ? title : undefined, description: description && description !== baseDesc ? description : undefined },
   };
 }

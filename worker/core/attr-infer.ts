@@ -107,7 +107,8 @@ function numeric(name: string, vals: AttrValue[], text: string): AttrValue | nul
 const segsOf = (c: string) => String(c ?? "").split(/>{1,3}|\//).map((x) => x.trim()).filter(Boolean);
 export function ageGroupOf(title: string, category = ""): "Bebek" | "Çocuk" | "Yetişkin" {
   const t = norm(title), segs = segsOf(category), c = norm(segs.join(" ")), tail = norm(segs.slice(-2).join(" "));
-  if (/oyuncak|oyun set/.test(c) || / oyuncak| puzzle| yapboz/.test(t)) return "Çocuk"; // "Oyuncak Bebek": bebek ürünü değil, oyuncak
+  // "Oyuncak Bebek": bebek ürünü değil, oyuncak. Tedarikçide "Hobi" altındaki blok setleri de oyuncak
+  if (/oyuncak|oyun set|hobi/.test(c) || / oyuncak| puzzle| yapboz| blok set| lego| peluş| oyun set| oyun hamur| oyunu /.test(t)) return "Çocuk";
   if (/ (kadın|bayan|erkek|bay|yetişkin) /.test(t) && !/ (çocuk|bebek)/.test(t)) return "Yetişkin";
   if (/ bebek/.test(t) || / bebek/.test(tail)) return "Bebek";
   if (/ çocuk| okul| kreş| anaokul/.test(t) || / çocuk/.test(c)) return "Çocuk";
@@ -132,7 +133,8 @@ export const genderValue = (vals: AttrValue[], title: string, category = "") => 
 export function wantedAudience(title: string, category: string, attrs: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
   const age = ageGroupOf(title, category), curAge = String(attrs["Yaş Grubu"] ?? "");
-  if (curAge && age === "Yetişkin" && /çocuk|bebek|genç/i.test(curAge)) out["Yaş Grubu"] = "Yetişkin";
+  // Kostüm / parti ürününde yaş metinden anlaşılmaz (çocuk kostümü de olabilir): kayıtlı değer korunur
+  if (curAge && age === "Yetişkin" && /çocuk|bebek|genç/i.test(curAge) && !/kostüm|parti|okul|kırtasiye/i.test(`${title} ${category}`)) out["Yaş Grubu"] = "Yetişkin";
   const cur = String(attrs["Cinsiyet"] ?? "");
   if (cur) {
     const fromTitle = genderOf(title), g = genderOf(title, category);

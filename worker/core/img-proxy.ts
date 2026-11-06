@@ -24,3 +24,23 @@ export function jpgUrl(url: string, key = keyOf(), shape: ImgShape = "") {
   if (!key) return url;
   return `${PANEL_URL}/api/img/${imgSig(url, key, shape)}/${Buffer.from(url).toString("base64url")}${shape ? "." + shape : ""}.jpg`;
 }
+
+// Görsel gerçekten açılıyor mu: HTTP 200, görsel türü, 1 KB - 10 MB (Trendyol sınırı). Açılan kaynak adreslerin kümesi döner.
+export async function aliveImages(urls: string[], toFetch: (u: string) => string = (u) => u, par = 8, timeoutMs = 20000): Promise<Set<string>> {
+  const ok = new Set<string>();
+  let i = 0;
+  const work = async () => {
+    while (i < urls.length) {
+      const u = urls[i++];
+      try {
+        const r = await fetch(toFetch(u), { signal: AbortSignal.timeout(timeoutMs), headers: { "user-agent": "Mozilla/5.0" } });
+        const type = String(r.headers.get("content-type") ?? "");
+        const b = r.ok && /^image\//i.test(type) ? (await r.arrayBuffer()).byteLength : 0;
+        if (!b) await r.body?.cancel().catch(() => {});
+        if (b >= 1024 && b <= 10 * 1048576) ok.add(u);
+      } catch { /* açılmıyor */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, par) }, work));
+  return ok;
+}

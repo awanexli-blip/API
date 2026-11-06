@@ -44,6 +44,9 @@ eq("onarım: Kadın değeri korunur", wa("Kadın Yüzük", "Takı", { "Cinsiyet"
 eq("onarım: unisex korunur", wa("Çelik Küpe", "KADIN > Küpe", { "Cinsiyet": "Unisex" }), "{}");
 eq("onarım: kadın ürünü erkek", wa("Kadın Deri Cüzdan", "Cüzdan", { "Cinsiyet": "Erkek" }), JSON.stringify({ "Cinsiyet": "Kadın / Kız" }));
 eq("onarım: oyuncak çocuk kalır", wa("Peluş Ayı", "Oyuncak > Peluş", { "Yaş Grubu": "Çocuk" }), "{}");
+eq("onarım: hobi blok seti çocuk kalır", wa("Mini Poşet Araba Blok Seti 1 Adet", "Hobi", { "Yaş Grubu": "Çocuk" }), "{}");
+eq("onarım: bayan patates kafa oyuncak", wa("Hasbro Bayan Patates Kafa", "Oyuncak > Eğitici", { "Yaş Grubu": "Çocuk" }), "{}");
+eq("onarım: kostüm korunur", wa("Sarı Etekli Kedi Kostüm Seti", "Kostüm Aksesuarları", { "Yaş Grubu": "Çocuk" }), "{}");
 eq("onarım: okul çantası çocuk kalır", wa("Okul Çantası", "Çanta", { "Yaş Grubu": "Çocuk" }), "{}");
 check("yaş metinden", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Seti 3+ Yaş"), "3 Yaş");
 check("yaş yoksa tüm yaşlar", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Balonu"), "Tüm Yaşlar");

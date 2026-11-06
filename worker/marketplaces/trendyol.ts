@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { defaultFor, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
-import { jpgUrl } from "../core/img-proxy.ts";
+import { jpgUrl, aliveImages } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
 import { descHashOf } from "../core/content-diff.ts";
 import type { BatchCheck, BatchResult, BuyboxInfo, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
@@ -104,6 +104,8 @@ export function createTrendyol(): Marketplace {
   type Attr = { attributeId: number; attributeValueId?: number; customAttributeValue?: string; name?: string; value?: string };
   const attrsByBarcode = new Map<string, Attr[]>();
   const catOfBarcode = new Map<string, string>();
+  // Reddedilen ürünün Trendyol'daki tam kaydı (unapproved-bulk-update tüm zorunlu alanları ister; doküman: product-update-unapproved-product-v2)
+  const rejectRaw = new Map<string, any>();
   // İçerik düzeyi özellikler (content-bulk-update tüm listeyi ister; loadListings doldurur)
   const contentAttrs = new Map<string, { cid: string; attrs: Attr[] }>();
   const toAttrs = (list: any[]): Attr[] => {
@@ -201,6 +203,8 @@ export function createTrendyol(): Marketplace {
         else if (ca.allowCustom && opts.length) val = { attributeId: id, customAttributeValue: opts[opts.length - 1] };
       }
       if (!val && !ca.required) continue;
+      // Seçenek özelliği (Beden, ölçü) kayıtta var ama Trendyol listesinde yoksa nötr değere düşmez: bütün seçenekler aynı Beden'e iner, Trendyol "aynı varyant" diye reddeder (K, 06.11: halı 80X250)
+      if (!val && def && ca.varianter) { missing.push(`${name} ("${def}" Trendyol listesinde yok)`); noteMissing("trendyol", cid, name, (await attributeValues(cid, id)).map((v) => v.name), !!ca.allowCustom, p.catName); continue; }
       if (!val && isColor(name)) {
         const vals = await attributeValues(cid, id);
         const title = " " + lo(p.name).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
@@ -293,6 +297,7 @@ export function createTrendyol(): Marketplace {
           } else approval.pendingApproval++;
           if (p.docNeeded) approval.docNeeded++;
         }
+        if (p.status === "rejected") rejectRaw.set(String(p.barcode), p);
         const rejected = p.status === "rejected" ? {
           types: (p.rejectReasonDetails ?? []).map((r: any) => String(r.rejectReason ?? "")).filter(Boolean),
           details: (p.rejectReasonDetails ?? []).map((r: any) => String(r.rejectReasonDetail ?? r.rejectReason ?? "")).filter(Boolean),
@@ -387,6 +392,9 @@ export function createTrendyol(): Marketplace {
       const returningAddressId = opt("TRENDYOL_RETURN_ADDRESS_ID");
       const payloads: any[] = [];
       const used = new Set<string>();
+      const groupSeen = new Map<string, Set<string>>();
+      // Sunucuda (RUNNER=vps) açılmayan / 1 KB altı görseller gönderilmez (K, 06.11: "görsel boyutu" retleri; tedarikçi adresleri 404/502 ya da çok küçük)
+      const liveImg = process.env.RUNNER === "vps" && process.env.SEND_DRY !== "1" ? await aliveImages([...new Set(items.flatMap((p) => p.images.slice(0, 8)))], (u) => jpgUrl(u, undefined, "p")) : null;
       for (const p of items) {
         // Gönderilemeyen ürün ürün bazında bildirilir (ilan "error" + neden; "sent" kalmaz)
         const no = (why: string) => { ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
@@ -399,6 +407,16 @@ export function createTrendyol(): Marketplace {
         const { attributes, missing, learned } = await fillAttributes(p, cid);
         if (missing.length) { no(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
         p.learned = learned;
+        // Aynı model kodunda iki seçenek aynı Renk + Beden olamaz (Trendyol reddeder; kategori Beden tutmuyorsa renkte çakışır)
+        if (p.groupId) {
+          const defs = await categoryAttributes(cid);
+          const sel = new Set(defs.filter((d: any) => d.slicer || d.varianter).map((d: any) => Number(d.attribute?.id)));
+          const sig = attributes.filter((a: any) => sel.has(Number(a.attributeId))).map((a: any) => `${a.attributeId}:${a.attributeValueId ?? a.customAttributeValue}`).sort().join("|");
+          const seen = groupSeen.get(p.groupId) ?? new Set<string>();
+          if (seen.has(sig)) { no("aynı model kodunda iki seçenek aynı renk ve bedende: kategori bu seçeneği ayırt etmiyor"); continue; }
+          seen.add(sig); groupSeen.set(p.groupId, seen);
+        }
+        if (liveImg && !p.images.slice(0, 8).some((u: string) => liveImg.has(u))) { no("Görseller açılmıyor ya da çok küçük (tedarikçi adresi): yeni fotoğraf gerekiyor"); continue; }
         payloads.push({
           // Varyantlı ürün (numara/renk): aynı productMainId ile Trendyol'da tek ürün sayfasında seçenek olarak görünür
           barcode: p.id, title: p.name.slice(0, 100), productMainId: (p.groupId ?? p.id).slice(0, 40), brandId: bId,
@@ -407,7 +425,7 @@ export function createTrendyol(): Marketplace {
           listPrice: p.price, salePrice: p.price, vatRate: Number(p.cat.vat_rate ?? ctx.vatRate),
           ...(shipmentAddressId ? { shipmentAddressId } : {}), ...(returningAddressId ? { returningAddressId } : {}),
           // Tedarikçi görselleri WebP: Trendyol göstermiyor (23.10, ~800 görselsiz ürün) -> 1200x1800 JPG dönüştürücü
-          images: p.images.slice(0, 8).map((url: string) => ({ url: jpgUrl(url, undefined, "p") })), attributes,
+          images: p.images.slice(0, 8).filter((u: string) => !liveImg || liveImg.has(u)).map((url: string) => ({ url: jpgUrl(url, undefined, "p") })), attributes,
         });
       }
       { const drop = dropPartialGroups(items, res); if (drop.size) payloads.splice(0, payloads.length, ...payloads.filter((x: any) => !drop.has(x.barcode))); }
@@ -664,13 +682,24 @@ export function createTrendyol(): Marketplace {
     // Reddedilen ürünü düzeltip yeniden onaya gönder: yalnızca değişen alanlar (gönderilmeyen alan korunur)
     async updateRejected(items) {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
-      const body = items.map((p) => ({
-        barcode: p.id,
-        ...(p.title ? { title: p.title.slice(0, 100) } : {}),
-        ...(p.description ? { description: p.description.slice(0, 30000) } : {}),
-        ...(p.categoryId ? { categoryId: p.categoryId } : {}),
-        ...(p.images?.length ? { images: p.images.slice(0, 8).map((url) => ({ url: jpgUrl(url, undefined, "p") })) } : {}),
-      }));
+      const shipmentAddressId = opt("TRENDYOL_SHIPMENT_ADDRESS_ID");
+      const returningAddressId = opt("TRENDYOL_RETURN_ADDRESS_ID");
+      const body = items.map((p) => {
+        const raw = rejectRaw.get(p.id);
+        const base = raw ? {
+          productMainId: raw.productMainId, brandId: raw.brand?.id, categoryId: raw.category?.id, title: raw.title, description: raw.description, stockCode: raw.stockCode,
+          origin: raw.origin ?? undefined, dimensionalWeight: raw.dimensionalWeight, vatRate: raw.vatRate, images: raw.images,
+          attributes: (raw.attributes ?? []).map((a: any) => (a.attributeValueId ? { attributeId: a.attributeId, attributeValueId: a.attributeValueId } : { attributeId: a.attributeId, customAttributeValue: a.attributeValue })),
+          ...(shipmentAddressId ? { shipmentAddressId } : {}), ...(returningAddressId ? { returningAddressId } : {}),
+        } : {};
+        return {
+          ...base, barcode: p.id,
+          ...(p.title ? { title: p.title.slice(0, 100) } : {}),
+          ...(p.description ? { description: p.description.slice(0, 30000) } : {}),
+          ...(p.categoryId ? { categoryId: p.categoryId } : {}),
+          ...(p.images?.length ? { images: p.images.slice(0, 8).map((url) => ({ url: jpgUrl(url, undefined, "p") })) } : {}),
+        };
+      });
       for (const batch of chunk(body, 500)) {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products/unapproved-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
@@ -714,8 +743,9 @@ export function createTrendyol(): Marketplace {
           if (lower(String(cur.value ?? "")) === lower(value)) continue;
           const def = defs.find((d: any) => Number(d.attribute?.id) === cur.attributeId);
           if (def?.slicer || def?.varianter) { res.skipped.push({ contentId: it.contentId, reason: `${name}: seçenek özelliği, değiştirilemez` }); continue; }
-          const v = (await attributeValues(c.cid, cur.attributeId)).find((x) => lower(x.name) === lower(value));
-          if (!v) { res.skipped.push({ contentId: it.contentId, reason: `${name}: "${value}" bu kategoride yok` }); continue; }
+          const opts = await attributeValues(c.cid, cur.attributeId);
+          const v = opts.find((x) => lower(x.name) === lower(value)) ?? opts.find((x) => lower(x.name) === lower(value.split(" / ")[0]));
+          if (!v) { res.skipped.push({ contentId: it.contentId, reason: `${name}: "${value}" kategori ${c.cid} listesinde yok` }); continue; }
           cur.attributeValueId = v.id; delete cur.customAttributeValue; cur.value = v.name; changed[name] = v.name;
         }
         if (!Object.keys(changed).length) continue;

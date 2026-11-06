@@ -60,3 +60,10 @@ test("fantezi / +18 iç giyim sayılmaz (K, 06.11); adında iç giyim yazan kapa
   for (const c of ["Fantezi Kostüm", "Ev & Yaşam Ürünleri > +18 Ürünler > Fantezi Giyim (+18)", "Ev & Yaşam Ürünleri > Giyim Ürünleri > Fantezi Giyim > Fantezi Kostüm", "Ev & Yaşam Ürünleri > +18 Ürünler > Fantezi Aksesuar"]) assert.ok(ok(c), c);
   for (const c of ["Fantazi İç Giyim >>> Fantazi Külot", "Fantezi İç Çamaşır Takımları"]) assert.ok(!ok(c), c);
 });
+
+import { trendyolRuleBlock } from "../lib/scope.ts";
+test("Trendyol satış kuralı: çakmak, küllük, nargile, silah", () => {
+  for (const t of ["Elektrikli Çakmak El Feneri", "Tek Kullanımlık Jel Küllük", "RGB LED Nargile Altı Işık", "ER-109 Oyuncak Tüfek", "Sünger Mermi Atan"]) assert.ok(trendyolRuleBlock(t), t);
+  for (const t of ["Çakmaklı Değil Kalem", "Sigaralık", "Silahşör Figürü", "Saç Kurutma Makinesi"]) assert.ok(!trendyolRuleBlock(t), t);
+});
+

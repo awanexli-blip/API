@@ -41,3 +41,19 @@ const L = (types: string[], details: string[], title = "URT021-002 Gökkuşağı
 
 if (fails) { console.log(`\n${fails} ret testi başarısız`); process.exit(1); }
 console.log("\nRet düzeltme testleri geçti");
+
+import { stripPolicyText } from "../core/rejections.ts";
+check("beyan: link cümlesi silinir", stripPolicyText("Hızlı hub. Ayrıntılı Bilgi İçin: www.tp-link.com.tr") === "Hızlı hub.", stripPolicyText("Hızlı hub. Ayrıntılı Bilgi İçin: www.tp-link.com.tr"));
+check("beyan: ürün cümlesi kalır", stripPolicyText("Eller serbest telefon görüşmesi yapar. 1.5 V pil.") === "Eller serbest telefon görüşmesi yapar. 1.5 V pil.");
+check("beyan: telefon numarası", stripPolicyText("Güzel ürün. Bilgi için 0532 123 45 67 arayın. Çelik.") === "Güzel ürün. Çelik.", stripPolicyText("Güzel ürün. Bilgi için 0532 123 45 67 arayın. Çelik."));
+check("beyan: toplu alım", stripPolicyText("Şık kalem. Toplu alımlarda bize yazın.") === "Şık kalem.", stripPolicyText("Şık kalem. Toplu alımlarda bize yazın."));
+const R2 = (t: string[], d: string[], title = "Kısa Evye Borusu Krom", desc = "Çelik boru.") => ({ id: "BZ1", title, price: 1, quantity: 1, status: "pending" as const, reject: { types: t, details: d, title, description: desc } });
+check("ret: fotoğraf içeriği yeniden gönderilmez", planFix(R2(["Görsel"], ["Ürün görsellerinizdeki 1 sunum biçimi platform kurallarımıza aykırıdır"]), undefined, { banned: [], images: ["u"] }).action === "needs_user");
+check("ret: görselde bedava yazısı", planFix(R2(["Görsel"], ['Ürünün görselinde "bedava" kelimeleri ayrı ayrı ya da kelime öbeği olarak tespit edilmiştir']), undefined, { banned: [], images: ["u"] }).action === "needs_user");
+check("ret: boyut hatası, açılan görsel varsa gönderilir", planFix(R2(["Görsel"], ["Ürün görselinin boyutuyla ilgili bir sorun tespit edildi"]), undefined, { banned: [], images: ["u"] }).action === "resubmit");
+check("ret: boyut hatası, görsel yoksa K", planFix(R2(["Görsel"], ["Ürün görselinin boyutuyla ilgili bir sorun tespit edildi"]), undefined, { banned: [], images: [] }).action === "needs_user");
+check("ret: gerçek marka silinmez", planFix(R2(["Yasaklı Kelime"], ['Ürün ismi ya da açıklamasında; "logitech,logitech" yasaklı kelimesi kullanılmıştır'], "LOGITECH MK470 Klavye"), undefined, { banned: [] }).action === "needs_user");
+check("ret: Koleksiyon silinir", (() => { const p: any = planFix(R2(["Yasaklı Kelime"], ['Ürün ismi ya da açıklamasında; "Koleksiyon" yasaklı kelimesi kullanılmıştır'], "12'li Koleksiyon Figür Seti"), undefined, { banned: [] }); return p.action === "resubmit" && p.update.title === "12'li Figür Seti"; })());
+check("ret: başlık anlamsız kalırsa K", planFix(R2(["Yasaklı Kelime"], ['Ürün ismi ya da açıklamasında; "Koleksiyon" yasaklı kelimesi kullanılmıştır'], "Koleksiyon Figürü"), undefined, { banned: [] }).action === "needs_user");
+check("ret: yanıltıcı beyan link silinir", (() => { const p: any = planFix(R2(["Yanıltıcı Beyan"], ["Ürün açıklamanızda; kişisel iletişim bilgileri (telefon, adres vb.), farklı web sitelerine yönlendiren linkler veya satış/iade koşullarına dair söylemler yer almaktadır."], "USB Hub 4 Port", "Hızlı hub. Bilgi: www.a.com.tr"), undefined, { banned: [] }); return p.action === "resubmit" && p.update.description === "Hızlı hub."; })());
+

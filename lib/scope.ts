@@ -82,3 +82,10 @@ export function toyMismatch(supplierCat: string | null | undefined, mpCat: strin
   if (!m.trim() || !TOY_SUP.test(s)) return null;
   return TOY_MP_OK.test(m) || TOY_MP_OK.test(fold(m)) ? null : `tedarikçide oyuncak, pazaryerinde "${mpCat}" (yanlış tanıtım riski)`;
 }
+
+// Trendyol'un kendi satış kuralı (K, 06.11 ret listesi: figürlü çakmak, tütün/küllük, nargile, silah; oyuncak olsa da reddediliyor). Yalnızca Trendyol'a YENİ gönderimde; başka pazaryerini etkilemez.
+const TY_RULE = /(?<![\p{L}])(çakmak|çakmağı|küllük|kül tablası|sigara|tütün|nargile|tabanca|tüfek|silah|silahı|mermi|mermili|şarjör|kasatura)(?![\p{L}])/u;
+export function trendyolRuleBlock(title: string | null | undefined): string | null {
+  const m = String(title ?? "").toLocaleLowerCase("tr").match(TY_RULE);
+  return m ? `Trendyol satış kuralı: "${m[1]}" içeren ürün kabul edilmiyor` : null;
+}
