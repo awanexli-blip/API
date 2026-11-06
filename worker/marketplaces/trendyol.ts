@@ -104,6 +104,8 @@ export function createTrendyol(): Marketplace {
   type Attr = { attributeId: number; attributeValueId?: number; customAttributeValue?: string; name?: string; value?: string };
   const attrsByBarcode = new Map<string, Attr[]>();
   const catOfBarcode = new Map<string, string>();
+  // İçerik düzeyi özellikler (content-bulk-update tüm listeyi ister; loadListings doldurur)
+  const contentAttrs = new Map<string, { cid: string; attrs: Attr[] }>();
   const toAttrs = (list: any[]): Attr[] => {
     const out: Attr[] = [];
     for (const a of list ?? []) {
@@ -212,7 +214,7 @@ export function createTrendyol(): Marketplace {
       }
       // Ürünün kendi başlık/açıklamasından (Şarjlı, 44 mm, 10000 mAh, Mikrofon var/yok, 50 Hz...); benzer ilanın değerinden önce gelir
       if (!val) {
-        const hit = inferAttribute(name, await attributeValues(cid, id), p.name, p.detail ?? "");
+        const hit = inferAttribute(name, await attributeValues(cid, id), p.name, p.detail ?? "", p.xmlCategory ?? "");
         if (hit) { val = { attributeId: id, attributeValueId: hit.id }; learned[name] = hit.name; }
         else if (ca.allowCustom) { const c = inferCustom(name, p.name, p.detail ?? ""); if (c) { val = { attributeId: id, customAttributeValue: c }; learned[name] = c; } }
       }
@@ -252,6 +254,7 @@ export function createTrendyol(): Marketplace {
       // Onaylı ürünler: içerik (başlık, kategori) + varyantlar (barkod, fiyat, stok, komisyon, durum)
       totals.approved = await fetchAll(`/product/sellers/${SELLER_ID}/products/approved`, 100, (c) => {
         const title = String(c.title ?? "").slice(0, 120);
+        if (c.contentId != null && c.category?.id != null) contentAttrs.set(String(c.contentId), { cid: String(c.category.id), attrs: toAttrs(c.attributes) });
         for (const v of c.variants ?? []) {
           if (!v.barcode) continue;
           const barcode = String(v.barcode);
@@ -683,6 +686,43 @@ export function createTrendyol(): Marketplace {
     async updateDescriptions(items: { contentId: string; description: string }[]): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
       const body = items.filter((i) => i.description.trim()).map((i) => ({ contentId: Number(i.contentId), description: i.description.slice(0, 30000) }));
+      for (const batch of chunk(body, 500)) {
+        try {
+          const r = await tg(`/product/sellers/${SELLER_ID}/products/content-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });
+          res.ok += batch.length; res.batchIds.push(r.batchRequestId);
+        } catch (e: any) { failBatch(res, e); }
+        await sleep(500);
+      }
+      return res;
+    },
+
+    // Onaylı ürünün özelliğini düzelt (K, 06.11; doküman: product-update-approved-product-v2, content-bulk-update "attributes"):
+    // bir özellik değişince TÜM içerik özellikleri gönderilir; Renk/Beden gibi seçenek özellikleri ve katalogda olmayan değer değiştirilmez.
+    async updateAttributes(items: { contentId: string; set: Record<string, string> }[]) {
+      const res = { ok: 0, failed: 0, batchIds: [] as string[], skipped: [] as { contentId: string; reason: string }[], sent: [] as { contentId: string; changed: Record<string, string> }[] };
+      const lower = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
+      const body: any[] = [];
+      for (const it of items) {
+        const c = contentAttrs.get(it.contentId);
+        if (!c) { res.skipped.push({ contentId: it.contentId, reason: "içerik özellikleri okunamadı" }); continue; }
+        const defs = await categoryAttributes(c.cid);
+        const next = c.attrs.map((a) => ({ ...a }));
+        const changed: Record<string, string> = {};
+        for (const [name, value] of Object.entries(it.set)) {
+          const cur = next.find((a) => lower(String(a.name ?? "")) === lower(name));
+          if (!cur) continue; // ilanda bu özellik içerik düzeyinde yok: eklenmez
+          if (lower(String(cur.value ?? "")) === lower(value)) continue;
+          const def = defs.find((d: any) => Number(d.attribute?.id) === cur.attributeId);
+          if (def?.slicer || def?.varianter) { res.skipped.push({ contentId: it.contentId, reason: `${name}: seçenek özelliği, değiştirilemez` }); continue; }
+          const v = (await attributeValues(c.cid, cur.attributeId)).find((x) => lower(x.name) === lower(value));
+          if (!v) { res.skipped.push({ contentId: it.contentId, reason: `${name}: "${value}" bu kategoride yok` }); continue; }
+          cur.attributeValueId = v.id; delete cur.customAttributeValue; cur.value = v.name; changed[name] = v.name;
+        }
+        if (!Object.keys(changed).length) continue;
+        body.push({ contentId: Number(it.contentId), attributes: next.map((a) => (a.attributeValueId ? { attributeId: a.attributeId, attributeValueId: a.attributeValueId } : { attributeId: a.attributeId, customAttributeValue: a.customAttributeValue })) });
+        res.sent.push({ contentId: it.contentId, changed });
+      }
+      if (process.env.SEND_DRY === "1") return res;
       for (const batch of chunk(body, 500)) {
         try {
           const r = await tg(`/product/sellers/${SELLER_ID}/products/content-bulk-update`, { method: "POST", body: JSON.stringify({ items: batch }) });

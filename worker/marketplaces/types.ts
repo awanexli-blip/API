@@ -117,6 +117,8 @@ export interface Marketplace {
   findCatalogMatches?(q: { ean?: string | null; title?: string }): Promise<CatalogMatch[]>;
   /** İsteğe bağlı: reddedilen ürünleri düzeltip yeniden onaya gönder (Trendyol: unapproved-bulk-update) */
   updateRejected?(items: RejectedUpdate[]): Promise<BatchResult>;
+  /** İsteğe bağlı: onaylı ürünün içerik özelliğini düzelt (Trendyol: content-bulk-update). set: özellik adı -> değer adı */
+  updateAttributes?(items: { contentId: string; set: Record<string, string> }[]): Promise<BatchResult & { skipped: { contentId: string; reason: string }[]; sent: { contentId: string; changed: Record<string, string> }[] }>;
   /** İsteğe bağlı: günlük satış özeti (salt okunur; yalnızca toplamlar, müşteri verisi okunmaz/saklanmaz) */
   salesDaily?(fromMs: number, toMs: number): Promise<SalesDay[]>;
   /** Siparişler (salt okunur, kişisel veri yok: yalnızca il). worker/core/orders.ts */

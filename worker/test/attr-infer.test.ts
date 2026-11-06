@@ -29,6 +29,13 @@ check("model kablosuz şarj", inferAttribute("Model", V("Kablosuz-Pilli", "Kablo
 check("dil", inferAttribute("Dil", V("Arapça", "Almanca", "İngilizce", "Türkçe"), "Eğitici Oyuncak"), "Türkçe");
 check("yaş grubu çocuk", inferAttribute("Yaş Grubu", V("Çocuk", "Bebek"), "Eğitici Ahşap Puzzle"), "Çocuk");
 check("yaş grubu bebek", inferAttribute("Yaş Grubu", V("Çocuk", "Bebek"), "Bebekler İçin Çıngırak"), "Bebek");
+check("kadın elbisesi çocuk değil", inferAttribute("Yaş Grubu", V("Çocuk", "Bebek", "Yetişkin"), "Kadın Şık Elbise Krep Kumaş", "çocuklarınızla gezerken", "Giyim Ürünleri > Kadın > Elbise"), "Yetişkin");
+check("küpe yetişkin", inferAttribute("Yaş Grubu", V("Çocuk", "Yetişkin"), "316L Çelik Gold Renk Küpe", "", "Takı & Aksesuar > Küpe"), "Yetişkin");
+check("oyuncak bebek çocuk", inferAttribute("Yaş Grubu", V("Çocuk", "Bebek", "Yetişkin"), "Hayvan Kostümlü Bebek 40 cm", "", "Oyuncak > Oyuncak Bebekler"), "Çocuk");
+check("bebek banyo bebek", inferAttribute("Yaş Grubu", V("Çocuk", "Bebek", "Yetişkin"), "Bebek Banyo Süngeri", "", "Anne Bebek > Banyo"), "Bebek");
+check("cinsiyet açıklamadan okunmaz", inferAttribute("Cinsiyet", V("Kadın / Kız", "Erkek", "Unisex"), "Kadın Siyah Dekolte Elbise", "erkekleri etkileyen tasarım"), "Kadın / Kız");
+check("bay bayan unisex", inferAttribute("Cinsiyet", V("Kadın / Kız", "Erkek", "Unisex"), "Bay Bayan Masaj Yağı"), "Unisex");
+check("ipucu yoksa unisex", inferAttribute("Cinsiyet", V("Kadın / Kız", "Erkek", "Unisex"), "316L Çelik Küpe"), "Unisex");
 check("yaş metinden", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Seti 3+ Yaş"), "3 Yaş");
 check("yaş yoksa tüm yaşlar", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Balonu"), "Tüm Yaşlar");
 check("frekans 50 Hz", inferAttribute("Frekans", V("50 Hz", "60 Hz", "60 Hz / 50 Hz"), "Hava Nemlendirici"), "50 Hz");

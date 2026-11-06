@@ -42,7 +42,6 @@ const YESNO: [RegExp, string[]][] = [
 function preferred(name: string, text: string): string[] {
   const n = lo(name);
   if (/^dil$/.test(n)) return ["Türkçe", "Evrensel Dil"];
-  if (/yaş grubu/.test(n)) return has(text, "bebek") ? ["Bebek", "Çocuk"] : has(text, "yetişkin") ? ["Yetişkin", "Unisex"] : ["Çocuk", "Unisex", "Yetişkin"];
   if (/^yaş$/.test(n)) {
     const m = /(\d{1,2})\s*(?:\+|yaş)/.exec(text);
     return m ? [`${m[1]} Yaş`, `${m[1]}+ Yaş`, `${m[1]} Yaş +`, "Tüm Yaşlar"] : ["Tüm Yaşlar", "3 Yaş", "3+ Yaş"];
@@ -71,15 +70,6 @@ function preferred(name: string, text: string): string[] {
     return [];
   }
   if (/mevsim/.test(n)) return ["4 Mevsim", "Yaz", "3 Mevsim"];
-  // Hepsiburada listesi çoğu kategoride yalnızca Erkek / Kadın / Erkek Çocuk / Kız Çocuk (Unisex yok): cinsiyet metinde açıkça geçmiyorsa
-  // keyfi seçilmez (Unisex yoksa boş kalır, panel → Özellik tamamla)
-  if (/cinsiyet/.test(n)) {
-    if (/ kız(lar|ım|ınız)? | kız çocu| girl/.test(text)) return ["Kız Çocuk", "Kız Bebek", "Kadın", "Unisex"];
-    if (/ erkek çocu| oğlan| boy /.test(text)) return ["Erkek Çocuk", "Erkek Bebek", "Erkek", "Unisex"];
-    if (/ kadın| bayan| women/.test(text)) return ["Kadın", "Unisex"];
-    if (/ erkek| men /.test(text)) return ["Erkek", "Unisex"];
-    return ["Unisex"];
-  }
   return [];
 }
 
@@ -112,7 +102,45 @@ function numeric(name: string, vals: AttrValue[], text: string): AttrValue | nul
   return near?.v ?? null;
 }
 
-export function inferAttribute(name: string, vals: AttrValue[], title: string, description = ""): AttrValue | null {
+// Yaş grubu ve cinsiyet (K, 06.11: kadın elbisesi "Yaş Grubu: Çocuk" gittiği için Trendyol'da Çocuk Elbise altında çıktı): yalnızca BAŞLIK ve TEDARİKÇİ KATEGORİSİNDEN.
+// Açıklamadaki tek bir kelime ("çocuklarınız için hediye") belirleyici değil; ipucu yoksa yetişkin / unisex, "Çocuk" varsayılmaz.
+const segsOf = (c: string) => String(c ?? "").split(/>{1,3}|\//).map((x) => x.trim()).filter(Boolean);
+export function ageGroupOf(title: string, category = ""): "Bebek" | "Çocuk" | "Yetişkin" {
+  const t = norm(title), segs = segsOf(category), c = norm(segs.join(" ")), tail = norm(segs.slice(-2).join(" "));
+  if (/oyuncak|oyun set/.test(c) || / oyuncak| puzzle| yapboz/.test(t)) return "Çocuk"; // "Oyuncak Bebek": bebek ürünü değil, oyuncak
+  if (/ (kadın|bayan|erkek|bay|yetişkin) /.test(t) && !/ (çocuk|bebek)/.test(t)) return "Yetişkin";
+  if (/ bebek/.test(t) || / bebek/.test(tail)) return "Bebek";
+  if (/ çocuk/.test(t) || / çocuk/.test(tail)) return "Çocuk";
+  return "Yetişkin";
+}
+export function genderOf(title: string, category = ""): "Kadın" | "Erkek" | "Kız Çocuk" | "Erkek Çocuk" | "Unisex" {
+  const read = (x: string) => {
+    if (/ kız çocu| kız bebek| kız(lar|ım|ınız)? /.test(x)) return "Kız Çocuk" as const;
+    if (/ erkek çocu| erkek bebek| oğlan/.test(x)) return "Erkek Çocuk" as const;
+    const k = / (kadın|bayan)/.test(x), e = / erkek/.test(x) || / bay bayan /.test(x);
+    return k && e ? "Unisex" as const : k ? "Kadın" as const : e ? "Erkek" as const : null;
+  };
+  return read(norm(title)) ?? read(norm(segsOf(category).slice(-3).join(" "))) ?? "Unisex";
+}
+const AGE_NAMES: Record<string, string[]> = { "Bebek": ["Bebek", "Bebek & Çocuk", "Çocuk"], "Çocuk": ["Çocuk", "Bebek & Çocuk", "Genç"], "Yetişkin": ["Yetişkin", "Unisex"] };
+const GENDER_NAMES: Record<string, string[]> = { "Kadın": ["Kadın / Kız", "Kadın", "Unisex"], "Erkek": ["Erkek", "Unisex"], "Kız Çocuk": ["Kız Çocuk", "Kız Bebek", "Kadın / Kız", "Kadın", "Unisex"], "Erkek Çocuk": ["Erkek Çocuk", "Erkek Bebek", "Erkek", "Unisex"], "Unisex": ["Unisex"] };
+export const ageValue = (vals: AttrValue[], title: string, category = "") => pick(vals, AGE_NAMES[ageGroupOf(title, category)]);
+export const genderValue = (vals: AttrValue[], title: string, category = "") => pick(vals, GENDER_NAMES[genderOf(title, category)]);
+// Onarım: kayıttaki / canlıdaki değer yanlışsa Trendyol değer adıyla olması gereken (worker/attr-fix.ts). "Genç" gibi ara değerler yalnızca ürün yetişkinse düzeltilir.
+const AGE_TY: Record<string, string> = { "Bebek": "Bebek", "Çocuk": "Çocuk", "Yetişkin": "Yetişkin" };
+const GENDER_TY: Record<string, string> = { "Kadın": "Kadın / Kız", "Erkek": "Erkek", "Kız Çocuk": "Kadın / Kız", "Erkek Çocuk": "Erkek", "Unisex": "Unisex" };
+export function wantedAudience(title: string, category: string, attrs: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  const age = ageGroupOf(title, category), curAge = attrs["Yaş Grubu"];
+  if (curAge && String(curAge) !== AGE_TY[age] && (age === "Yetişkin" ? /çocuk|bebek|genç/i.test(String(curAge)) : !/bebek|çocuk/i.test(String(curAge)))) out["Yaş Grubu"] = AGE_TY[age];
+  const curG = attrs["Cinsiyet"], g = GENDER_TY[genderOf(title, category)];
+  if (curG && String(curG) !== g) out["Cinsiyet"] = g;
+  return out;
+}
+
+export function inferAttribute(name: string, vals: AttrValue[], title: string, description = "", category = ""): AttrValue | null {
+  if (/yaş grubu/.test(lo(name))) return vals.length ? ageValue(vals, title, category) : null;
+  if (/^cinsiyet/.test(lo(name))) return vals.length ? genderValue(vals, title, category) : null;
   if (!vals.length) return null;
   const t = norm(title), all = norm(`${title} ${description.slice(0, 3000)}`);
   const n = lo(name);
