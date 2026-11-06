@@ -93,3 +93,13 @@ test("tek seçenekli Bezos ürünü: model kodu ve barkodu korunur, stok/fiyat s
   assert.equal(p.variants[0].stock, 4);
   assert.equal(p.cost_price, 132);
 });
+
+test("Bezos mobilya notu: yalnızca Mobilya yolunda ve yalnızca Bezos'ta", () => {
+  const items = [{ k: "M1", t: "Zigon Sehpa", c: "Ev > Mobilya > Sehpa", d: "Metin" }, { k: "M2", t: "Mobilya Kulpu", c: "Yapı > Mobilya Hırdavatı", d: "Metin" }];
+  const m: any = { k: "model", t: "title", c: "category", d: "description" };
+  const [a, b] = itemsToGroups(items, m).map((g) => supplierPayload(g, { code: "bezos" } as any, new Set()).payload);
+  assert.ok(a.description.endsWith("ertesi iş günü kargoya verilir."));
+  assert.equal(b.description, "Metin");
+  const c = supplierPayload(itemsToGroups(items, m)[0], { code: "hepsibayi" } as any, new Set()).payload;
+  assert.equal(c.description, "Metin");
+});

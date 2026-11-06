@@ -15,7 +15,7 @@ const FOOD_EXACT = new Set(["su", "kola", "makarna", "pirinç", "bakliyat", "zey
   "soğuk çay", "hazır çorba", "pekmez", "tahin", "helva", "zeytin", "turşu", "dondurma", "sporcu besini"]);
 const UNDER_EXACT = new Set(["külot", "boxer", "sütyen", "atlet", "çorap", "emzirme sütyeni", "emzirme atleti", "bebek body & zıbın", "body", "zıbın", "fanila", "slip", "string",
   "jartiyer", "korse", "korse & büstiyer", "büstiyer", "bralet", "babydoll", "gecelik", "pijama", "pijama takımı", "sabahlık", "kombinezon", "jüpon", "içlik", "termal içlik", "termal giyim",
-  "külotlu çorap", "soket çorap", "patik çorap", "iç çamaşırı takımı", "fantezi giyim", "lohusa sabahlık", "erkek iç giyim", "kadın iç giyim"]);
+  "külotlu çorap", "soket çorap", "patik çorap", "iç çamaşırı takımı", "lohusa sabahlık", "erkek iç giyim", "kadın iç giyim"]);
 // Yol parçasının TAMAMI gıda başlığıysa yasak (02.11: "Süpermarket, Pet Shop > Sağlık > Masaj Aleti" ve "Yiyecek & İçecek Hazırlama > Su Isıtıcı"
 // gıda DEĞİL; parça içinde arama bunları eliyordu). İç giyim için parça içinde arama güvenli ("Giyim > İç Giyim > ...").
 const FOOD_PART = /^(temel gıda|gıda|gıda ürünleri|kuru gıda|dondurulmuş gıda|organik gıda|yiyecek|yiyecekler|içecek|içecekler|atıştırmalık|atıştırmalıklar|takviye edici gıda|takviye edici gıdalar|gıda takviyeleri|kahvaltılık|kahvaltılıklar|şarküteri|et & tavuk|et, tavuk & balık|meyve & sebze|bebek maması|mama ve beslenme ürünleri)$/u;

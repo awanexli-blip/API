@@ -166,6 +166,7 @@ export function itemsToGroups(items: any[], mapping: Record<string, Field>): Gro
   return groupRows(rows.filter((r) => Object.keys(r.values).length));
 }
 
+export const BEZOS_MOBILYA_NOTE = "Mobilya ürünü: Mobilya ürünleri siparişin verildiği gün atölyeye aktarılır ve ertesi iş günü kargoya verilir.";
 const SKU_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{2,64}$/;
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
 const ascii = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, "");
@@ -186,6 +187,8 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
   p.title = String(p.title).replace(/\s+/g, " ").trim().replace(/\s*-?\s*\(\d{3,6}\)$/, "").trim().slice(0, 300);
   if (p.description) p.description = String(p.description).slice(0, 30000);
   if (p.category) p.category = String(p.category).slice(0, 200);
+  // Bezos mobilya (K, 06.11): teslimat notu; açıklamanın sonuna, kesilmeyecek şekilde
+  if (sup.code === "bezos" && /(^|>)\s*mobilya\s*(>|$)/iu.test(String(p.category ?? ""))) p.description = `${String(p.description ?? "").slice(0, 29800)}\n\n${BEZOS_MOBILYA_NOTE}`.trim();
   if (sup.default_brand) p.brand = sup.default_brand; // tedarikçi markası pazaryerinde yoksa sabit marka
   if (p.brand) p.brand = String(p.brand).slice(0, 100);
   p.vat_rate = [0, 1, 10, 20].includes(Number(p.vat_rate)) ? Number(p.vat_rate) : sup.default_vat ?? 20;

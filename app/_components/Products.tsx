@@ -334,6 +334,8 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
   const [sizeGroup, setSizeGroup] = useState(/ayakkab|terlik|bot\b|çizme|sandalet|babet/i.test(`${initial.category} ${initial.title}`) ? "Ayakkabı" : "Giyim");
   const [extra, setExtra] = useState({ size: "", color: "" });
   const [hasVariants, setHasVariants] = useState(initial.variants.length > 1);
+  // Gönderilecek pazaryerleri: elle seçilir, otomatik ikisine birden gitmez (K, 06.11)
+  const [targets, setTargets] = useState<MpTarget[]>([]);
   // Kaydedilmemiş değişiklik var mı (gönderimden önce kaydetmek için)
   const [savedF, setSavedF] = useState<Form>(initial);
   const dirty = JSON.stringify(f) !== JSON.stringify(savedF);
@@ -381,21 +383,29 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
     ...(mpStatus?.missing[m] ?? []).filter((x) => x !== "kategori"),
   ];
   function sendTargets(): MpTarget[] | null {
-    const all: MpTarget[] = ["trendyol", "hepsiburada"];
+    const all = targets;
+    if (!all.length) { notify("err", "Önce gönderilecek pazaryerini işaretle."); return null; }
     if (mpStatus?.loading) { notify("err", "Pazaryeri özellikleri yükleniyor, birkaç saniye sonra tekrar dene."); return null; }
     const name = (m: MpTarget) => (m === "trendyol" ? "Trendyol" : "Hepsiburada");
     const ok = all.filter((m) => !missingFor(m).length);
     const bad = all.filter((m) => missingFor(m).length).map((m) => `${name(m)}: ${missingFor(m).join(", ")}`);
-    if (!ok.length) { notify("err", `Eksik zorunlu alanlar var. ${bad.join(" · ")}`); return null; }
-    if (bad.length && !confirm(`Eksik alanlar: ${bad.join(" · ")}\n\nYalnızca ${ok.map(name).join(", ")}'a gönderilsin mi?`)) return null;
+    // Seçilen pazaryerinde eksik varsa gönderilmez: sessizce biri atlanmaz
+    if (bad.length) { notify("err", `Eksik zorunlu alanlar var. ${bad.join(" · ")}`); return null; }
     return ok;
   }
 
   async function save(then?: "new" | "close" | "send") {
-    const targets = then === "send" ? sendTargets() : null;
-    if (then === "send" && !targets) return;
+    // Seçenekli ürün: en az 2 seçenek, her birinde renk/beden; aynı seçenek iki kez olmaz (yarım ya da bedensiz ilan açılmasın)
+    if (hasVariants) {
+      const attrs = f.variants.map((v) => v.attrs.trim());
+      if (f.variants.length < 2) { notify("err", "Seçenekli ürün için en az 2 seçenek gerekli. Tek seçenek varsa \"Tek ürün\" seç."); return; }
+      if (attrs.some((a) => !a)) { notify("err", "Her seçeneğin renk veya bedeni dolu olmalı."); return; }
+      if (new Set(attrs).size !== attrs.length) { notify("err", "Aynı renk/beden iki kez eklenmiş."); return; }
+    }
+    const sendTo = then === "send" ? sendTargets() : null;
+    if (then === "send" && !sendTo) return;
     if (then === "send" && !isNew && !dirty) {
-      if (await sendToMarketplaces(api, notify, [f.id!], role === "admin", targets!)) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {});
+      if (await sendToMarketplaces(api, notify, [f.id!], role === "admin", sendTo!)) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {});
       return;
     }
     const filled = autofill(f);
@@ -422,7 +432,7 @@ Tamam: mevcut ürün bu formdaki bilgilerle güncellensin (yeni ürün açılmaz
       if (then === "new") return onNew();
       if (then === "close") return onClose();
       setF(fromProduct(saved)); setSavedF(fromProduct(saved));
-      if (then === "send") await sendToMarketplaces(api, notify, [saved.id], role === "admin", targets!);
+      if (then === "send") await sendToMarketplaces(api, notify, [saved.id], role === "admin", sendTo!);
       api(`/api/products/${saved.id}?listings=1`).then(setListings).catch(() => {});
       api(`/api/products/${saved.id}?audit=1`).then(setAudit).catch(() => {});
     } catch (e: any) { notify("err", e.message); }
@@ -591,11 +601,12 @@ Tamam: mevcut ürün bu formdaki bilgilerle güncellensin (yeni ürün açılmaz
       </div>
 
       <div className="card">
-        <h2>Renk / beden seçenekleri</h2>
-        <label className="check"><input type="checkbox" checked={hasVariants} onChange={(e) => {
-          setHasVariants(e.target.checked);
-          if (!e.target.checked) setF((p) => ({ ...p, variants: [p.variants[0]] }));
-        }} />Bu ürünün farklı renk veya bedenleri var</label>
+        <h2>Ürün tipi</h2>
+        <div className="row">
+          <label className="check"><input type="radio" name="urun-tipi" checked={!hasVariants} onChange={() => { setHasVariants(false); setF((p) => ({ ...p, variants: [p.variants[0]] })); }} />Tek ürün</label>
+          <label className="check"><input type="radio" name="urun-tipi" checked={hasVariants} onChange={() => setHasVariants(true)} />Seçenekli ürün (renk / beden)</label>
+        </div>
+        {hasVariants && <small className="muted">Seçeneklerden biri bile gönderilemezse ürünün hiçbir seçeneği açılmaz, nedeni ürün satırında yazar.</small>}
         {hasVariants && <>
           <div style={{ marginTop: 12 }}><small className="muted">Renk</small>
             <div className="row" style={{ marginTop: 4 }}>{[...COLORS, ...colors.filter((c) => !COLORS.includes(c))].map((c) => <button key={c} style={chip(colors.includes(c))} onClick={() => toggle(colors, c, setColors)}>{c}</button>)}</div>
@@ -735,10 +746,12 @@ Tamam: mevcut ürün bu formdaki bilgilerle güncellensin (yeni ürün açılmaz
         {canEdit && <>
           <button className="btn primary" disabled={busy || uploading > 0} onClick={() => save(isNew ? "close" : undefined)}>{busy ? "Kaydediliyor..." : isNew ? "Kaydet" : "Değişiklikleri kaydet"}</button>
           {isNew && <button className="btn" disabled={busy || uploading > 0} onClick={() => save("new")}>Kaydet ve yeni ekle</button>}
-          {f.status === "active" && <button className="btn primary" disabled={busy || uploading > 0} onClick={() => save("send")}><Icon name="store" size={16} />{isNew || dirty ? "Kaydet ve " : ""}Trendyol + Hepsiburada'ya gönder</button>}
-          {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Trendyol'a gönder</button>}
+          {f.status === "active" && <>
+            <label className="check"><input type="checkbox" checked={targets.includes("trendyol")} onChange={(e) => setTargets((t) => (e.target.checked ? [...t, "trendyol"] : t.filter((x) => x !== "trendyol")))} />Trendyol</label>
+            <label className="check"><input type="checkbox" checked={targets.includes("hepsiburada")} onChange={(e) => setTargets((t) => (e.target.checked ? [...t, "hepsiburada"] : t.filter((x) => x !== "hepsiburada")))} />Hepsiburada</label>
+            <button className="btn primary" disabled={busy || uploading > 0 || !targets.length} onClick={() => save("send")}><Icon name="store" size={16} />{isNew || dirty ? "Kaydet ve " : ""}Seçilenlere gönder</button>
+          </>}
           {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin", "amazon")) { api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); setMatchKey((k) => k + 1); } }}><Icon name="store" size={16} />Amazon'a gönder</button>}
-          {!isNew && f.status === "active" && <button className="btn" onClick={async () => { if (await sendToMarketplace(api, notify, [f.id!], role === "admin", "hepsiburada")) api(`/api/products/${f.id}?listings=1`).then(setListings).catch(() => {}); }}><Icon name="store" size={16} />Hepsiburada'ya gönder</button>}
           {!isNew && <button className="btn" onClick={() => onCopy(f)}>Kopyasını oluştur</button>}
           {!isNew && f.status !== "archived" && <button className="btn" onClick={archive}>Arşivle</button>}
           {role === "admin" && !isNew && <button className="btn danger" onClick={hardDelete}>Kalıcı sil</button>}

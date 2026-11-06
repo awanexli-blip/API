@@ -55,3 +55,8 @@ test("oyuncak uyumsuzluğu: tedarikçide oyuncak, pazaryerinde gerçek ürün ka
   assert.ok(!toyMismatch("Elektronik > Süpürge", "Araç İçi Süpürge"), "tedarikçi oyuncak değil");
   assert.ok(!toyMismatch("Oyuncak", null), "kategori yok");
 });
+
+test("fantezi / +18 iç giyim sayılmaz (K, 06.11); adında iç giyim yazan kapalı kalır", () => {
+  for (const c of ["Fantezi Kostüm", "Ev & Yaşam Ürünleri > +18 Ürünler > Fantezi Giyim (+18)", "Ev & Yaşam Ürünleri > Giyim Ürünleri > Fantezi Giyim > Fantezi Kostüm", "Ev & Yaşam Ürünleri > +18 Ürünler > Fantezi Aksesuar"]) assert.ok(ok(c), c);
+  for (const c of ["Fantazi İç Giyim >>> Fantazi Külot", "Fantezi İç Çamaşır Takımları"]) assert.ok(!ok(c), c);
+});

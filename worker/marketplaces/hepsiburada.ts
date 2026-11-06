@@ -14,6 +14,16 @@ const ELECTRONIC = /elektron|elektrik|şarj|pilli|usb|bluetooth|kulaklık|hoparl
 export const hbWarrantyMonths = (title: string, category = "") => (ELECTRONIC.test(`${title} ${category}`) ? 24 : 0);
 import type { BatchCheck, BatchResult, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn } from "./types.ts";
 
+// Ya hep ya hiç: seçenek grubunda gönderilemeyen varsa grubun diğer ürünleri de bu turda gönderilmez
+function dropPartialGroups(items: NewProduct[], res: BatchResult): Set<string> {
+  const failed = new Map((res.failedItems ?? []).map((f) => [f.id, f.reason]));
+  const bad = new Map<string, string>();
+  for (const p of items) if (p.groupId && failed.has(p.id)) bad.set(p.groupId, failed.get(p.id)!);
+  const drop = new Set<string>();
+  for (const p of items) if (p.groupId && bad.has(p.groupId) && !failed.has(p.id)) { drop.add(p.id); (res.failedItems ??= []).push({ id: p.id, reason: `Başka seçeneği gönderilemediği için gönderilmedi: ${bad.get(p.groupId)}`.slice(0, 500) }); }
+  return drop;
+}
+
 // Trendyol ile aynı kural: yeni ürünler "OS13-" + XML productCode (ASCII). Eşleştirme ÖS13- de dener.
 const SKU_PREFIXES = ["OS13-", "ÖS13-"];
 const NEW_PREFIX = "OS13-";
@@ -331,6 +341,7 @@ export function createHepsiburada(): Marketplace {
           },
         });
       }
+      { const drop = dropPartialGroups(list, res); if (drop.size) payloads.splice(0, payloads.length, ...payloads.filter((x: any) => !drop.has(x.attributes.merchantSku))); }
       // SEND_DRY=1: deneme (Trendyol adaptöründeki gibi); HB'ye hiçbir şey gönderilmez, gidecek olanın özeti yazılır
       if (process.env.SEND_DRY === "1") {
         for (const x of payloads) {

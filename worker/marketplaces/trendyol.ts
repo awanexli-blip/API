@@ -9,6 +9,16 @@ import { noteMissing } from "../core/attr-options.ts";
 import { descHashOf } from "../core/content-diff.ts";
 import type { BatchCheck, BatchResult, BuyboxInfo, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
 
+// Ya hep ya hiç: seçenek grubunda gönderilemeyen varsa grubun diğer ürünleri de bu turda gönderilmez
+function dropPartialGroups(items: NewProduct[], res: BatchResult): Set<string> {
+  const failed = new Map((res.failedItems ?? []).map((f) => [f.id, f.reason]));
+  const bad = new Map<string, string>();
+  for (const p of items) if (p.groupId && failed.has(p.id)) bad.set(p.groupId, failed.get(p.id)!);
+  const drop = new Set<string>();
+  for (const p of items) if (p.groupId && bad.has(p.groupId) && !failed.has(p.id)) { drop.add(p.id); (res.failedItems ??= []).push({ id: p.id, reason: `Başka seçeneği gönderilemediği için gönderilmedi: ${bad.get(p.groupId)}`.slice(0, 500) }); }
+  return drop;
+}
+
 const loadJson = (f: string): Record<string, number> => {
   try { return JSON.parse(readFileSync(new URL(f, import.meta.url), "utf8")); } catch { return {}; }
 };
@@ -397,6 +407,7 @@ export function createTrendyol(): Marketplace {
           images: p.images.slice(0, 8).map((url: string) => ({ url: jpgUrl(url, undefined, "p") })), attributes,
         });
       }
+      { const drop = dropPartialGroups(items, res); if (drop.size) payloads.splice(0, payloads.length, ...payloads.filter((x: any) => !drop.has(x.barcode))); }
       // SEND_DRY=1: deneme; Trendyol'a hiçbir şey gönderilmez, gidecek olanın özeti yazılır (ilan "DENEME" nedeniyle hatalı işaretlenir)
       if (process.env.SEND_DRY === "1") {
         for (const x of payloads) {

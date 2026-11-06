@@ -26,7 +26,7 @@ export function readiness(p: ReadyInput): Readiness[] {
       { ok: p.categories.includes(m.id), text: `${m.label} kategorisi seçili` },
       { ok: t >= 5 && t <= m.titleMax, text: `Başlık 5-${m.titleMax} karakter (şu an ${t})` },
       { ok: d >= 30 && d <= m.descMax, text: `Açıklama en az 30 karakter (şu an ${d})` },
-      { ok: !!p.brand.trim(), text: "Marka" },
+      { ok: /\p{L}{2}/u.test(p.brand), text: "Marka (geçerli bir ad)" },
       { ok: p.images.length >= 1, text: `En az 1 görsel (şu an ${p.images.length})` },
       { ok: p.images.length <= m.imagesSent, warn: true, text: `En çok ${m.imagesSent} görsel gider (fazlası gönderilmez)` },
       { ok: p.images.every((u) => /^https:\/\//.test(u)), text: "Görsel adresleri https" },

@@ -335,6 +335,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         const vlist = [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position);
         const multi = vlist.length > 1;
         let titleClaimed = false;
+        const errBefore = out.errors;
         for (const v of vlist) {
           const key = keyFor(p.source, v);
           if (!key || !CODE_RE.test(key)) { fail(key, p, v, "Barkod yok veya pazaryeri kuralına uymuyor (en fazla 40 karakter, harf/rakam/. _ -)"); continue; }
@@ -408,6 +409,12 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           rows.push({ marketplace: ctx.marketplaceId, listing_key: key, variant_id: v.id, product_id: p.id, status: "sent", title, price: pr.price, stock: np.qty, category_id: categoryId != null ? String(categoryId) : asin ?? null, last_error: null, updated_at: now,
             ...(fpSupported ? { content_sent: fpOf({ title: np.name, description: np.detail, images: vImages }) } : {}) });
           out.keys.set(key, job.id);
+        }
+        // Ya hep ya hiç (K, 06.11): seçenekli ürünün bir seçeneği gidemezse hiçbiri gitmez (27 bedenden 5'i açık yarım ilan olmasın)
+        if (multi && out.errors > errBefore) {
+          const why = rows.filter((x) => x.product_id === p.id && x.status === "error").map((x) => x.last_error)[0] ?? "";
+          for (const [b, list] of groups) groups.set(b, list.filter((i: any) => i.pid !== p.id));
+          for (const row of rows) if (row.product_id === p.id && row.status === "sent") { row.status = "error"; row.last_error = `Başka seçeneği gönderilemediği için gönderilmedi: ${why}`.slice(0, 500); out.errors++; out.keys.delete(row.listing_key); }
         }
       }
       let sentInJob = 0, failedBatches = 0;
