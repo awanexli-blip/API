@@ -11,6 +11,8 @@ const mp = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2
 const opt = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=").slice(1).join("=");
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 
+// K, 06.11: iptal edildi; yalnızca AI_FILL=1 ile çalışır
+if (process.env.AI_FILL !== "1") { console.log("Yapay zekâ doldurma kapalı (K, 06.11)"); process.exit(0); }
 const attrs = await aiFillAttributes(db, mp, Number(opt("attrs") ?? 40));
 console.log("özellik:", JSON.stringify(attrs));
 const job = opt("job");

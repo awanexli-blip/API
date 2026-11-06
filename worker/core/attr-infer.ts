@@ -148,7 +148,16 @@ export function wantedAudience(title: string, category: string, attrs: Record<st
   return out;
 }
 
+// Elektrikli ürün mü (K, 06.11: aromatik uçucu yağa "Voltaj 220-240 V, Frekans 50 Hz, Garanti 2 Yıl" yazıldı): yanlış kategori seçilince zorunlu elektrik özellikleri varsayılanla doluyordu.
+// Elektrik kanıtı başlık, açıklama ya da tedarikçi kategorisinde olmalı. "Difüzör", "nemlendirici" tek başına kanıt değil (uçucu yağ "oda difüzörü" diye satılıyor).
+const ELECTRIC = /elektr|şarj|sarj|usb|\bpil(li|le|i)?\b|batarya|\bwatt\b|\d\s?w\b|volt|\b220\b|makine|makina|motor|ısıtıcı|isitici|\bütü|\bfön\b|\bled\b|lamba|ampul|kablo|adaptör|\bpriz|hoparlör|kulaklık|bluetooth|süpürge|blender|mikser|rondo|tost|fritöz|kettle|\bfan\b|vantilatör|klima|düzleştirici|maşa|tıraş|epilatör|ipl\b|cihaz|sensör|kumanda|dijital|akıllı|buhar/iu;
+export const isElectric = (title: string, description = "", category = "") => ELECTRIC.test(`${title} ${description.slice(0, 3000)} ${category}`.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr"));
+const ELECTRIC_ATTR = /^(voltaj|frekans|gerilim|garanti süresi|garanti tipi)$/;
+export const isElectricAttr = (name: string) => ELECTRIC_ATTR.test(lo(name).trim());
+
 export function inferAttribute(name: string, vals: AttrValue[], title: string, description = "", category = ""): AttrValue | null {
+  // Elektrikli olmayan üründe varsayılan voltaj/frekans/garanti yok: boş kalır, ilan "zorunlu özellik" diye gönderilmez (yanlış kategori işareti)
+  if (isElectricAttr(name) && !isElectric(title, description, category)) return null;
   if (/yaş grubu/.test(lo(name))) return vals.length ? ageValue(vals, title, category) : null;
   if (/^cinsiyet/.test(lo(name))) return vals.length ? genderValue(vals, title, category) : null;
   if (!vals.length) return null;
@@ -177,7 +186,8 @@ export function inferAttribute(name: string, vals: AttrValue[], title: string, d
 }
 
 // Serbest metne izin veren özellikte (değer listesi yok/uymuyor) metinden yazılabilecek değer
-export function inferCustom(name: string, title: string, description = ""): string | null {
+export function inferCustom(name: string, title: string, description = "", category = ""): string | null {
+  if (isElectricAttr(name) && !isElectric(title, description, category)) return null;
   const n = lo(name), all = norm(`${title} ${description.slice(0, 3000)}`);
   if (/paket içeriği/.test(n)) { const m = /(\d{1,3})\s*(?:adet|parça)/.exec(all); return `${m ? Number(m[1]) : 1} Adet`; }
   if (/garanti süresi/.test(n)) return "2 Yıl";

@@ -48,9 +48,14 @@ eq("onarım: hobi blok seti çocuk kalır", wa("Mini Poşet Araba Blok Seti 1 Ad
 eq("onarım: bayan patates kafa oyuncak", wa("Hasbro Bayan Patates Kafa", "Oyuncak > Eğitici", { "Yaş Grubu": "Çocuk" }), "{}");
 eq("onarım: kostüm korunur", wa("Sarı Etekli Kedi Kostüm Seti", "Kostüm Aksesuarları", { "Yaş Grubu": "Çocuk" }), "{}");
 eq("onarım: okul çantası çocuk kalır", wa("Okul Çantası", "Çanta", { "Yaş Grubu": "Çocuk" }), "{}");
+check("uçucu yağa voltaj yazılmaz", inferAttribute("Voltaj", V("220 - 240 V", "12 V"), "Ferahlık Verici 6'lı Aromatik Uçucu Yağ Seti Oda Difüzörü", "6 farklı esansiyel yağ", "Parfüm Esansı"), null);
+check("uçucu yağa frekans yazılmaz", inferAttribute("Frekans", V("50 Hz"), "Aromatik Uçucu Yağ Seti", ""), null);
+check("uçucu yağa garanti yazılmaz", inferAttribute("Garanti Süresi", V("2 Yıl"), "Aromatik Uçucu Yağ Seti", ""), null);
+check("saç maşasına voltaj yazılır", inferAttribute("Voltaj", V("220 - 240 V", "220 V"), "Seramik Saç Maşası 25 mm", ""), "220 V");
+check("şarjlı üründe garanti", inferAttribute("Garanti Süresi", V("2 Yıl"), "Şarjlı El Feneri", ""), "2 Yıl");
 check("yaş metinden", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Seti 3+ Yaş"), "3 Yaş");
 check("yaş yoksa tüm yaşlar", inferAttribute("Yaş", V("2 Yaş", "3 Yaş", "Tüm Yaşlar"), "Parti Balonu"), "Tüm Yaşlar");
-check("frekans 50 Hz", inferAttribute("Frekans", V("50 Hz", "60 Hz", "60 Hz / 50 Hz"), "Hava Nemlendirici"), "50 Hz");
+check("frekans 50 Hz", inferAttribute("Frekans", V("50 Hz", "60 Hz", "60 Hz / 50 Hz"), "Elektrikli Hava Nemlendirici"), "50 Hz");
 check("kutu yok", inferAttribute("Kutu Durumu", V("Kutu yok", "Kutulu"), "Çelik Bileklik"), "Kutu yok");
 check("kutulu", inferAttribute("Kutu Durumu", V("Kutu yok", "Kutulu"), "Hediye Kutulu Bileklik"), "Kutulu");
 check("garanti tipi (K kararı)", inferAttribute("Garanti Tipi", V("Goldmaster Garantili", "Resmi Distribütör Garantili", "İthalatçı Garantili"), "Hoparlör"), "İthalatçı Garantili");

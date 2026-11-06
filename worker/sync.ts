@@ -511,7 +511,8 @@ async function main() {
     if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
     summary.attrOptions = await flushAttrOptions(db).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     // Eksik zorunlu özellikler yapay zekâ ile (başlık + açıklama, pazaryerinin değer listesinden); eksiği kalmayan yeniden gönderilir
-    if (!lite && marketplaceId !== "amazon") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+    // K, 06.11: yapay zekâyla zorunlu alan doldurma iptal (başarısız oldu); yalnızca AI_FILL=1 ile açılır
+    if (!lite && marketplaceId !== "amazon" && process.env.AI_FILL === "1") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     if (!lite && s.auto_sync && marketplaceId !== "amazon") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
   }
 

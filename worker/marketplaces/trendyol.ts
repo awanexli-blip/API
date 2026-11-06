@@ -1,7 +1,7 @@
 // Trendyol adaptörü — Product V2 servisleri (V1 15.10.2026'da kapandı).
 // Uç listesi: https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint.md
 import { readFileSync } from "node:fs";
-import { defaultFor, inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { isElectric, defaultFor, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl, aliveImages } from "../core/img-proxy.ts";
@@ -220,13 +220,15 @@ export function createTrendyol(): Marketplace {
       if (!val) {
         const hit = inferAttribute(name, await attributeValues(cid, id), p.name, p.detail ?? "", p.xmlCategory ?? "");
         if (hit) { val = { attributeId: id, attributeValueId: hit.id }; learned[name] = hit.name; }
-        else if (ca.allowCustom) { const c = inferCustom(name, p.name, p.detail ?? ""); if (c) { val = { attributeId: id, customAttributeValue: c }; learned[name] = c; } }
+        else if (ca.allowCustom) { const c = inferCustom(name, p.name, p.detail ?? "", p.xmlCategory ?? ""); if (c) { val = { attributeId: id, customAttributeValue: c }; learned[name] = c; } }
       }
       // Menşei boşsa TR (K, 01.11: "menşei TR yazabilirsin"); başka ilandan kopyalanmaz
       if (!val && /men[şs]e/i.test(name)) {
         const tr = (await attributeValues(cid, id)).find((v) => ["tr", "türkiye", "turkey"].includes(lo(v.name)));
         if (tr) { val = { attributeId: id, attributeValueId: tr.id }; learned[name] = tr.name; }
       }
+      // Elektrikli olmayan ürün elektrik özelliği isteyen kategoriye düşmüş: doldurulmaz, gönderilmez (K, 06.11 uçucu yağ)
+      if (!val && ca.required && /^(voltaj|frekans|gerilim)$/i.test(name.trim()) && !isElectric(p.name, p.detail ?? "", p.xmlCategory ?? "")) { missing.push(`${name} (elektrikli olmayan ürün bu kategoriye uymuyor)`); continue; }
       // K (04.11, F klavye): emin olunmayan değerde önce nötr seçenek ("Belirtilmemiş" vb.); başka ilandan kopyalama yalnızca nötr seçenek yoksa
       if (!val) {
         const vals = await attributeValues(cid, id);
