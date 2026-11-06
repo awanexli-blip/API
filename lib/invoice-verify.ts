@@ -1,7 +1,8 @@
 // Trendyol'a fatura yüklemeden önce kesin eşleşme (K, 30.10: "yanlış girmeyelim, tam eşleştirelim"). Saf, test edilir.
 // GİB'in imzalı belge görünümünde (HTML) şunların HEPSİ olmalı: ETTN, belge no, sipariş no, alıcı adı, ödenecek tutar = sistemdeki tutar.
 // Biri eksik/uyuşmazsa yüklenmez (nedenler döner). Alıcı adı yalnızca karşılaştırılır, dönen nedenlere yazılmaz.
-export type VerifyInput = { html: string; ettn: string; belgeNo: string; orderNo: string; amount: number; customerName: string };
+// K, 06.11 ("tamamen eşli mi"): vat verilirse belgede bu KDV tutarı, lineTitles verilirse her ürün adının kelimelerinin çoğu da aranır.
+export type VerifyInput = { html: string; ettn: string; belgeNo: string; orderNo: string; amount: number; customerName: string; vat?: number | null; lineTitles?: string[] };
 
 // GİB şablonu (XSLT, HTML çıktısı) Türkçe harfleri adlı varlık olarak yazabilir (&Ouml;denecek, &Ccedil;): 30.10 ilk denemede 78/78 tutar ve
 // 24 alıcı adı okunamadı. Adlı varlıklar büyük/küçük harfe duyarlı (Ouml ≠ ouml).
@@ -43,7 +44,17 @@ export function verifyInvoice(v: VerifyInput) {
   const paid = m ? parseMoney(m[1]) : ubl ? Number(ubl[1]) : null;
   if (paid == null) problems.push("ödenecek tutar belgede okunamadı");
   else if (Math.abs(paid - v.amount) > 0.01) problems.push(`tutar farklı (belge ${paid.toFixed(2)}, sistem ${v.amount.toFixed(2)})`);
-  return { ok: problems.length === 0, problems, paid };
+  if (v.vat != null) {
+    const fixed = v.vat.toFixed(2), [i, dec] = fixed.split(".");
+    const forms = [`${i},${dec}`, `${i}.${dec}`, `${i.replace(/\B(?=(\d{3})+$)/g, ".")},${dec}`, `${i.replace(/\B(?=(\d{3})+$)/g, ",")}.${dec}`];
+    if (!forms.some((x) => new RegExp(String.raw`(^|[^\d.,])${x.replace(/[.]/g, "\\.")}($|[^\d])`).test(text))) problems.push(`KDV tutarı ${fixed} belgede yok`);
+  }
+  const docFold = fold(text);
+  for (const t of v.lineTitles ?? []) {
+    const words = t.split(/\s+/).map(fold).filter((w) => w.length >= 3);
+    if (words.length && words.filter((w) => docFold.includes(w)).length / words.length < 0.6) problems.push("ürün adı belgedekiyle uyuşmuyor");
+  }
+  return { ok: problems.length === 0, problems: [...new Set(problems)], paid };
 }
 
 // Tanı (yalnızca veritabanındaki rapora; herkese açık günlüğe değil): belge yapısı + tutar/toplam etiketlerinin çevresi, alıcı adının harfleri maskeli

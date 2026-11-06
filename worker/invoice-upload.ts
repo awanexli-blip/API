@@ -27,10 +27,19 @@ type Out = { belge_no: string | null; order_no: string | null; ok: boolean; reas
 const report: Out[] = [];
 
 const { data: rows, error } = await db.from("order_invoices")
-  .select("order_id, ettn, belge_no, amount, status, error, orders(marketplace, package_id, order_no, total, status, customer_name, order_lines(ty_discount))")
+  .select("order_id, ettn, belge_no, amount, vat, status, error, orders(marketplace, package_id, order_no, total, status, customer_name, order_lines(ty_discount, title, qty, unit_price, vat_rate, product_id))")
   .eq("status", "signed").order("belge_no");
 if (error) throw new Error(error.message);
 let list = (rows ?? []).filter((r: any) => r.orders?.marketplace === "trendyol");
+// Ürün KDV oranları (satırda yoksa)
+const vatOf = new Map<string, number>();
+{
+  const ids = [...new Set(list.flatMap((r: any) => (r.orders?.order_lines ?? []).map((l: any) => l.product_id)).filter(Boolean))] as string[];
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data } = await db.from("products").select("id, vat_rate").in("id", ids.slice(i, i + 150));
+    for (const p of data ?? []) if (p.vat_rate != null) vatOf.set(p.id, Number(p.vat_rate));
+  }
+}
 
 if (mode === "apply") {
   const { data: st } = await db.from("app_state").select("value").eq("key", "invoice_upload_report").maybeSingle();
@@ -69,9 +78,18 @@ try {
       const tyDisc = (o.order_lines ?? []).reduce((a: number, l: any) => a + (Number(l.ty_discount) || 0), 0);
       const expected = r2(Number(o.total) + tyDisc);
       if (Math.abs(Number(r.amount) - expected) > 0.01) throw new Error(`fatura tutarı ${Number(r.amount).toFixed(2)} ≠ sipariş ${expected.toFixed(2)}`);
+      // KDV: faturadaki tutar, satırın / ürünün kayıtlı oranıyla aynı olmalı (K, 06.11). Oran kayıtlı değilse karşılaştırılamaz: rapora yazılır, engellemez.
+      const lines: any[] = o.order_lines ?? [];
+      let expectedVat = 0, unknownRate = 0;
+      for (const l of lines) {
+        const rate = l.vat_rate != null ? Number(l.vat_rate) : vatOf.get(l.product_id) ?? null;
+        const gross = Number(l.qty) * Number(l.unit_price) + (Number(l.ty_discount) || 0);
+        if (rate == null) { unknownRate++; expectedVat += (gross * 20) / 120; } else expectedVat += (gross * rate) / (100 + rate);
+      }
+      if (r.vat != null && !unknownRate && Math.abs(Number(r.vat) - expectedVat) > 0.05) throw new Error(`KDV uyuşmuyor: faturada ${Number(r.vat).toFixed(2)}, ürün oranına göre ${expectedVat.toFixed(2)}`);
       // 2) GİB belgesi
       const html = await gib.invoiceHtml(r.ettn, true);
-      const v = verifyInvoice({ html, ettn: r.ettn, belgeNo: r.belge_no, orderNo: o.order_no ?? "", amount: Number(r.amount), customerName: o.customer_name });
+      const v = verifyInvoice({ html, ettn: r.ettn, belgeNo: r.belge_no, orderNo: o.order_no ?? "", amount: Number(r.amount), customerName: o.customer_name, vat: r.vat != null ? Number(r.vat) : null, lineTitles: lines.map((l) => String(l.title ?? "")) });
       // Tanı yalnızca rapora (veritabanı; günlüğe yazılmaz), ilk 3 başarısız belge
       if (!v.ok && report.filter((x) => x.diag).length < 3) out.diag = invoiceDiag(html, o.customer_name);
       if (!v.ok) throw new Error(`GİB belgesi: ${v.problems.join(", ")}`);
@@ -84,7 +102,7 @@ try {
       if (p.total == null || Math.abs(p.total - Number(o.total)) > 0.01) throw new Error(`Trendyol paket tutarı ${p.total ?? "?"} ≠ sistem ${Number(o.total).toFixed(2)}`);
       // 4) PDF
       const pdf = toPdf(html);
-      if (mode === "dry") { out.ok = true; out.result = `uygun (PDF ${Math.round(pdf.length / 1024)} KB${pk.length > 1 ? `, siparişte ${pk.length} paket` : ""})`; continue; }
+      if (mode === "dry") { out.ok = true; out.result = `uygun (PDF ${Math.round(pdf.length / 1024)} KB${pk.length > 1 ? `, siparişte ${pk.length} paket` : ""}${unknownRate ? ", KDV oranı kayıtlı değil: %20 kesilmiş, kontrol et" : ""})`; continue; }
       const u = await ty.uploadInvoice!(String(o.package_id), pdf, r.belge_no);
       await sleep(300);
       const now = new Date().toISOString();
@@ -108,7 +126,10 @@ const summary = { mode, at: new Date().toISOString(), total: report.length, ok: 
 const w = await db.from("app_state").upsert({ key: "invoice_upload_report", value: JSON.stringify(summary), updated_at: summary.at });
 if (w.error) console.error(`Rapor yazılamadı: ${w.error.message}`);
 console.log(JSON.stringify({ ...summary, rows: undefined }));
-for (const x of report) if (!x.ok) console.log(`${x.belge_no} / ${x.order_no}: ${x.reason}`);
+// Depo herkese açık: belge ve sipariş no günlüğe yazılmaz (K, 06.11); ayrıntı panelde (veritabanı raporu)
+const reasons = new Map<string, number>();
+for (const x of report) if (!x.ok) { const k = String(x.reason ?? "").replace(/\d[\d.,]*/g, "#"); reasons.set(k, (reasons.get(k) ?? 0) + 1); }
+for (const [k, n] of reasons) console.log(`${n} fatura: ${k}`);
 if (process.env.GITHUB_STEP_SUMMARY) {
-  appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Fatura yükleme (${mode === "dry" ? "deneme" : "gerçek"})\n\nToplam ${summary.total} · uygun ${summary.ok} · yüklendi ${uploaded} · zaten vardı ${already} · atlandı/hata ${failed}\n\n${report.filter((x) => !x.ok).map((x) => `- ${x.belge_no} / ${x.order_no}: ${x.reason}`).join("\n")}\n`);
+  appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Fatura yükleme (${mode === "dry" ? "deneme" : "gerçek"})\n\nToplam ${summary.total} · uygun ${summary.ok} · yüklendi ${uploaded} · zaten vardı ${already} · atlandı/hata ${failed}\n\n${[...reasons].map(([k, n]) => `- ${n} fatura: ${k}`).join("\n")}\n`);
 }

@@ -161,3 +161,13 @@ test("ürün adı: gerçek sipariş satırlarından uç durumlar", () => {
   assert.equal(invoiceItemName("® DUPLO® Yeşil Yapım Plakası 10460 - 1½+ Oyuncak Yapım Seti (1 Parça) 10460, one size"), "® DUPLO® Yeşil Yapım Plakası 10460 - 1½+ Oyuncak Yapım Seti (1 Parça)");
   assert.equal(invoiceItemName("TCX Gezer Merdane Islak Zemin Açık Eva Terlik Siyah"), "TCX Gezer Merdane Islak Zemin Açık Eva Terlik Siyah");
 });
+
+test("deneme: KDV tutarı ve ürün adı da belgede aranır (K, 06.11)", () => {
+  const html = "<div>ETTN ABC-123 GIB2026000000100 Sipariş 11765608190 AYSE KARA Mal Hizmet: Kadın Şık Elbise Krep Kumaş Hesaplanan KDV(%20) 26,67 Ödenecek Tutar 160,00 TL</div>";
+  const base = { html, ettn: "ABC-123", belgeNo: "GIB2026000000100", orderNo: "11765608190", amount: 160, customerName: "Ayşe Kara" };
+  assert.deepEqual(verifyInvoice({ ...base, vat: 26.67, lineTitles: ["Kadın Şık Elbise Krep Kumaş 2AB0A258A7"] }).problems, []);
+  assert.match(verifyInvoice({ ...base, vat: 14.55 }).problems.join(), /KDV tutarı/);
+  assert.match(verifyInvoice({ ...base, lineTitles: ["Çelik Termos Bardak Seti Siyah"] }).problems.join(), /ürün adı/);
+  assert.deepEqual(verifyInvoice(base).problems, [], "verilmezse aranmaz");
+});
+
