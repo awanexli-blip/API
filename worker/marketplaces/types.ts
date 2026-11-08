@@ -121,6 +121,8 @@ export interface Marketplace {
   updateAttributes?(items: { contentId: string; set: Record<string, string> }[]): Promise<BatchResult & { skipped: { contentId: string; reason: string }[]; sent: { contentId: string; changed: Record<string, string> }[] }>;
   /** İsteğe bağlı: günlük satış özeti (salt okunur; yalnızca toplamlar, müşteri verisi okunmaz/saklanmaz) */
   salesDaily?(fromMs: number, toMs: number): Promise<SalesDay[]>;
+  /** İsteğe bağlı: iade talepleri (Trendyol claims). Müşteri adı/adresi dönmez. */
+  fetchClaims?(fromMs: number, toMs: number): Promise<ClaimRow[]>;
   /** Siparişler (salt okunur, kişisel veri yok: yalnızca il). worker/core/orders.ts */
   fetchOrders?(fromMs: number, toMs: number): Promise<OrderIn[]>;
   /** Onaylı ürünün görsellerini değiştir (Trendyol content-bulk-update) */
@@ -153,3 +155,5 @@ export interface Marketplace {
 
 export interface CatalogMatch { asin: string; title: string; brand?: string; image?: string; by: "ean" | "keyword" }
 export interface RejectedUpdate { id: string; title?: string; description?: string; categoryId?: number; images?: string[] }
+
+export interface ClaimRow { id: string; order_no: string; at: string; title: string; barcode: string; qty: number; price: number; status: string; reason: string }

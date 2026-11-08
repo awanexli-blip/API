@@ -7,7 +7,7 @@ import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl, aliveImages } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
 import { descHashOf } from "../core/content-diff.ts";
-import type { BatchCheck, BatchResult, BuyboxInfo, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
+import type { ClaimRow, BatchCheck, BatchResult, BuyboxInfo, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
 
 // Ya hep ya hiç: seçenek grubunda gönderilemeyen varsa grubun diğer ürünleri de bu turda gönderilmez
 function dropPartialGroups(items: NewProduct[], res: BatchResult): Set<string> {
@@ -447,6 +447,25 @@ export function createTrendyol(): Marketplace {
         await sleep(500);
       }
       return res;
+    },
+
+    // İade talepleri (K, 06.11: panelde iadeler): yalnızca sipariş no, ürün, durum, neden; müşteri adı alınmaz. 14 günlük pencereler (Trendyol sınırı).
+    async fetchClaims(fromMs: number, toMs: number) {
+      const seen = new Map<string, ClaimRow>();
+      for (let s = fromMs; s < toMs; s += 14 * 86400000) {
+        const e = Math.min(toMs, s + 14 * 86400000 - 1);
+        for (let page = 0; page < 30; page++) {
+          const r = await tg(`/order/sellers/${SELLER_ID}/claims?startDate=${Math.floor(s)}&endDate=${Math.floor(e)}&page=${page}&size=200`);
+          for (const c of r.content ?? []) (c.items ?? []).forEach((it: any, i: number) => {
+            const ci: any[] = it.claimItems ?? [];
+            const uniq = (x: (v: any) => unknown) => [...new Set(ci.map(x).filter(Boolean))].join(" / ");
+            seen.set(`${c.id}:${i}`, { id: `${c.id}:${i}`, order_no: String(c.orderNumber ?? ""), at: new Date(Number(c.claimDate)).toISOString(), title: String(it.orderLine?.productName ?? "").slice(0, 120), barcode: String(it.orderLine?.barcode ?? ""), qty: ci.length || 1, price: Number(it.orderLine?.price ?? 0), status: uniq((v) => v.claimItemStatus?.name), reason: uniq((v) => v.customerClaimItemReason?.name ?? v.trendyolClaimItemReason?.name) });
+          });
+          await sleep(300);
+          if (page + 1 >= Number(r.totalPages ?? 0)) break;
+        }
+      }
+      return [...seen.values()].sort((a, b) => b.at.localeCompare(a.at));
     },
 
     // Günlük satış özeti: sipariş paketleri ve iade talepleri (14 günlük pencereler, Trendyol sınırı). Yalnızca sayı ve tutar okunur;

@@ -38,7 +38,19 @@ export async function GET(req: NextRequest) {
   let upload: any = null, audit: any = null;
   try { upload = rep?.data?.value ? JSON.parse(rep.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
   try { audit = aud?.data?.value ? JSON.parse(aud.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
-  return NextResponse.json({ rows, counts, upload, audit, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS), uploadReady: !!(process.env.GH_TOKEN && process.env.GH_REPO) });
+  // İadeler: Trendyol talepleri (senkron yazar) + bağlı fatura; iptal edilmiş ama faturası kesilmiş siparişler; K'nın işaretleri
+  const retState = await db.from("app_state").select("key, value").in("key", ["returns_report:trendyol", "returns_marks"]).then((r: any) => r.data ?? [], () => []);
+  const stateOf = (k: string) => { try { const v = retState.find((x: any) => x.key === k)?.value; return v ? JSON.parse(v) : null; } catch { return null; } };
+  const retRep = stateOf("returns_report:trendyol"), marks: Record<string, any> = stateOf("returns_marks") ?? {};
+  const claims: any[] = retRep?.rows ?? [];
+  const nos = [...new Set(claims.map((c) => c.order_no).filter(Boolean))];
+  const invByNo = new Map<string, any>();
+  if (nos.length) { const { data } = await db.from("orders").select("order_no, order_invoices(status, belge_no, amount, signed_at, created_at)").in("order_no", nos); for (const o of data ?? []) { const i: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices; if (i) invByNo.set(o.order_no, i); } }
+  const { data: cancelledRows } = await db.from("orders").select("id, order_no, marketplace, total, ordered_at, order_invoices!inner(status, belge_no, amount, signed_at, created_at)").eq("status", "cancelled").in("order_invoices.status", ["signed", "uploaded"]);
+  const returns = { at: retRep?.at ?? null, marks,
+    rows: claims.map((c) => ({ ...c, invoice: invByNo.get(c.order_no) ?? null })),
+    cancelled: (cancelledRows ?? []).map((o: any) => ({ id: `iptal:${o.order_no}`, order_no: o.order_no, marketplace: o.marketplace, at: o.ordered_at, title: "Sipariş iptal, fatura kesilmiş", price: Number(o.total), status: "İptal", reason: "", invoice: Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices })) };
+  return NextResponse.json({ rows, counts, upload, audit, returns, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS), uploadReady: !!(process.env.GH_TOKEN && process.env.GH_REPO) });
 }
 
 export async function POST(req: NextRequest) {
@@ -52,6 +64,19 @@ export async function POST(req: NextRequest) {
     const key = b.report === "audit" ? "invoice_audit_report" : b.report === "upload" ? "invoice_upload_report" : null;
     if (!key) return bad("Geçersiz rapor");
     const { error } = await db.from("app_state").delete().eq("key", key);
+    return error ? bad(error.message) : NextResponse.json({ ok: true });
+  }
+
+  // İade / iptal için K'nın yaptığı işlem kaydı (yalnızca işaret; GİB'e ve Trendyol'a gitmez)
+  if (b.action === "mark_return") {
+    if (typeof b.id !== "string" || !b.id) return bad("id gerekli");
+    const { data: st } = await db.from("app_state").select("value").eq("key", "returns_marks").maybeSingle();
+    let m: Record<string, any> = {};
+    try { m = st?.value ? JSON.parse(st.value) : {}; } catch { return bad("İşaret kaydı okunamadı"); }
+    if (b.doc == null) delete m[b.id];
+    else if (["iptal", "gider_pusulasi", "gerekmiyor"].includes(b.doc)) m[b.id] = { doc: b.doc, at: now };
+    else return bad("Geçersiz işlem");
+    const { error } = await db.from("app_state").upsert({ key: "returns_marks", value: JSON.stringify(m), updated_at: now });
     return error ? bad(error.message) : NextResponse.json({ ok: true });
   }
 

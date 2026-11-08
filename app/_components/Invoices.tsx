@@ -8,7 +8,12 @@ import { tl, when, type Api, type Notify, type Row } from "./shared";
 // Ekran (K, 06.11 "daha kullanışlı"): üstte tek "sıradaki adım", yapılacak sayıları, işe göre sekmeler; seyrek araçlar "Diğer araçlar"da.
 const PORTAL_URL = "https://earsivportal.efatura.gov.tr/intragiris.html";
 const IST: Record<string, [string, string]> = { none: ["Kesilmedi", ""], creating: ["Oluşturuluyor", "info"], draft: ["İmza bekliyor", "info"], signed: ["Kesildi", "ok"], uploaded: ["Trendyol'a yüklendi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "partial"] };
-type Tab = "todo" | "sign" | "upload" | "warn" | "all" | "hb";
+type Tab = "todo" | "sign" | "upload" | "warn" | "all" | "hb" | "ret";
+const DOC: Record<string, string> = { iptal: "Portalda iptal edildi", gider_pusulasi: "Gider pusulası kesildi", gerekmiyor: "Belge gerekmiyor" };
+// Portal iptal süresi: kaynaklar 7-8 gün diyor, güvenli taraf 7 (K, 06.11). Kesin karar portalın kendisi: süre dolmuşsa kabul etmez.
+const CANCEL_DAYS = 7;
+const isDone = (st: string) => /accepted|kabul/i.test(st);
+const isDropped = (st: string) => /cancelled|iptal edildi|reject/i.test(st);
 const dup = (r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "");
 const inTab: Record<Tab, (r: Row) => boolean> = {
   todo: (r) => !r.invoice || ["error", "deleted", "creating"].includes(r.invoice.status),
@@ -17,8 +22,9 @@ const inTab: Record<Tab, (r: Row) => boolean> = {
   warn: (r) => !!r.invoice?.error,
   all: () => true,
   hb: (r) => r.marketplace === "hepsiburada" && ["signed", "uploaded"].includes(r.invoice?.status),
+  ret: () => false,
 };
-const EMPTY: Record<Tab, string> = { todo: "Fatura kesilecek sipariş yok.", sign: "İmza bekleyen taslak yok.", upload: "Trendyol'a yüklenecek fatura yok.", warn: "Uyarı yok.", all: "Son 60 günde sipariş yok.", hb: "Hepsiburada faturası yok." };
+const EMPTY: Record<Tab, string> = { todo: "Fatura kesilecek sipariş yok.", sign: "İmza bekleyen taslak yok.", upload: "Trendyol'a yüklenecek fatura yok.", warn: "Uyarı yok.", all: "Son 60 günde sipariş yok.", hb: "Hepsiburada faturası yok.", ret: "İade yok." };
 const daysAgo = (t?: string) => (t ? Math.floor((Date.now() - Date.parse(t)) / 86400000) : 0);
 const oldTag = (t?: string) => (daysAgo(t) >= 1 ? ` (${daysAgo(t)} gün önce, eski)` : "");
 
@@ -34,7 +40,10 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   useEffect(() => { load(); return () => { if (timer.current) clearInterval(timer.current); }; }, [load]);
 
   const all: Row[] = d?.rows ?? [];
-  const n = (t: Tab) => all.filter(inTab[t]).length;
+  const ret = d?.returns;
+  const retAll: Row[] = [...(ret?.cancelled ?? []), ...(ret?.rows ?? [])];
+  const retOpen = retAll.filter((r) => !ret?.marks?.[r.id] && !isDropped(String(r.status)));
+  const n = (t: Tab) => (t === "ret" ? retOpen.length : all.filter(inTab[t]).length);
   const selectable = (r: Row) => r.has_customer && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
   // Kullanıcı sekme seçmediyse yapılacak iş olan ilk sekme
   const cur: Tab = tab ?? (n("todo") ? "todo" : n("sign") ? "sign" : n("upload") ? "upload" : "todo");
@@ -133,6 +142,10 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     if (!confirm("Bu rapor ekrandan kaldırılacak. Faturalara, GİB portalına ve Trendyol'a dokunulmaz. Devam?")) return;
     try { await post({ action: "clear_report", report }); await load(); } catch (e: any) { notify("err", e.message); }
   }
+  async function markReturn(id: string, doc: string | null) {
+    if (doc && !confirm(`"${DOC[doc]}" olarak işaretlenecek. Bu yalnızca panel kaydıdır; GİB'de ve Trendyol'da işlem yapmaz. Devam?`)) return;
+    try { await post({ action: "mark_return", id, doc }); await load(); } catch (e: any) { notify("err", e.message); }
+  }
   async function reset(id: string) {
     try { await post({ action: "reset", order_id: id }); await load(); } catch (e: any) { notify("err", e.message); }
   }
@@ -174,11 +187,12 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
         {stat("sign", "İmza bekliyor", "Portalda imzala")}
         {stat("upload", "Yüklenecek", "Trendyol'a gönder")}
         {stat("warn", "Uyarı", "Kontrol gerekiyor", "var(--bad)")}
+        {stat("ret", "İade / iptal", "Belgesi bekleyen", "var(--warn)")}
       </div>
 
       <div className="card">
         <div className="tabs" role="tablist">
-          {([["todo", "Kesilecek"], ["sign", "İmza bekliyor"], ["upload", "Yüklenecek"], ["warn", "Uyarı"], ["hb", "Hepsiburada"], ["all", "Tümü (60 gün)"]] as [Tab, string][]).map(([t, label]) => (
+          {([["todo", "Kesilecek"], ["sign", "İmza bekliyor"], ["upload", "Yüklenecek"], ["warn", "Uyarı"], ["ret", "İadeler"], ["hb", "Hepsiburada"], ["all", "Tümü (60 gün)"]] as [Tab, string][]).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={cur === t} className="tab" onClick={() => setTab(t)}>{label} ({n(t)})</button>
           ))}
         </div>
@@ -204,7 +218,45 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
         </div>}
         {cur === "hb" && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Hepsiburada faturaları buradan yüklenmez: PDF'i açıp Hepsiburada paneline elle yükle.</p>}
 
-        {rows.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{EMPTY[cur]}</p> : <div className="scroll"><table className="cards">
+        {cur === "ret" && <>
+          <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+            Trendyol iade talepleri ve iptal edilmiş ama faturası kesilmiş siparişler{ret?.at ? ` (son okuma ${when(ret.at)})` : ""}. Hepsiburada iadeleri burada yok. Fatura {CANCEL_DAYS} günden yeniyse portaldan iptal edilebilir görünür; kesin karar portalındır. Süre geçtiyse belgeyi mali müşavirinle netleştir. Yaptığın işlemi buradan işaretle: işaret yalnızca panel kaydıdır, GİB'de ve Trendyol'da bir şey yapmaz.
+          </p>
+          <div className="row" style={{ gap: 8, marginBottom: 10 }}><a className="btn" href={PORTAL_URL} target="_blank" rel="noreferrer">e-Arşiv portalını aç</a></div>
+          {retAll.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{ret?.at ? EMPTY.ret : "İade listesi henüz gelmedi: bir sonraki Trendyol senkronundan sonra görünür."}</p> : <div className="scroll"><table className="cards">
+            <thead><tr><th>Sipariş</th><th>Talep</th><th>Ürün</th><th className="n">Tutar</th><th>Fatura</th><th>Belge</th></tr></thead>
+            <tbody>{retAll.map((r) => {
+              const inv = r.invoice, mark = ret?.marks?.[r.id];
+              const days = inv ? daysAgo(inv.signed_at ?? inv.created_at) : null;
+              const dropped = isDropped(String(r.status)), done = isDone(String(r.status)) || r.status === "İptal";
+              const live = inv && ["signed", "uploaded"].includes(inv.status);
+              return (
+                <tr key={r.id} style={dropped ? { opacity: 0.55 } : undefined}>
+                  <td data-label="Sipariş">{r.order_no}<br /><span className="muted" style={{ fontSize: 12 }}>{r.barcode ?? r.marketplace}</span></td>
+                  <td data-label="Talep">{when(r.at)}<br /><span className="muted" style={{ fontSize: 12 }}>{r.reason}</span></td>
+                  <td data-label="Ürün" style={{ fontSize: 13 }}>{r.title}{r.qty > 1 ? ` (${r.qty} adet)` : ""}<div><span className={`pill ${dropped ? "" : done ? "ok" : "partial"}`}>{dropped ? "Talep iptal" : done ? (r.status === "İptal" ? "Sipariş iptal" : "İade kabul") : "İşlem bekliyor"}</span></div></td>
+                  <td data-label="Tutar" className="n" style={{ whiteSpace: "nowrap" }}>{tl(Number(r.price))}</td>
+                  <td data-label="Fatura">{inv ? <>{inv.belge_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{tl(Number(inv.amount))} · {days} gün önce</span></> : <span className="muted">Fatura kaydı yok</span>}</td>
+                  <td data-label="Belge">
+                    {mark ? <><span className="pill ok">{DOC[mark.doc] ?? mark.doc}</span><div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, null)}>Geri al</button></div></>
+                      : dropped ? <span className="muted" style={{ fontSize: 12 }}>Gerekmiyor</span>
+                      : <>
+                        {live && <div style={{ fontSize: 12, color: days! <= CANCEL_DAYS ? "var(--ok)" : "var(--warn)" }}>{days! <= CANCEL_DAYS ? `Portaldan iptal edilebilir (${CANCEL_DAYS - days!} gün kaldı)` : "İptal süresi geçmiş görünüyor"}</div>}
+                        {!done && <div className="muted" style={{ fontSize: 12 }}>Trendyol kararı bekleniyor</div>}
+                        <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                          {live && days! <= CANCEL_DAYS && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "iptal")}>İptal ettim</button>}
+                          {done && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "gider_pusulasi")}>Gider pusulası kestim</button>}
+                          {done && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "gerekmiyor")}>Belge gerekmiyor</button>}
+                        </div>
+                      </>}
+                  </td>
+                </tr>
+              );
+            })}</tbody>
+          </table></div>}
+        </>}
+
+        {cur === "ret" ? null : rows.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{EMPTY[cur]}</p> : <div className="scroll"><table className="cards">
           <thead><tr>
             {cur === "todo" && <th aria-label="Seç"></th>}
             <th>Sipariş</th><th>Tarih</th><th>Ürünler</th><th className="n">Tutar</th><th>Fatura</th>

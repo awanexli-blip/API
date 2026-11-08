@@ -461,6 +461,15 @@ async function main() {
       summary.rejectFixes = { rejected: rejected.length, ...stat, resubmitted: sent, newBannedWords: [...newWords] };
     }
   }
+  // İade talepleri (salt okunur; K, 06.11): panel Faturalar > İadeler. Müşteri adı yazılmaz.
+  if (!lite && mp.fetchClaims) {
+    try {
+      const claims = await mp.fetchClaims(Date.now() - 45 * 86400000, Date.now());
+      const at = new Date().toISOString();
+      await db.from("app_state").upsert({ key: `returns_report:${marketplaceId}`, value: JSON.stringify({ at, rows: claims }), updated_at: at });
+      summary.returns = claims.length;
+    } catch (e: any) { console.error("iade talepleri okunamadı:", String(e?.message ?? e).slice(0, 200)); }
+  }
   // Günlük satış özeti (saatte bir, son 35 gün; salt okunur): fiyat değişikliğinin satışa etkisi panelde ölçülür
   if (!lite && mp.salesDaily && (new Date().getUTCMinutes() < 15 || process.env.SALES_FULL === "1")) {
     try {
