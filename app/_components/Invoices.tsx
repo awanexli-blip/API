@@ -166,6 +166,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     : n("upload") ? { text: dryFresh && d.upload?.ok ? `Son denemede ${d.upload.ok} fatura uygun çıktı, yükleyebilirsin.` : `${n("upload")} kesilmiş fatura Trendyol'a yüklenmeyi bekliyor. Önce deneme: hiçbir şey yüklenmez, her fatura tek tek karşılaştırılır.`,
         act: dryFresh && d.upload?.ok ? <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload.ok})</button> : <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("dry")}>Deneme başlat</button> }
     : n("todo") ? { text: `${n("todo")} siparişin faturası kesilmedi. Aşağıdan seç, taslak oluştur.`, act: null }
+    : retOpen.length ? { text: `${retOpen.length} iade / iptal için belge durumu bekliyor. İadeler sekmesinden bak.`, act: <button className="btn primary" onClick={() => setTab("ret")}>İadeleri aç</button> }
     : { text: "Her şey tamam, bekleyen fatura işi yok.", tone: "var(--ok)", act: null };
 
   return (
