@@ -11,6 +11,7 @@ import { contentChanges, fpOf, type ContentFp } from "./content-diff.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
+import { genderOf } from "./attr-infer.ts";
 import { trendyolRuleBlock, inScopeAny, inScopeForSend, vatSuspect, toyMismatch, adultMismatch } from "../../lib/scope.ts";
 
 export type DbCtx = {
@@ -64,6 +65,7 @@ export function pickCodeWinner(list: { id: string; sku: string; cost: any; stock
 }
 const supplierOf = (source: string) => String(source ?? "").replace(/^xml:/, "");
 // Pazaryerindeki anahtar: BayilikXML ürünleri mağaza kuralıyla "OS13-" + SKU, diğerleri varyant barkodu
+const HB_MALE_JEWELRY: Record<string, { id: string; name: string }> = { "60001608": { id: "60004719", name: "Küpe" }, "60001609": { id: "60004718", name: "Kolye" }, "60001611": { id: "60004729", name: "Bileklik" }, "60001620": { id: "60004717", name: "Yüzük" } };
 export const listingKeyOf = (source: string, variant: { sku: string; barcode: string | null }) =>
   source === "xml:bayilik" ? `OS13-${variant.sku}` : variant.barcode ?? "";
 
@@ -329,8 +331,13 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           : (pred && pred.level === "yuksek" ? pred : null) ?? strongPath ?? (pred && pred.level !== "dusuk" ? pred : null) ?? (leaf && leaf.score >= 10 ? leaf : null) ?? (pred && pred.confidence >= 0.5 ? pred : null) ?? path ?? leaf ?? null;
         // Elle seçilen kategorinin adı (formda saklanır): komisyon ipucu (HB EK.4) ve kayıt
         const manualName = manualCat ? String(p.attributes?.[`${ctx.mp.label} kategori adı`] ?? "").split(" > ").pop() || null : null;
-        const catName = manualName ?? pick?.categoryName ?? null;
-        const categoryId = manualCat ?? ctx.catMap.get(p.category)?.category_id ?? pick?.categoryId ?? null;
+        // Eşlemeden gelen kategorinin adı da komisyon ipucu olur (K, 10.11; HB EK.4 adla bakar) ve satış kısıtı denetimine girer
+        const mapName = !manualCat ? (ctx.catMap.get(p.category)?.category_name ?? null) : null;
+        const baseCat = manualCat ?? ctx.catMap.get(p.category)?.category_id ?? pick?.categoryId ?? null;
+        // Hepsiburada takı eşlemesi Kadın dalına gider; başlığı açıkça erkek olan ürün Erkek dalına
+        const maleCat = ctx.marketplaceId === "hepsiburada" && !manualCat && baseCat != null && genderOf(p.title) === "Erkek" ? HB_MALE_JEWELRY[String(baseCat)] : undefined;
+        const categoryId = maleCat?.id ?? baseCat;
+        const catName = maleCat?.name ?? manualName ?? mapName ?? pick?.categoryName ?? null;
         // Çok varyantlı ürün (beden/renk): varyantlar pazaryerinde tek ürün grubu; "aynı başlık" koruması yalnızca ilk varyantta bakılır
         const vlist = [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position);
         const multi = vlist.length > 1;
@@ -388,7 +395,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           }
           if (String(p.source ?? "").startsWith("xml:") && !supBrand.has(p.source)) { fail(key, p, v, `Tedarikçinin pazaryeri markası ayarlanmadı (Ürünler → Tedarikçiler → "${String(p.source).slice(4)}" → Pazaryeri markası)`); continue; }
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
-          const pr = priceFor(ctx, p, v, null, avail, manualName ?? (pick && pick !== pred && String(pick.categoryId) === String(categoryId) ? pick.categoryName : null));
+          const pr = priceFor(ctx, p, v, null, avail, manualName ?? maleCat?.name ?? mapName ?? (pick && pick !== pred && String(pick.categoryId) === String(categoryId) ? pick.categoryName : null));
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
           const np: NewProduct = {
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
