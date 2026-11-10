@@ -9,6 +9,19 @@ export const dynamic = "force-dynamic";
 const STATUSES = ["ready", "approved", "rejected", "skipped"];
 const missing = (m: string) => /product_descriptions|desc_counts/.test(m);
 
+// desc_counts 128 bin ürünü tarar (5-11 sn). Durum sayıları ayrı ve hızlı alınır; yavaş iki sayı (uygun ürün, başlık kopyası) arka planda hesaplanıp 10 dk saklanır, ekranı bekletmez.
+let slow: { at: number; v: Record<string, number> } | null = null;
+let slowRun: Promise<void> | null = null;
+async function slowCounts(db: ReturnType<typeof admin>) {
+  if (slow && Date.now() - slow.at < 600_000) return slow.v;
+  slowRun ??= Promise.resolve(db.rpc("desc_counts"))
+    .then(({ data, error }: any) => { if (!error && data) slow = { at: Date.now(), v: { eligible: data.eligible, title_only: data.title_only } }; })
+    .catch(() => {})
+    .finally(() => { slowRun = null; });
+  await Promise.race([slowRun, new Promise((r) => setTimeout(r, 1500))]);
+  return slow?.v ?? {};
+}
+
 export async function GET(req: NextRequest) {
   if (!(await requireRole(req, "editor"))) return forbidden("editor");
   const sp = req.nextUrl.searchParams;
@@ -16,14 +29,17 @@ export async function GET(req: NextRequest) {
   if (!STATUSES.includes(status)) return bad("Geçersiz filtre");
   const page = Math.max(0, Math.min(500, Number(sp.get("page") ?? 0) || 0));
   const db = admin();
-  const [cnt, ls] = await Promise.all([
-    db.rpc("desc_counts"),
+  const n = (s: string) => db.from("product_descriptions").select("product_id", { count: "exact", head: true }).eq("status", s);
+  const [ls, ready, approved, rejected, skipped, pushed, big] = await Promise.all([
     db.from("product_descriptions").select("product_id, status, draft, original, reason, checks, model, pushed, updated_at, decided_by, products(title, sku, source)")
       .eq("status", status).order("updated_at", { ascending: false }).range(page * 25, page * 25 + 24),
+    n("ready"), n("approved"), n("rejected"), n("skipped"), n("approved").not("pushed->trendyol", "is", null),
+    slowCounts(db),
   ]);
-  if (cnt.error) return missing(cnt.error.message) ? NextResponse.json({ missing: true }) : bad(cnt.error.message);
-  if (ls.error) return bad(ls.error.message);
-  return NextResponse.json({ counts: cnt.data ?? {}, items: ls.data ?? [], page });
+  // Listenin hata metni dolu gelir; head:true sayım hatalarında gövde olmaz
+  if (ls.error) return missing(ls.error.message) ? NextResponse.json({ missing: true }) : bad(ls.error.message);
+  if ([ready, approved, rejected, skipped, pushed].some((x) => x.error)) return bad("Açıklama sayıları alınamadı, yeniden dene");
+  return NextResponse.json({ counts: { ...big, ready: ready.count ?? 0, approved: approved.count ?? 0, rejected: rejected.count ?? 0, skipped: skipped.count ?? 0, pushed: pushed.count ?? 0 }, items: ls.data ?? [], page });
 }
 
 // { action: "approve" | "reject" | "reopen", ids } · { action: "approve_all_ready", expect } · { action: "edit", id, draft }

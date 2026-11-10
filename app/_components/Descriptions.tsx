@@ -14,7 +14,8 @@ export default function Descriptions({ api, notify, isAdmin }: { api: Api; notif
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [edit, setEdit] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const load = useCallback(() => api(`/api/descriptions?status=${tab}&page=${page}`).then((x) => { setD(x); setSel(new Set()); }).catch((e) => notify("err", e.message)), [api, notify, tab, page]);
+  const [loadErr, setLoadErr] = useState("");
+  const load = useCallback(() => api(`/api/descriptions?status=${tab}&page=${page}`).then((x) => { setD(x); setSel(new Set()); setLoadErr(""); }).catch((e) => { setLoadErr(e.message); notify("err", e.message); }), [api, notify, tab, page]);
   useEffect(() => { load(); }, [load]);
 
   async function act(body: Row, msg: string) {
@@ -23,21 +24,23 @@ export default function Descriptions({ api, notify, isAdmin }: { api: Api; notif
     catch (e: any) { notify("err", e.message); } finally { setBusy(false); }
   }
 
-  if (!d) return <p className="muted">Yükleniyor...</p>;
+  if (!d) return loadErr
+    ? <div className="card"><h2 style={{ marginTop: 0 }}>Açıklamalar</h2><p role="alert">Liste yüklenemedi: {loadErr}</p><button className="btn primary" onClick={() => { setLoadErr(""); load(); }}>Yeniden dene</button></div>
+    : <p className="muted">Yükleniyor...</p>;
   if (d.missing) return <div className="card"><h2>Açıklamalar</h2><p>Veritabanında tablo yok: <code>supabase/migrations/067_product_descriptions.sql</code> SQL Editor'de çalıştırılmalı.</p></div>;
   const c = d.counts ?? {};
   const items: Row[] = d.items ?? [];
   return (
     <>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Açıklamalar (yapay zekâ)</h2>
+        <h2 style={{ marginTop: 0 }}>Açıklamalar</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
           Yapay zekâ tedarikçinin açıklamasını yalnızca metindeki bilgilerle düzeltir: yazım, düzen, madde listesi; tedarikçi kodu, iletişim, fiyat/kargo sözleri çıkar.
           Kaynakta olmayan sayı, model kodu, iddia (orijinal, garanti, su geçirmez...) ya da marka geçerse, ya da ikinci doğrulama dayanaksız tek bir ifade bulursa taslak yazılmaz.
           Onaylanan açıklama Trendyol'daki ilana bir sonraki senkronda gider (ilk turlarda en fazla 20 ilan) ve yeni gönderimlerde kullanılır. Tedarikçi metni değişmez.
         </p>
         <div className="row" style={{ gap: 16, flexWrap: "wrap", fontSize: 14 }}>
-          <span>Uygun ürün: <b>{Number(c.eligible ?? 0).toLocaleString("tr-TR")}</b></span>
+          <span>Uygun ürün: <b>{c.eligible == null ? "hesaplanıyor" : Number(c.eligible).toLocaleString("tr-TR")}</b></span>
           <span>Onay bekleyen: <b>{c.ready ?? 0}</b></span>
           <span>Onaylanan: <b>{c.approved ?? 0}</b> (Trendyol'a giden {c.pushed ?? 0})</span>
           <span>Yazılamayan: <b>{c.skipped ?? 0}</b></span>
