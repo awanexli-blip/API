@@ -23,21 +23,37 @@ export async function GET(req: NextRequest) {
   const sort = sp.get("sort") ?? "";
   const category = (sp.get("category") ?? "").trim().replace(/[%,()*]/g, " ").slice(0, 100);
 
-  let query = admin()
-    .from("products")
-    .select(`id, sku, title, brand, category, status, cost_price, currency, vat_rate, updated_at, source, product_variants${stock ? "!inner" : ""}(stock, reserved), product_images(url, position), marketplace_listings(marketplace, status, price, calc_price, calc_net, commission)`, { count: q || category || stock || source || status ? "exact" : "estimated" }) // filtresiz tam sayım 43 bin ürün: tahmini yeter
+  const db = admin();
+  const filters = (q0: any) => {
+    let x = q0;
+    if (status && (STATUSES as readonly string[]).includes(status)) x = x.eq("status", status);
+    if (q) x = x.or(`title.ilike.%${q}%,sku.ilike.%${q}%`);
+    if (source) x = x.eq("source", source);
+    if (category) x = x.ilike("category", `%${category}%`);
+    // Stok filtresi varyant üzerinden (tek varyantlı ürünlerde tam, çok varyantlıda "en az bir varyant")
+    if (stock === "in") x = x.gt("product_variants.stock", 0);
+    if (stock === "out") x = x.eq("product_variants.stock", 0);
+    return x;
+  };
+  // Önce yalnızca kimlikler, sonra o sayfanın ayrıntısı: görsel/ilan birleştirmesi atlanan satırlarda da çalıştığı için ileri sayfalar 17-50 sn sürüyordu (K, 10.11)
+  const idq = filters(db.from("products").select(stock ? "id, product_variants!inner(stock)" : "id", { count: q || category || stock || source || status ? "exact" : "estimated" })) // filtresiz tam sayım: tahmini yeter
     .order(SORTS[sort]?.[0] ?? "updated_at", { ascending: SORTS[sort]?.[1] ?? false, nullsFirst: false })
     .range(page * size, page * size + size - 1);
-  if (status && (STATUSES as readonly string[]).includes(status)) query = query.eq("status", status);
-  if (q) query = query.or(`title.ilike.%${q}%,sku.ilike.%${q}%`);
-  if (source) query = query.eq("source", source);
-  if (category) query = query.ilike("category", `%${category}%`);
-  // Stok filtresi varyant üzerinden (tek varyantlı ürünlerde tam, çok varyantlıda "en az bir varyant")
-  if (stock === "in") query = query.gt("product_variants.stock", 0);
-  if (stock === "out") query = query.eq("product_variants.stock", 0);
-
-  const { data, count, error } = await query;
+  const { data: idRows, count, error: idErr } = await idq;
+  // Listenin sonundan ileri sayfa (ürün azaldı ya da filtre değişti): hata değil, boş sayfa; ekran son sayfaya döner
+  if (idErr?.code === "PGRST103") return NextResponse.json({ rows: [], total: Number(String(idErr.details ?? "").match(/only (\d+) rows/)?.[1] ?? 0), page, size });
+  if (idErr) return dbError(idErr);
+  const ids: string[] = (idRows ?? []).map((r: any) => r.id);
+  if (!ids.length) return NextResponse.json({ rows: [], total: count ?? 0, page, size });
+  let detail = db.from("products")
+    .select(`id, sku, title, brand, category, status, cost_price, currency, vat_rate, updated_at, source, product_variants${stock ? "!inner" : ""}(stock, reserved), product_images(url, position), marketplace_listings(marketplace, status, price, calc_price, calc_net, commission)`)
+    .in("id", ids);
+  if (stock === "in") detail = detail.gt("product_variants.stock", 0);
+  if (stock === "out") detail = detail.eq("product_variants.stock", 0);
+  const { data: found, error } = await detail;
   if (error) return dbError(error);
+  const pos = new Map(ids.map((id, n) => [id, n]));
+  const data = [...(found ?? [])].sort((a: any, b: any) => pos.get(a.id)! - pos.get(b.id)!);
   const rows = (data ?? []).map((p: any) => ({
     id: p.id, sku: p.sku, title: p.title, brand: p.brand, category: p.category, status: p.status,
     cost_price: p.cost_price, currency: p.currency, vat_rate: p.vat_rate, updated_at: p.updated_at, source: p.source,

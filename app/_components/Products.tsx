@@ -209,10 +209,18 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
   const [pricing, setPricing] = useState<{ s: Row; rules: PricingRule[] } | null>(null);
   useEffect(() => { Promise.all([api("/api/settings?mp=trendyol"), api("/api/pricing-rules?mp=trendyol")]).then(([s, rules]) => setPricing({ s, rules })).catch(() => {}); }, [api]);
 
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
     try { sessionStorage.setItem("productFilters", JSON.stringify({ q, status, source, stock, sort })); } catch {}
     const p = new URLSearchParams({ page: String(page), size: view === "grid" ? "24" : "25", sort, ...(q ? { q } : {}), ...(status ? { status } : {}), ...(source ? { source } : {}), ...(stock ? { stock } : {}) });
-    try { setRes(await api(`/api/products?${p}`)); } catch (e: any) { notify("err", e.message); }
+    const n = ++loadSeq.current;
+    try {
+      const r = await api(`/api/products?${p}`);
+      if (n !== loadSeq.current) return; // filtre/sayfa değişti: geç gelen eski yanıt ekrana yazılmasın
+      const last = Math.max(0, Math.ceil(Number(r.total) / Number(r.size)) - 1);
+      if (!r.rows.length && page > 0 && last !== page) { setPage(last); return; }
+      setRes(r);
+    } catch (e: any) { if (n === loadSeq.current) notify("err", e.message); }
   }, [api, notify, page, q, status, source, stock, sort, view]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   useEffect(() => { setSel(new Set()); }, [q, status, source, stock, page]);
