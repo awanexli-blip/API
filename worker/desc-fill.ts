@@ -3,6 +3,7 @@
 //   node --experimental-strip-types worker/desc-fill.ts          yazmaz, sayar
 //   node --experimental-strip-types worker/desc-fill.ts --apply  product_descriptions'a yazar (var olana dokunmaz)
 // Sunucu veritabanı için trentakip-vps ile. Müşteri verisi okumaz.
+import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { env, chunk } from "./core/util.ts";
 import { phoneModelOf } from "./core/attr-infer.ts";
@@ -40,7 +41,7 @@ if (process.argv[1]?.endsWith("desc-fill.ts")) {
       if (!(p.product_variants ?? []).some((v: any) => Number(v.stock ?? 0) - Number(v.reserved ?? 0) > 0)) continue;
       const draft = draftFromTitle(p.title, p.category);
       if (!draft) continue;
-      out.push({ product_id: p.id, status: "ready", draft, original: String(p.description ?? ""), reason: "Açıklama eksikti: ürün başlığından kurallı taslak", model: "kural-baslik", checks: {}, updated_at: new Date().toISOString() });
+      out.push({ product_id: p.id, source_hash: createHash("md5").update(`${p.title ?? ""}|${p.description ?? ""}`).digest("hex"), status: "ready", draft, original: String(p.description ?? ""), reason: "Açıklama eksikti: ürün başlığından kurallı taslak", model: "kural-baslik", checks: {}, updated_at: new Date().toISOString() });
       const k = clean(String(p.category).split(/>{1,3}/).pop()); by.set(k, (by.get(k) ?? 0) + 1);
     }
   }
