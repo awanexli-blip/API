@@ -155,11 +155,40 @@ export const isElectric = (title: string, description = "", category = "") => EL
 const ELECTRIC_ATTR = /^(voltaj|frekans|gerilim|garanti süresi|garanti tipi)$/;
 export const isElectricAttr = (name: string) => ELECTRIC_ATTR.test(lo(name).trim());
 
+// Telefon modeli (K, 10.11: Hepsiburada kılıf ürünleri; alan serbest metin): başlıktaki marka + model. Sayı içermeyen ya da marka yoksa boş (uydurma yok).
+const PHONE_BRAND = /(?<![\p{L}\d])(iphone|samsung|galaxy|xiaomi|redmi|poco|vivo|oppo|realme|huawei|honor|tecno|infinix|general mobile|omix|reeder|nokia|oneplus|pixel|tcl|casper)(?![\p{L}])/iu;
+const PHONE_TOKEN = /^(?:[a-z]{0,3}\d{1,4}[a-z+]{0,3}|pro|max|plus|mini|ultra|fe|lite|note|edge|neo|se|air|5g|4g|prime|galaxy|reno|spark|camon|pova|hot|smart|zero|magic|nova|mate|redmi|poco|gm|gt|go|play|power|find|flip|fold|[escatx])$/i;
+export function phoneModelOf(title: string): string | null {
+  const t = String(title ?? "").replace(/\s+/g, " ").trim();
+  const m = PHONE_BRAND.exec(t);
+  if (!m) return null;
+  const out = [m[0]];
+  for (const w of t.slice(m.index + m[0].length).trim().split(" ")) { if (!PHONE_TOKEN.test(w)) break; out.push(w); }
+  return out.length > 1 && out.slice(1).some((w) => /\d/.test(w)) ? out.join(" ").slice(0, 40) : null;
+}
+// Metinde açıkça yazan yaş ("3+ yaş", "+6 yaş", "3 yaş ve üzeri", "3-6 yaş"); yazmıyorsa null
+function ageRangeNames(text: string): string[] {
+  const r = /(?<![\d.])(\d{1,2}) (\d{1,2}) ?yaş/.exec(text); // norm tireyi boşluğa çevirir
+  if (r && Number(r[1]) < Number(r[2])) return [`${r[1]} - ${r[2]} Yaş`];
+  const m = /(?:\+ ?(\d{1,2}) ?yaş|(\d{1,2}) ?(?:\+ ?yaş|yaş ?\+|yaş ve üzeri|yaş üzeri))/.exec(text);
+  const a = m?.[1] ?? m?.[2];
+  return a ? [`${a}+ Yaş`, `+${a} Yaş`] : [];
+}
+function toyVehicle(t: string): string[] {
+  const rows: [RegExp, string[]][] = [[/ helikopter| uçak/, ["Oyuncak Helikopter ve Uçak"]], [/ kamyon| iş makinesi| kepçe| ekskavatör| damperli/, ["Oyuncak Kamyon ve İş Makinesi", "Oyuncak Kamyon Ve İş Makinası"]], [/ tır /, ["Oyuncak Tır"]], [/ traktör/, ["Oyuncak Traktör"]], [/ tren/, ["Oyuncak Tren"]], [/ motosiklet| motor /, ["Oyuncak Motosiklet"]], [/ tank/, ["Oyuncak Tank"]], [/ gemi/, ["Oyuncak Gemi"]], [/ otobüs| minibüs/, ["Oyuncak Otobüs ve Minibüs"]], [/ ambulans/, ["Oyuncak Ambulans"]], [/ polis/, ["Oyuncak Polis Arabası"]], [/ araba| araç| 1:\d/, ["Oyuncak Araba"]]];
+  return rows.find(([re]) => re.test(t))?.[1] ?? [];
+}
+
 export function inferAttribute(name: string, vals: AttrValue[], title: string, description = "", category = ""): AttrValue | null {
   // Elektrikli olmayan üründe varsayılan voltaj/frekans/garanti yok: boş kalır, ilan "zorunlu özellik" diye gönderilmez (yanlış kategori işareti)
   if (isElectricAttr(name) && !isElectric(title, description, category)) return null;
   if (/yaş grubu/.test(lo(name))) return vals.length ? ageValue(vals, title, category) : null;
   if (/^cinsiyet/.test(lo(name))) return vals.length ? genderValue(vals, title, category) : null;
+  // Hepsiburada zorunlu alanları (K, 10.11): yalnızca üründen belli olan değer; belli değilse boş kalır, ürün gönderilmez
+  if (/yaş aralığı/.test(lo(name))) return pick(vals, ageRangeNames(norm(`${title} ${description.slice(0, 3000)}`)));
+  if (/oyuncak araç türü/.test(lo(name))) return pick(vals, toyVehicle(norm(title)));
+  if (/peluş tipi/.test(lo(name))) return pick(vals, ["Oyuncak Peluşlar"]);
+  if (/vantilatör tipi/.test(lo(name))) { const t = norm(title); return pick(vals, / boyun/.test(t) ? ["Boyun"] : / usb/.test(t) ? ["USB"] : / masaüstü/.test(t) ? ["Masaüstü"] : / mini/.test(t) ? ["Mini Fan"] : / ayaklı/.test(t) ? ["Ayaklı"] : []); }
   if (!vals.length) return null;
   const t = norm(title), all = norm(`${title} ${description.slice(0, 3000)}`);
   const n = lo(name);
@@ -187,6 +216,7 @@ export function inferAttribute(name: string, vals: AttrValue[], title: string, d
 
 // Serbest metne izin veren özellikte (değer listesi yok/uymuyor) metinden yazılabilecek değer
 export function inferCustom(name: string, title: string, description = "", category = ""): string | null {
+  if (/telefon modeli/i.test(name)) return phoneModelOf(title);
   if (isElectricAttr(name) && !isElectric(title, description, category)) return null;
   const n = lo(name), all = norm(`${title} ${description.slice(0, 3000)}`);
   if (/paket içeriği/.test(n)) { const m = /(\d{1,3})\s*(?:adet|parça)/.exec(all); return `${m ? Number(m[1]) : 1} Adet`; }
