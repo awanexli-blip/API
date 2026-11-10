@@ -114,7 +114,7 @@ const FREE_TEXT: [RegExp, string][] = [[/cinsiyet/i, "Unisex"], [/araç (marka|m
 const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
 // Sıra: panel/ürün değeri (given) > ürün kaydındaki özellik (defaults: tedarikçi varsayılanı + Trendyol gönderiminde öğrenilen, adıyla) >
 // başlık/açıklamadan çıkarım (attr-infer) > başlıkta geçen değer > nötr değer
-export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "", images: string[] = [], warranty: number | null = null, catName: string | null = null) {
+export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryId: string | number, title: string, given: Record<string, unknown> = {}, defaults: Record<string, string> = {}, description = "", images: string[] = [], warranty: number | null = null, catName: string | null = null, xmlCategory = "") {
   const out: Record<string, unknown> = { ...given };
   const missing: string[] = [];
   const learned: Record<string, string> = {};
@@ -147,7 +147,7 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
     const sq = (s: string) => lo(s).replace(/[\s,]+/g, "").replace(/numara$/, "");
     const fromDef = vals.length ? opts.map((o) => vals.find((v) => lo(v) === lo(o)) ?? vals.find((v) => sq(v) === sq(o))).find(Boolean) : opts[opts.length - 1];
     if (!a.mandatory) { if (fromDef) out[a.id] = fromDef; continue; }
-    const inferred = fromDef ? undefined : vals.length ? inferAttribute(a.name, vals.map((v, i) => ({ id: i, name: v })), title, description)?.name : inferCustom(a.name, title, description) ?? undefined;
+    const inferred = fromDef ? undefined : vals.length ? inferAttribute(a.name, vals.map((v, i) => ({ id: i, name: v })), title, description, xmlCategory)?.name : inferCustom(a.name, title, description, xmlCategory) ?? undefined;
     const t = " " + lo(title).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";
     const hit = vals.filter((v) => v && t.includes(" " + lo(v) + " ")).sort((x, y) => y.length - x.length)[0];
     const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v) === n)).find(Boolean);
@@ -323,7 +323,7 @@ export function createHepsiburada(): Marketplace {
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
         try {
-          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "", imgs, hbWarrantyMonths(p.name), p.catName ?? null);
+          const f = await hbFillAttributes(client, p.cat.category_id, p.name, extra, p.defaults ?? {}, p.detail ?? "", imgs, hbWarrantyMonths(p.name), p.catName ?? null, p.xmlCategory ?? "");
           if (f.missing.length) { no(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
           extra = f.attributes;
           p.learned = f.learned;

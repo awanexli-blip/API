@@ -66,6 +66,9 @@ eqs("custom telefon modeli", ic("Telefon Modeli", "Apple iPhone 16E Uyumlu Kapak
 const YA = V("3+ Yaş", "+6 Yaş", "3 - 6 Yaş", "0 - 24 Ay");
 check("yaş aralığı başlıktan", inferAttribute("Yaş Aralığı", YA, "Eğitici Puzzle 3+ Yaş"), "3+ Yaş");
 check("yaş aralığı aralık", inferAttribute("Yaş Aralığı", YA, "Set 3-6 Yaş"), "3 - 6 Yaş");
+check("yaş yazmayan oyuncak 3+", inferAttribute("Yaş Aralığı", YA, "Uzay Mekiği Seti", "", "Oyuncak > Eğitici Oyuncak"), "3+ Yaş");
+check("yazılı yaş öncelikli", inferAttribute("Yaş Aralığı", YA, "Set 6+ Yaş", "", "Oyuncak"), "+6 Yaş");
+check("bebek oyuncağına 3+ yazılmaz", inferAttribute("Yaş Aralığı", YA, "Çıngırak", "", "Oyuncak > Bebek & Okul Öncesi Oyuncaklar"), null);
 check("yaş aralığı yoksa boş", inferAttribute("Yaş Aralığı", YA, "Uzay Mekiği Puzzle 100 Parça"), null);
 check("araç: kamyon", inferAttribute("Oyuncak Araç Türü", V("Oyuncak Kamyon ve İş Makinesi", "Oyuncak Araba"), "Oyuncak Eğitici Bultak Kamyon"), "Oyuncak Kamyon ve İş Makinesi");
 check("araç: belirsiz boş", inferAttribute("Oyuncak Araç Türü", V("Oyuncak Araba"), "Supra Veilside Combat V-ıı Black 1 Adet"), null);

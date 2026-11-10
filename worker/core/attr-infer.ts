@@ -185,7 +185,13 @@ export function inferAttribute(name: string, vals: AttrValue[], title: string, d
   if (/yaş grubu/.test(lo(name))) return vals.length ? ageValue(vals, title, category) : null;
   if (/^cinsiyet/.test(lo(name))) return vals.length ? genderValue(vals, title, category) : null;
   // Hepsiburada zorunlu alanları (K, 10.11): yalnızca üründen belli olan değer; belli değilse boş kalır, ürün gönderilmez
-  if (/yaş aralığı/.test(lo(name))) return pick(vals, ageRangeNames(norm(`${title} ${description.slice(0, 3000)}`)));
+  if (/yaş aralığı/.test(lo(name))) {
+    const written = pick(vals, ageRangeNames(norm(`${title} ${description.slice(0, 3000)}`)));
+    if (written) return written;
+    // K kararı (10.11): üründe yaş yazmayan oyuncak "3+ Yaş"; bebek / okul öncesi oyuncağında yazılmaz (0-3 yaş ürünü)
+    const c = norm(category), t = norm(title);
+    return (/oyuncak|oyun set/.test(c) || / oyuncak/.test(t)) && !/bebek oyunca|okul öncesi|0 ?24 ?ay/.test(`${c} ${t}`) ? pick(vals, ["3+ Yaş", "+3 Yaş", "3 Yaş +"]) : null;
+  }
   if (/oyuncak araç türü/.test(lo(name))) return pick(vals, toyVehicle(norm(title)));
   if (/peluş tipi/.test(lo(name))) return pick(vals, ["Oyuncak Peluşlar"]);
   if (/vantilatör tipi/.test(lo(name))) { const t = norm(title); return pick(vals, / boyun/.test(t) ? ["Boyun"] : / usb/.test(t) ? ["USB"] : / masaüstü/.test(t) ? ["Masaüstü"] : / mini/.test(t) ? ["Mini Fan"] : / ayaklı/.test(t) ? ["Ayaklı"] : []); }
