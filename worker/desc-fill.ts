@@ -17,8 +17,9 @@ const up = (s: string) => s.charAt(0).toLocaleUpperCase("tr") + s.slice(1);
 export function draftFromTitle(title: string, category: string): string | null {
   const t = clean(title), leaf = clean(String(category).split(/>{1,3}/).pop());
   if (t.length < 12 || !leaf) return null;
-  const model = phoneModelOf(t), w = ` ${low(t).replace(/[()\-,/]/g, " ")} `;
-  const color = COLORS.find((c) => w.includes(` ${c} `));
+  // Renk yalnızca parantez içinde ya da başlığın son kelimesiyse yazılır: "Mavi Işık Filtreli", "Siyah Nokta" gibi başlıklar renk değildir.
+  const model = phoneModelOf(t), lt = low(t), inParen = (lt.match(/\(([^)]*)\)/g) ?? []).join(" ").replace(/[()\-,/]/g, " "), lastWord = lt.replace(/[()\-,/.]/g, " ").trim().split(/\s+/).pop() ?? "";
+  const color = COLORS.find((c) => ` ${inParen} `.includes(` ${c} `) || lastWord === c);
   const lines = [`${t}.`, `Ürün türü: ${leaf}.`];
   if (model) lines.push(`Uyumlu olduğu model: ${model}.`);
   if (color) lines.push(`Renk: ${up(color)}.`);
