@@ -30,7 +30,7 @@ export function useApi(token: string): Api {
         if (!res.ok) throw Object.assign(new Error(data.error ?? `Sunucu hatası ${res.status}`), { status: res.status, data });
         return data;
       } catch (e: any) {
-        if (e?.name === "AbortError") throw new Error("Sunucu 25 saniyede yanıt vermedi (Vercel ortam değişkenlerini kontrol et)");
+        if (e?.name === "AbortError") throw new Error("Sunucu zamanında yanıt vermedi, biraz sonra yeniden dene");
         throw e;
       } finally {
         clearTimeout(timer);
