@@ -18,7 +18,7 @@ async function slowCounts(db: ReturnType<typeof admin>) {
     .then(({ data, error }: any) => { if (!error && data) slow = { at: Date.now(), v: { eligible: data.eligible, title_only: data.title_only } }; })
     .catch(() => {})
     .finally(() => { slowRun = null; });
-  await Promise.race([slowRun, new Promise((r) => setTimeout(r, 1500))]);
+  await Promise.race([slowRun, new Promise((r) => setTimeout(r, 300))]);
   return slow?.v ?? {};
 }
 
