@@ -43,7 +43,8 @@ function preferred(name: string, text: string): string[] {
   const n = lo(name);
   if (/^dil$/.test(n)) return ["Türkçe", "Evrensel Dil"];
   if (/^yaş$/.test(n)) {
-    const m = /(\d{1,2})\s*(?:\+|yaş)/.exec(text);
+    // Yalnızca "yaş" yazıyorsa: "1+1 Set" gibi adet ifadeleri yaş sayılmaz (K, 10.11)
+    const m = /(\d{1,2})\s*(?:\+\s*)?yaş/.exec(text);
     return m ? [`${m[1]} Yaş`, `${m[1]}+ Yaş`, `${m[1]} Yaş +`, "Tüm Yaşlar"] : ["Tüm Yaşlar", "3 Yaş", "3+ Yaş"];
   }
   if (/frekans/.test(n)) return ["50 Hz", "50/60 Hz", "60 Hz / 50 Hz", "50-60 Hz"];
@@ -166,6 +167,21 @@ export function phoneModelOf(title: string): string | null {
   for (const w of t.slice(m.index + m[0].length).trim().split(" ")) { if (!PHONE_TOKEN.test(w)) break; out.push(w); }
   return out.length > 1 && out.slice(1).some((w) => /\d/.test(w)) ? out.join(" ").slice(0, 40) : null;
 }
+// Bebek/oyuncak ürününde metinde yazan ay ("0-3 aylık", "+6 ay", "12-36 ay"): özellik buna uymalı (K, 10.11: 0-3 aylık biberon "+1 Yaş" gitmişti). Garanti/taksit süresi yaş sayılmaz.
+const MONTH_RE = /(?<![\d.])\+? ?(\d{1,2})(?: (\d{1,2}))? ?\+? ?ay(?:lık|lik)?(?= )(?! (?:garanti|taksit|kullanım|ömür|süre))/;
+export function monthAge(title: string, description = "", category = ""): { from: number; to: number | null } | null {
+  if (!/bebek|oyuncak|biberon|emzik|mama|çocuk|flatör|puzzle|peluş/.test(lo(`${title} ${category}`))) return null;
+  const m = MONTH_RE.exec(norm(`${title} ${description.slice(0, 3000)}`));
+  if (!m || Number(m[1]) > 48) return null;
+  const to = m[2] != null && Number(m[2]) > Number(m[1]) ? Number(m[2]) : null;
+  return { from: Number(m[1]), to };
+}
+export function monthAgeNames({ from: a, to: b }: { from: number; to: number | null }): string[] {
+  const exact = b != null ? [`${a}-${b} Ay`, `${a} - ${b} Ay`] : [`${a}+ Ay`, `+${a} Ay`, `${a} Ay +`];
+  const year = a < 12 ? ["0 - 1 Yaş", "0-1 Yaş"] : a < 24 ? ["1 - 2 Yaş", "1-2 Yaş", "1+ Yaş", "+1 Yaş"] : a < 36 ? ["2 - 3 Yaş", "2-3 Yaş", "2+ Yaş", "+2 Yaş"] : [];
+  return [...exact, ...year];
+}
+
 // Metinde açıkça yazan yaş ("3+ yaş", "+6 yaş", "3 yaş ve üzeri", "3-6 yaş"); yazmıyorsa null
 function ageRangeNames(text: string): string[] {
   const r = /(?<![\d.])(\d{1,2}) (\d{1,2}) ?yaş/.exec(text); // norm tireyi boşluğa çevirir
@@ -183,6 +199,8 @@ export function inferAttribute(name: string, vals: AttrValue[], title: string, d
   // Elektrikli olmayan üründe varsayılan voltaj/frekans/garanti yok: boş kalır, ilan "zorunlu özellik" diye gönderilmez (yanlış kategori işareti)
   if (isElectricAttr(name) && !isElectric(title, description, category)) return null;
   if (/yaş grubu/.test(lo(name))) return vals.length ? ageValue(vals, title, category) : null;
+  // Ay yazan üründe yıl değeri seçilmez ve "yaş yazmayan oyuncak 3+" kuralı uygulanmaz; listede karşılığı yoksa boş kalır
+  if (/^yaş$|yaş aralığı/.test(lo(name))) { const mo = monthAge(title, description, category); if (mo) return pick(vals, monthAgeNames(mo)); }
   if (/^cinsiyet/.test(lo(name))) return vals.length ? genderValue(vals, title, category) : null;
   // Hepsiburada zorunlu alanları (K, 10.11): yalnızca üründen belli olan değer; belli değilse boş kalır, ürün gönderilmez
   if (/yaş aralığı/.test(lo(name))) {
