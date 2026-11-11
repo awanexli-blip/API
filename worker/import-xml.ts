@@ -40,6 +40,22 @@ export function buildItems(parsed: any, sup: Supplier, seen = new Set<string>(),
   return { items, errors, total: raw.length, path };
 }
 
+// XML'den kalkan ürünlerin stoğu sıfırlanır mı? Kalkan ürün XML'in %30'unu aşarsa bozuk/eksik indirme olabilir, sıfırlanmaz.
+// Ama XML en az 12 saattir aynı boyuttaysa (±%3, en az 3 içe aktarma) küçülme gerçektir: sıfırlanır (K, 12.11: Toptancım 35 bin -> 10,6 bin
+// ürüne indi, 26.542 ürün tedarikçide yokken satışta kaldı). ZERO_MISSING_FORCE=1: elle, tek seferlik.
+export function zeroAllowed(gone: number, inXml: number, total: number, prev: { total: number; at: string }[], now = Date.now(), force = false) {
+  if (force) return { ok: true, why: "elle zorlandı" };
+  if (gone <= Math.max(50, inXml * 0.3)) return { ok: true, why: "normal" };
+  const recent = prev.filter((p) => Number(p.total) > 0 && now - Date.parse(p.at) <= 36 * 3600_000);
+  const same = recent.filter((p) => Math.abs(Number(p.total) - total) <= total * 0.03);
+  const span = same.length ? now - Math.min(...same.map((p) => Date.parse(p.at))) : 0;
+  // Son 12 saatteki her içe aktarma aynı boyutta olmalı (arada büyük XML gelmişse küçülme geçici olabilir)
+  const last12 = recent.filter((p) => now - Date.parse(p.at) <= 12 * 3600_000);
+  if (total > 0 && same.length >= 3 && span >= 12 * 3600_000 && last12.every((p) => Math.abs(Number(p.total) - total) <= total * 0.03))
+    return { ok: true, why: `XML ${Math.round(span / 3600_000)} saattir aynı boyutta` };
+  return { ok: false, why: "XML bir anda küçüldü" };
+}
+
 export function parseXml(text: string) {
   return new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }).parse(text);
 }
@@ -154,8 +170,10 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
       if (!data || data.length < 1000) break;
     }
     let zeroed = 0;
-    // Güvenlik: XML bir anda çok küçüldüyse (bozuk/eksik indirme) stok sıfırlama yapılmaz
-    const safe = gone.length <= Math.max(50, inXml.size * 0.3);
+    // Güvenlik: XML bir anda çok küçüldüyse (bozuk/eksik indirme) stok sıfırlama yapılmaz; uzun süre aynı boyutta kaldıysa küçülme gerçektir
+    const { data: prevJobs } = await db.from("import_jobs").select("total, started_at").eq("source", source).neq("id", job.id).gt("total", 0).order("started_at", { ascending: false }).limit(200);
+    const zr = zeroAllowed(gone.length, inXml.size, total, (prevJobs ?? []).map((j: any) => ({ total: Number(j.total), at: j.started_at })), Date.now(), process.env.ZERO_MISSING_FORCE === "1");
+    const safe = zr.ok;
     if (safe) for (const ids of chunk(gone, 200)) {
       const { data, error } = await db.from("product_variants").update({ stock: 0 }).in("product_id", ids).gt("stock", 0).eq("reserved", 0).select("id");
       if (error) throw new Error(error.message);
@@ -164,7 +182,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     const failed = (count.error ?? 0) + errors.length;
     await finish({
       status: failed ? "partial" : "ok", failed,
-      message: (feeds.length > 1 ? `${perFeed.join(", ")} · ` : "") + (safe ? `XML'den kalkan ${gone.length} ürün (${zeroed} varyantın stoğu 0 yapıldı)` : `XML'den kalkan ${gone.length} ürün çok fazla, güvenlik için stokları sıfırlanmadı (XML eksik inmiş olabilir)`),
+      message: (feeds.length > 1 ? `${perFeed.join(", ")} · ` : "") + (safe ? `XML'den kalkan ${gone.length} ürün (${zeroed} varyantın stoğu 0 yapıldı${zr.why !== "normal" ? `; ${zr.why}` : ""})` : `XML'den kalkan ${gone.length} ürün çok fazla, güvenlik için stokları sıfırlanmadı (XML eksik inmiş olabilir)`),
     });
     console.log(`${sup.code} bitti`, count, { xmlErrors: errors.length, gone: gone.length, zeroed });
     await db.from("suppliers").update({ last_feed_hash: fh, last_feed_at: new Date().toISOString() }).eq("code", sup.code);
