@@ -2,9 +2,18 @@
 
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Kural: her oturumda önce `docs/PROGRESS.md`, sonra bu dosya okunur; iş bittikçe burada işaretlenir, ayrıntı PROGRESS'e yazılır.
-Son güncelleme: 03.11.2026.
+Son güncelleme: 12.11.2026.
 
 ## Şu an
+
+> **12.11 devir (yeni sohbet buradan başlar; ayrıntı PROGRESS 68):**
+> 1. [ ] (K) **Toptancım hayalet stok:** XML 10.601 ürün, sistemde 37.143 aktif; 26.542 ürün tedarikçide yokken satışta. Betik hazır (`/root/tcx-zero.sh`, yerelde scratchpad `tcx-zero.sh`): Supabase + sunucu DB'de FORCE_IMPORT + ZERO_MISSING_FORCE ile içe aktarma. İzin sistemi Claude'un çalıştırmasını engelledi: K çalıştıracak, sonra `/root/tcx-zero.log` kontrol edilecek. Kalıcı kural `zeroAllowed` (XML 12 saat aynı boyut) push'landı.
+> 2. [ ] (K) **Mimari kararı bekliyor:** K "Supabase kapanmasın, ürünler/stok güncellemeleri onun üzerinden olsun" dedi; Claude iki anlamı sordu: (a, önerilen) ürün/stok yalnızca sunucuda, Supabase'de sipariş/fatura/iade/soru kalır (Supabase senkronuna "yalnızca sipariş" modu eklenir, Toptancım içe aktarma sunucuya) ya da (b) stok Supabase'den. Cevap yok. Şu an İKİ senkron aynı ilanlara yazıyor (sunucu `trentakip-sync-vps@`, GitHub `sync.yml` sunucunun `trentakip-dispatch` zamanlayıcısıyla); sunucu DB'de Toptancım 04.11'den beri içe aktarılmıyor (runner boş).
+> 3. [ ] **Supabase 474/500 MB:** audit_log 136 MB, supplier_stock_snap 62 MB (import-xml saklama: 30 gün / 21 gün). Silme K onayı ister. 2. karara bağlı.
+> 4. [x] Marj: +8 puan (10.11), kargo basamağı sıkıştırması kapalı (squeeze_min_net 1000). **12.11 13:00'te -5 puan** `trentakip-marj1300.timer` (iki DB). Yedekler `/root/fiyat-once*-2026111*.csv`.
+> 5. [ ] (K) Yaş düzeltmesi: ay yazıp yıl değeri olan 10 ürün canlıda düzeltilsin mi (TY 9, HB 6 ilan).
+> 6. [ ] Kampanya: K indirimleri Satıcı Paneli'nden giriyor; "elle değişti" sorusunda "Fiyat kalsın". HB kampanya ekranındaki ürünlerde bizdeki komisyon %18, ekranda %10 (kategori oranı düzeltilebilir).
+> 7. [ ] Gece yedeği 11.11'de Supabase pooler hatasıyla düştü; bir sonraki geceyi kontrol et.
 
 > **03.11 (PROGRESS 61) — K kararları (sırayla yapılacak):**
 > 1. [x] Telegram: yalnızca önemli bildirim (sipariş, zararına sipariş, iptal, iade, müşteri sorusu, sistem çöktü; + kargo süresi GEÇTİ) · acil durum komutları `lib/tg-commands.ts` (/ara /durdur /ac /fiyat /fiyatsil /satisdurdur /satisac /senkron, onay düğmeli).
