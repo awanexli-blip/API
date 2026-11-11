@@ -164,7 +164,8 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
     const inXml = new Set(items.map((i) => i.payload.sku));
     const gone: string[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await db.from("products").select("id, sku").eq("source", source).neq("status", "archived").range(from, from + 999);
+      // .order zorunlu: sırasız sayfalama satır atlıyordu (12.11: Toptancım'da kalkan 7.605 ürün görülmedi, stoğu sıfırlanmadı)
+      const { data, error } = await db.from("products").select("id, sku").eq("source", source).neq("status", "archived").order("id").range(from, from + 999);
       if (error) throw new Error(error.message);
       for (const p of data ?? []) if (!inXml.has(p.sku)) gone.push(p.id);
       if (!data || data.length < 1000) break;
