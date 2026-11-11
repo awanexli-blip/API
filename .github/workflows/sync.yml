@@ -26,6 +26,11 @@ on:
         type: choice
         options: [manual, schedule]
         default: "manual"
+      part:
+        description: "auto = ops/github-sync-part.txt · all = hepsi (çökmede) · orders = yalnızca sipariş/iade/soru, stok/fiyat yazmaz (K 12.11: ürün/stok sunucuda)"
+        type: choice
+        options: [auto, all, orders]
+        default: "auto"
 
 # En az yetki: depoya yazmaz (GitHub token yalnızca okuma)
 permissions:
@@ -53,11 +58,21 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --prefix worker
+      # Kapsam (K 12.11, mimari a): ürün/stok sunucuda, burada yalnızca sipariş tarafı. Çökmede ops/github-sync-part.txt = all.
+      - name: Kapsam
+        id: part
+        env:
+          IN_PART: ${{ github.event.inputs.part || 'auto' }}
+        run: |
+          p="$IN_PART"
+          if [ "$p" = "auto" ]; then p=$(head -1 ops/github-sync-part.txt 2>/dev/null | tr -cd 'a-z'); fi
+          if [ "$p" != "orders" ]; then p=all; fi
+          echo "part=$p" >> "$GITHUB_OUTPUT"; echo "kapsam: $p"
       - name: Test (sahte servislerle, canlıya yazmaz)
         run: node worker/test/run.mjs
       # Tedarikçi stokları ve maliyetleri her çalışmada (15 dk) XML'den tazelenir; pazaryeri stokları bu veriden gönderilir
       - name: Tedarikçi XML -> ürünler
-        if: matrix.marketplace == 'trendyol'
+        if: matrix.marketplace == 'trendyol' && steps.part.outputs.part != 'orders'
         continue-on-error: true
         timeout-minutes: 8
         env:
@@ -70,6 +85,7 @@ jobs:
       - name: Sync
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+          SYNC_PART: ${{ steps.part.outputs.part == 'orders' && 'orders' || '' }}
           TRIGGER: ${{ (github.event_name == 'schedule' || github.event.inputs.trigger == 'schedule') && 'schedule' || 'manual' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}
@@ -100,7 +116,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node --experimental-strip-types worker/sync.ts "$MODE" "$MP"   # girdiler ortam değişkeniyle: kabuk komutu olarak yorumlanmaz
       - name: İş kuyruğu (Faz 3)
-        if: always() && matrix.marketplace == 'trendyol'
+        if: always() && matrix.marketplace == 'trendyol' && steps.part.outputs.part != 'orders'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL2 }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY2 }}

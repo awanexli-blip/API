@@ -290,6 +290,18 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("SYNC_SOURCES: kaynak dışı ilana hiç stok/fiyat gitmez", !q.calls.trendyolWrites.some((w) => w.path.includes("price-and-inventory") && (w.body.items ?? []).length));
 }
 
+// 9d) SYNC_PART (K 12.11, mimari a): orders = yalnızca sipariş tarafı (pazaryerine stok/fiyat/ilan yazmaz); listings = stok/fiyat yazar
+{
+  const dir = mkdtempSync(join(tmpdir(), "synctest-"));
+  execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", mock, sync, "auto", "trendyol"], { cwd: dir, env: { ...envBase, SYNC_PART: "orders", MOCK_DB: "1" }, stdio: ["ignore", "ignore", "inherit"] });
+  const c = JSON.parse(readFileSync(join(dir, "calls.json"), "utf8"));
+  check("SYNC_PART=orders: çalışma tamam", c.run?.status === "ok" && c.run?.summary?.part === "orders", JSON.stringify(c.run ?? {}).slice(0, 300));
+  check("SYNC_PART=orders: stok/fiyat, ürün açma, ret düzeltme yok", !c.trendyolWrites.some((w) => /price-and-inventory|\/v2\/products|unapproved-bulk-update|delete|archive/i.test(w.path)), c.trendyolWrites.map((w) => w.path).slice(0, 5));
+  const l = run("auto", { SYNC_PART: "listings", MOCK_DB: "1" });
+  check("SYNC_PART=listings: stok/fiyat gönderilir", l.calls.trendyolWrites.some((w) => w.path.includes("price-and-inventory")) && l.s.part === "listings");
+  check("SYNC_PART=listings: soru cevabı / takip yok", !l.calls.trendyolWrites.some((w) => /answers|tracking/i.test(w.path)));
+}
+
 // 10) birim testleri
 for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts", "desc-check.test.ts", "research.test.ts", "sale-price.test.ts", "content-diff.test.ts", "deps.test.ts", "trendyol-cargo.test.ts", "holds.test.ts", "brand-pick.test.ts", "compat.test.ts", "stars.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }

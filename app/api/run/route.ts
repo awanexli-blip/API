@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     },
-    body: JSON.stringify({ ref: "main", inputs: { mode, marketplace } }),
+    // part=all: panelden elle çalıştırma tam senkron (çökme yedeği); zamanlı GitHub çalışması ops/github-sync-part.txt ile yalnızca sipariş (K 12.11)
+    body: JSON.stringify({ ref: "main", inputs: { mode, marketplace, part: "all" } }),
   });
   if (res.status === 403 || res.status === 404)
     return bad(`GitHub ${res.status}: GH_TOKEN bu repoya erişemiyor. Token'da "Repository access" içinde ${process.env.GH_REPO} seçili ve "Actions: Read and write" izni olmalı (süresi dolmuş da olabilir). Yeni token'ı Vercel'de GH_TOKEN'a yazıp Redeploy et.`);
