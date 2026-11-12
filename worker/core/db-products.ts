@@ -510,6 +510,23 @@ export async function requeueFixable(ctx: DbCtx, max = 3000): Promise<{ requeued
     .eq("marketplace", ctx.marketplaceId).eq("status", "queued").lt("updated_at", hourAgo).not("product_id", "is", null).order("updated_at").limit(max);
   if (stale.error) return { skipped: stale.error.message };
   const picked: { listing_key: string; product_id: string }[] = [...(stale.data ?? [])];
+  // Öncelik (12.11): "kategorisi yok" hatası olup kategorisi SONRADAN eşlenmiş ürünler. Eskiden yalnızca en eski hatalar alınıyordu;
+  // eşlenen kategorinin ürünleri (HB Telefon Kılıfı 9.209) sırada geride kalıyor, turlar yarıda kalınca hiç gelmiyordu.
+  if (picked.length < max && ctx.catMap.size) {
+    const since = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const seen = new Set(picked.map((p) => p.listing_key));
+    for (let from = 0; from < 60000 && picked.length < max; from += 1000) {
+      const { data, error } = await ctx.db.from("marketplace_listings").select("listing_key, product_id, products(category)")
+        .eq("marketplace", ctx.marketplaceId).eq("status", "error").ilike("last_error", "%kategorisi yok%").lt("updated_at", since)
+        .not("product_id", "is", null).order("listing_key").range(from, from + 999);
+      if (error || !data?.length) break;
+      for (const r of data as any[]) {
+        if (picked.length >= max) break;
+        if (!seen.has(r.listing_key) && ctx.catMap.get(r.products?.category)?.category_id) { picked.push({ listing_key: r.listing_key, product_id: r.product_id }); seen.add(r.listing_key); }
+      }
+      if (data.length < 1000) break;
+    }
+  }
   if (picked.length < max) {
     const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
     const { data, error } = await ctx.db.from("marketplace_listings").select("listing_key, product_id, last_error")
