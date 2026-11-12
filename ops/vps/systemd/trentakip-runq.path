@@ -1,0 +1,10 @@
+[Unit]
+Description=Trentakip: panel iş kuyruğu (/var/lib/trentakip/runq, RUN_SITE=sunucu)
+
+[Path]
+DirectoryNotEmpty=/var/lib/trentakip/runq
+MakeDirectory=yes
+DirectoryMode=0770
+
+[Install]
+WantedBy=paths.target

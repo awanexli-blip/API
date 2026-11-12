@@ -1,15 +1,8 @@
 import { admin } from "@/lib/server";
+import { dispatchSync } from "@/lib/github";
 
-// Senkronu hemen başlat (GitHub Actions sync.yml, mod "update"): onaylı cevap 15 dk beklemeden gider
-export async function dispatchSync(marketplace: string): Promise<boolean> {
-  if (!process.env.GH_TOKEN || !process.env.GH_REPO) return false;
-  const r = await fetch(`https://api.github.com/repos/${process.env.GH_REPO}/actions/workflows/sync.yml/dispatches`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-    body: JSON.stringify({ ref: "main", inputs: { mode: "update", marketplace } }),
-  }).catch(() => null);
-  return r?.status === 204;
-}
+// Senkronu hemen başlat (sunucu iş kuyruğu ya da GitHub, lib/github.ts): onaylı cevap 15 dk beklemeden gider
+export { dispatchSync };
 
 // İnsan onayı: yalnızca new/drafted/failed durumundaki soru approved olur (gönderilmiş/gönderiliyor olan değişmez).
 // Gönderimi worker yapar (worker/core/inbox.ts, approved -> sending kilidi ile tek sefer).

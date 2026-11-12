@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { admin } from "@/lib/server";
 import { authorize, dbError } from "@/lib/products";
 import { queueSend } from "@/lib/listings-send";
+import { dispatchSync } from "@/lib/github";
 
 export const dynamic = "force-dynamic";
 
@@ -61,14 +62,7 @@ export async function POST(req: NextRequest) {
   if (je && je.code !== "23505") return dbError(je);
 
   let started = false;
-  if (b.now && a.role === "admin" && process.env.GH_TOKEN && process.env.GH_REPO) {
-    // Önizleme modunda çalışır: Amazon'a yazmaz, yalnızca katalog araması + ilan raporu
-    const r = await fetch(`https://api.github.com/repos/${process.env.GH_REPO}/actions/workflows/sync.yml/dispatches`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-      body: JSON.stringify({ ref: "main", inputs: { mode: "preview", marketplace: mp } }),
-    });
-    started = r.status === 204;
-  }
+  // Önizleme modunda çalışır: Amazon'a yazmaz, yalnızca katalog araması + ilan raporu
+  if (b.now && a.role === "admin") started = await dispatchSync(mp, "preview");
   return NextResponse.json({ ok: true, job_id: job?.id ?? null, products: list.length, started });
 }

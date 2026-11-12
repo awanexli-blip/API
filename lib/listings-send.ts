@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { admin, MARKETPLACES, type Actor } from "@/lib/server";
+import { dispatchWorkflow } from "@/lib/github";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 // worker/core/db-products.ts listingKeyOf ile aynı: BayilikXML ürünleri "OS13-" + SKU, diğerleri varyant barkodu
@@ -64,14 +65,10 @@ export async function queueSend(a: Actor, b: { product_ids?: unknown; marketplac
   if (je && je.code !== "23505") return dbFail(je);
 
   let started = false, startError: string | null = null;
-  if (b.now && a.role === "admin" && process.env.GH_TOKEN && process.env.GH_REPO) {
-    const r = await fetch(`https://api.github.com/repos/${process.env.GH_REPO}/actions/workflows/sync.yml/dispatches`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-      body: JSON.stringify({ ref: "main", inputs: { mode: "update", marketplace } }),
-    });
-    started = r.status === 204;
-    if (!started) startError = `GitHub ${r.status}`;
+  if (b.now && a.role === "admin") {
+    const r = await dispatchWorkflow("sync.yml", { mode: "update", marketplace });
+    started = r.ok;
+    if (!started) startError = r.error ?? "başlatılamadı";
   }
   return { status: 200, body: { ok: true, job_id: job?.id ?? null, duplicate: je?.code === "23505", queued: rows.length, updates: updateIds.size, products: sendIds.length, problems, started, startError } };
 }

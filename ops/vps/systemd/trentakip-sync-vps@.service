@@ -1,6 +1,6 @@
 # K 12.11 (mimari a): ürün/stok sunucuda. Tüm ilanların stok/fiyatı, ret düzeltme, gönderim kuyruğu sunucu veritabanından (SYNC_PART=listings).
-# Sipariş, iade, müşteri sorusu, Telegram uyarıları GitHub + Supabase'de (sync.yml, ops/github-sync-part.txt = orders).
-# Satış durdurma / gizleme / stok rezervasyonu Supabase'den de okunur (ORDERS_SUPABASE_URL = /etc/trentakip/env SUPABASE_URL).
+# Tam taşıma (12.11): sipariş, iade, müşteri sorusu, Telegram uyarıları da sunucuda (trentakip-orders, SYNC_PART=orders); Supabase yalnızca acil yedek.
+# Satış durdurma / gizleme / stok rezervasyonu aynı (sunucu) veritabanından okunur (ORDERS_SUPABASE_URL yok -> kendi veritabanı).
 # 01.11-12.11 arası: SYNC_SOURCES=vps (yalnızca Hepsibayi/Bezos).
 [Unit]
 Description=Trentakip: sunucu tedarikçileri senkronu %i (stok/fiyat + gönderim)
@@ -13,7 +13,7 @@ WorkingDirectory=/opt/trentakip
 EnvironmentFile=/etc/trentakip/env
 EnvironmentFile=/etc/trentakip/keys.env
 Environment=TRIGGER=schedule ACTOR=sunucu-senkron SYNC_PART=listings TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID=
-ExecStart=/bin/sh -c "ORDERS_SUPABASE_URL=$SUPABASE_URL ORDERS_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=1800 exec /usr/bin/node --experimental-strip-types worker/sync.ts update %i"
+ExecStart=/bin/sh -c "SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=1800 exec /usr/bin/node --experimental-strip-types worker/sync.ts update %i"
 # 12.11: SYNC_PART=listings tam tur (95 bin ilan + ret düzeltme) 40 dakikayı aşıyor, ilk tur TERM ile öldü -> 90 dk
 # 12.11 akşam: HB 503'leri ve ağ yavaşlığıyla turlar 73-90+ dk sürüp yine TERM yedi -> 150 dk
 TimeoutStartSec=150min

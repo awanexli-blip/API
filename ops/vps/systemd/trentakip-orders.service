@@ -1,0 +1,20 @@
+[Unit]
+Description=Trentakip: sipariş, iade, hakediş, takip kodu, müşteri soruları, Telegram uyarıları (SYNC_PART=orders, sunucu veritabanı)
+# Tam taşıma (12.11): siparişler yalnızca sunucuda. Stok/fiyat ayrı: trentakip-sync-vps@ (SYNC_PART=listings).
+# Panelden "hemen" istekleri trentakip-runq ile bunu başlatır. Zamanlayıcı: trentakip-orders.timer (15 dk)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+WorkingDirectory=/opt/trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+Environment=TRIGGER=schedule ACTOR=sunucu-siparis SYNC_PART=orders
+ExecStart=/bin/sh -c 'export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; node --experimental-strip-types worker/sync.ts auto trendyol; a=$?; node --experimental-strip-types worker/sync.ts auto hepsiburada; b=$?; [ $a -eq 0 ] && [ $b -eq 0 ]'
+TimeoutStartSec=20min
+Nice=5
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin, guard, unauthorized, bad, mpOf } from "@/lib/server";
+import { dispatchSync } from "@/lib/github";
 
 export const dynamic = "force-dynamic";
 
@@ -73,13 +74,6 @@ export async function PUT(req: NextRequest) {
   const { error: je } = await db.from("jobs").insert({ type: `send_products:${mp}`, marketplace: mp, payload: { product_ids: [id] }, idempotency_key: `send:${mp}:elle:${id}:${now.slice(0, 16)}`, created_by: "panel (gönderilemeyenler)" });
   if (je && je.code !== "23505") return bad(je.message);
   let started = false;
-  if (b.now && process.env.GH_TOKEN && process.env.GH_REPO) {
-    const r = await fetch(`https://api.github.com/repos/${process.env.GH_REPO}/actions/workflows/sync.yml/dispatches`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-      body: JSON.stringify({ ref: "main", inputs: { mode: "update", marketplace: mp } }),
-    });
-    started = r.status === 204;
-  }
+  if (b.now) started = await dispatchSync(mp);
   return NextResponse.json({ ok: true, queued: ls.data?.length ?? 0, started });
 }

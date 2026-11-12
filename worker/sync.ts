@@ -723,9 +723,10 @@ async function main() {
 
 (async () => {
   // Yarıda kalan çalışma (Actions zaman aşımı 45 dk / iptal / makine kaybı) "running" kalır, panelde hep "sürüyor" görünürdü:
-  // 60 dakikadan eskileri hata olarak kapatılır (yalnızca bu pazaryerinin kayıtları)
-  await db.from("sync_runs").update({ status: "error", finished_at: new Date().toISOString(), error: "yarıda kaldı (GitHub Actions zaman aşımı ya da iptal; sonraki çalışma kapattı)" })
-    .eq("status", "running").eq("marketplace", marketplaceId).lt("started_at", new Date(Date.now() - 60 * 60_000).toISOString());
+  // 160 dakikadan eskileri hata olarak kapatılır (yalnızca bu pazaryerinin kayıtları). Eşik sunucu ilan turunun zaman sınırının
+  // (trentakip-sync-vps@ TimeoutStartSec=150min) üstünde: 12.11'e kadar 60 dk idi, 15 dk'lık sipariş turu süren ilan turunu "yarıda kaldı" yapıyordu.
+  await db.from("sync_runs").update({ status: "error", finished_at: new Date().toISOString(), error: "yarıda kaldı (zaman aşımı ya da iptal; sonraki çalışma kapattı)" })
+    .eq("status", "running").eq("marketplace", marketplaceId).lt("started_at", new Date(Date.now() - 160 * 60_000).toISOString());
   let { data: run, error } = await db.from("sync_runs").insert({ mode, trigger, status: "running", marketplace: marketplaceId }).select("id").single();
   if (error) ({ data: run } = await db.from("sync_runs").insert({ mode, trigger, status: "running" }).select("id").single()); // migration 002 öncesi
   const id = run?.id as number;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { admin } from "@/lib/server";
 import { authorize, dbError } from "@/lib/products";
+import { dispatchWorkflow } from "@/lib/github";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +28,7 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const supplier = String(b.supplier ?? "all");
   if (!/^(all|[a-z0-9-]{2,30})$/.test(supplier)) return NextResponse.json({ error: "Geçersiz tedarikçi" }, { status: 400 });
-  if (!process.env.GH_TOKEN || !process.env.GH_REPO) return NextResponse.json({ error: "GH_TOKEN veya GH_REPO ayarlı değil" }, { status: 400 });
-  const res = await fetch(`https://api.github.com/repos/${process.env.GH_REPO}/actions/workflows/import.yml/dispatches`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-    body: JSON.stringify({ ref: "main", inputs: { supplier, actor: a.email } }),
-  });
-  if (res.status !== 204) return NextResponse.json({ error: `GitHub ${res.status}: ${(await res.text()).slice(0, 200)}` }, { status: 400 });
+  const r = await dispatchWorkflow("import.yml", { supplier, actor: a.email });
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
   return NextResponse.json({ ok: true });
 }

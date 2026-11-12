@@ -3,6 +3,7 @@ import { orderDb, guard, unauthorized, bad } from "@/lib/server";
 import { EarsivClient, isDeleted, isSigned } from "@/lib/earsiv";
 import { buildInvoice, trDateTime } from "@/lib/invoice-build";
 import { matchManualInvoices, docName, docTime } from "@/lib/invoice-match";
+import { dispatchWorkflow } from "@/lib/github";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -96,13 +97,8 @@ export async function POST(req: NextRequest) {
       if (!prev || prev.mode !== "dry" || Date.now() - Date.parse(prev.at) > 24 * 3600000) return bad("Önce deneme çalıştır (son 24 saatte deneme yok)");
       if (!prev.ok) return bad("Son denemede yüklemeye uygun fatura yok");
     }
-    if (!process.env.GH_TOKEN || !process.env.GH_REPO) return bad("GH_TOKEN veya GH_REPO ayarlı değil");
-    const res = await fetch(`https://api.github.com/repos/${process.env.GH_REPO}/actions/workflows/invoice-upload.yml/dispatches`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-      body: JSON.stringify({ ref: "main", inputs: { mode, count } }),
-    });
-    if (res.status !== 204) return bad(`GitHub ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const r = await dispatchWorkflow("invoice-upload.yml", { mode, count });
+    if (!r.ok) return bad(r.error ?? "Başlatılamadı");
     return NextResponse.json({ ok: true, mode });
   }
 

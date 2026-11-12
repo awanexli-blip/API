@@ -1,0 +1,7 @@
+[Unit]
+Description=Trentakip: panel iş kuyruğunu işle (ops/vps/runq.sh; yalnızca izinli birimler)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/trentakip/ops/vps/runq.sh
+TimeoutStartSec=2min

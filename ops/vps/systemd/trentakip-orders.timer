@@ -1,5 +1,5 @@
 [Unit]
-Description=Trentakip GEÇİCİ: Supabase kısıtlıyken sipariş senkronu (15 dakikada bir)
+Description=Trentakip: sipariş senkronu (15 dakikada bir)
 
 [Timer]
 OnCalendar=*-*-* *:09,24,39,54:00
