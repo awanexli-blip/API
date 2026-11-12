@@ -1,7 +1,7 @@
 import { decideHold, HOLD_LABEL, HOLD_STATUS } from "@/lib/holds";
 import { NextRequest, NextResponse, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { admin, guard, unauthorized, bad } from "@/lib/server";
+import { admin, guard, unauthorized, bad, publicOrigin } from "@/lib/server";
 import { approveAnswer } from "@/lib/inbox";
 import { askAssistant, HELP } from "@/lib/assistant";
 import { CMD_HELP, handleCommand, handleCommandButton, type CmdReply } from "@/lib/tg-commands";
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
   const j: any = await r?.json().catch(() => null);
   if (!j?.ok) return NextResponse.json({ configured: true, ok: false, problem: "Telegram'a ulaşılamadı" });
-  const w = j.result ?? {}, want = `${req.nextUrl.origin}/api/telegram`;
+  const w = j.result ?? {}, want = `${publicOrigin(req)}/api/telegram`;
   // Son hata, iletilemeyen mesaj bekliyorsa sorun sayılır (düzeltildikten sonra eski hata kaydı uyarı üretmesin)
   const lastErr = w.last_error_date && Number(w.pending_update_count ?? 0) > 0 ? String(w.last_error_message ?? "hata").slice(0, 200) : "";
   const problem = !w.url ? "Bağlı değil" : w.url !== want ? `Başka adrese bağlı (${String(w.url).replace(/\/\/([^/]+).*/, "//$1")})` : lastErr ? `Telegram mesajları iletemiyor: ${lastErr}` : "";
@@ -54,7 +54,7 @@ export async function PUT(req: NextRequest) {
     await admin().from("inbox_items").update({ tg_message_id: j.result?.message_id }).eq("id", it.id);
     return NextResponse.json({ ok: true, test: true });
   }
-  const url = `${req.nextUrl.origin}/api/telegram`;
+  const url = `${publicOrigin(req)}/api/telegram`;
   const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, secret_token: process.env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "callback_query"] }), signal: AbortSignal.timeout(10000) }).catch(() => null);
   const j: any = await r?.json().catch(() => ({}));
   if (!j?.ok) return bad(`Telegram kabul etmedi: ${String(j?.description ?? r?.status ?? "bağlantı yok").slice(0, 200)}`);

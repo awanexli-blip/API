@@ -51,6 +51,15 @@ export const unauthorized = () => {
 };
 export const bad = (error: string) => NextResponse.json({ error }, { status: 400 });
 
+// Panelin dışarıdan görünen adresi. Sunucuda panel Caddy arkasında http ile çalışır: req.nextUrl.origin "http://..." olur
+// (12.11: Telegram kontrolü "başka adrese bağlı" diyordu, "Telegram'ı bağla" webhook'u http adrese kurardı). Caddy'nin
+// X-Forwarded-Proto / Host başlıkları esas alınır; Vercel'de de aynı başlıklar gelir.
+export const publicOrigin = (req: NextRequest) => {
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const proto = (req.headers.get("x-forwarded-proto") ?? "").split(",")[0].trim() || req.nextUrl.protocol.replace(":", "");
+  return host && /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `${proto === "http" ? "http" : "https"}://${host}` : req.nextUrl.origin;
+};
+
 export const MARKETPLACES = ["trendyol", "hepsiburada", "amazon"]; // worker/marketplaces/index.ts ile aynı tutulur
 export const mpOf = (req: NextRequest) => {
   const m = req.nextUrl.searchParams.get("mp") ?? "trendyol";

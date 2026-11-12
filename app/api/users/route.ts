@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { admin } from "@/lib/server";
+import { admin, publicOrigin } from "@/lib/server";
 import { authorize, dbError } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ export async function PUT(req: NextRequest) {
   if (error) return dbError(error);
   let invited: string | null = null;
   if (b.invite) {
-    const r = await db.auth.admin.inviteUserByEmail(email, { redirectTo: req.nextUrl.origin });
+    const r = await db.auth.admin.inviteUserByEmail(email, { redirectTo: publicOrigin(req) });
     invited = r.error ? (/already|registered|exists/i.test(r.error.message) ? "Bu e-postanın zaten hesabı var" : r.error.message) : "Davet e-postası gönderildi";
   }
   return NextResponse.json({ ok: true, invited });
