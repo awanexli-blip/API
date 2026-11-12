@@ -69,7 +69,7 @@ if (cmd === "archive") {
     for (const f of r.failedItems ?? []) fail.set(f.id, f.reason);
     for (const f of chk?.failed ?? []) fail.set(f.id, f.reason);
     const now = new Date().toISOString();
-    await upsert(ids.map((k) => ({ marketplace: "trendyol", listing_key: k, archived_at: fail.has(k) && !/daha önce yapılmış/i.test(fail.get(k)!) ? null : now, last_attempt_at: now, attempts: 1, last_error: fail.get(k)?.slice(0, 300) ?? null })));
+    await upsert(ids.map((k) => ({ marketplace: "trendyol", listing_key: k, archived_at: fail.has(k) && !/daha önce yapılmış/i.test(fail.get(k)!) ? null : now, reason: "toplu temizlik (K 12.11): tedarikçide stok yok", last_attempt_at: now, attempts: 1, last_error: fail.get(k)?.slice(0, 300) ?? null })));
     console.log(JSON.stringify({ arsivlenen: ids.length - fail.size, hatali: fail.size, nedenler: [...new Set(fail.values())].slice(0, 5).map((s) => s.slice(0, 160)) }));
   }
 } else if (cmd === "delete") {

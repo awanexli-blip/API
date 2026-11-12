@@ -576,6 +576,8 @@ export async function learnFromListings(db: any, marketplace: string, listings: 
       const add: Record<string, string> = {};
       for (const [k, v] of Object.entries(l.attributes ?? {})) if (known[k] == null && v) add[k] = String(v).slice(0, 200);
       if (l.categoryName && known["Trendyol kategori adı"] == null) add["Trendyol kategori adı"] = String(l.categoryName).slice(0, 200);
+      // K 12.11: onaylı ilanın kategori NUMARASI da ürüne (elle seçilmiş gibi öncelik alır): ilan silinip ürün yeniden gelince kategori yeniden tahmin edilmez
+      if (l.categoryId && l.status === "active" && known["Trendyol kategori"] == null && /^\d{1,12}$/.test(String(l.categoryId))) add["Trendyol kategori"] = String(l.categoryId);
       if (Object.keys(add).length && !todo.some((t) => t.id === r.product_id)) todo.push({ id: r.product_id, attributes: { ...add, ...known } });
       if (todo.length >= max) break;
     }

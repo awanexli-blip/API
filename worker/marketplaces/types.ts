@@ -8,6 +8,7 @@ export interface Listing {
   quantity: number;
   vatRate?: number;   // ilandaki KDV oranı (yüzde, örn. 20)
   categoryId?: string;   // pazaryeri kategori ID (yeni ürün kategori tahmini için örnek)
+  archived?: boolean;    // satıcı arşivinde (Trendyol): kapalı sayılır; stok gelince arşivden çıkarılır (core/lifecycle.ts)
   categoryName?: string;
   commission?: number;   // ilanın komisyon oranı (0-1)
   asin?: string;         // Amazon: ilanın bağlı olduğu ASIN

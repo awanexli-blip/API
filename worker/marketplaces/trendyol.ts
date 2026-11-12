@@ -271,7 +271,7 @@ export function createTrendyol(): Marketplace {
           const comm = Number(v.commission);
           if (Number.isFinite(comm) && comm > 0) liveComm.set(barcode, comm > 1 ? comm / 100 : comm);
           const attrs = [...toAttrs(c.attributes), ...toAttrs(v.attributes)];
-          out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), vatRate: Number(v.vatRate), status: closed ? "closed" : "active",
+          out.set(barcode, { id: barcode, title, price, quantity: Number(v.stock?.quantity), vatRate: Number(v.vatRate), status: closed ? "closed" : "active", archived: !!v.archived,
             categoryId: c.category?.id != null ? String(c.category.id) : undefined, categoryName: c.category?.name ?? "", commission: liveComm.get(barcode),
             contentId: c.contentId != null ? String(c.contentId) : c.id != null ? String(c.id) : undefined,
             images: Array.isArray(c.images) ? c.images.map((i: any) => String(i?.url ?? i)).filter(Boolean) : undefined,

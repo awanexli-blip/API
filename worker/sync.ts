@@ -29,6 +29,7 @@ import { syncBuybox } from "./core/buybox.ts";
 import { env, chunk, num, normTitle, normFull, csvCell, arg, MODES, MARKETPLACES, readAll } from "./core/util.ts";
 import { loadXml } from "./core/xml.ts";
 import { retireLegacy } from "./core/retire.ts";
+import { runLifecycle } from "./core/lifecycle.ts";
 import { buildClassifier, type Example } from "./core/classify.ts";
 import { buildLeafMatcher, buildPathMatcher } from "./core/category-tree.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
@@ -596,6 +597,9 @@ async function main() {
   summary.update = toUpdate.length;
   // Katalog eşleştirme kuyruğu (Amazon; yalnızca okuma, her modda)
   if (mp.findCatalogMatches) summary.matchJobs = await processMatchJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => ({ error: String(e?.message ?? e) }));
+  // İlan yaşam döngüsü (K 12.11, core/lifecycle.ts): stoksuz arşiv / stok gelince arşivden çıkar / ölü ilan sil / geri gelen ürünü yeniden gönder.
+  // Gönderim kuyruğundan önce: yeniden gönderim işleri aynı turda işlenir.
+  if (doUpdate && !lite && s.auto_sync && marketplaceId === "trendyol") summary.lifecycle = await runLifecycle(db, mp, marketplaceId, listings, minStock, (m) => console.error(m)).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
   // Paneldeki "Pazaryerine gönder" kuyruğu (yalnızca yazma modlarında)
   let sendRes: Awaited<ReturnType<typeof processSendJobs>> | null = null;
   if (doUpdate || mode === "create" || lite) {
