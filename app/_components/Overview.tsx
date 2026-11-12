@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { nextScheduledRun, statusTr, when, type Props, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const ACTIONS: { mode: string; label: string; hint: string; confirm?: string; primary?: boolean }[] = [
   { mode: "preview", label: "Önizleme", hint: "Fiyatları hesaplar, pazaryerine hiçbir şey göndermez." },
@@ -45,7 +46,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
   }, [running, watchUntil, loadRuns]);
 
   async function start(mode: string, confirmText?: string) {
-    if (confirmText && !confirm(confirmText)) return;
+    if (confirmText && !(await confirmDialog(confirmText))) return;
     setBusy(mode);
     try {
       await api("/api/run", { method: "POST", body: JSON.stringify({ mode, marketplace }) });
@@ -59,9 +60,9 @@ export default function Overview({ api, notify, marketplace }: Props) {
   async function toggleSales() {
     if (!s || toggling) return;
     const next = !s.sales_paused;
-    if (!confirm(next
+    if (!(await confirmDialog(next
       ? "Bu pazaryerinde satış durdurulsun mu? Satıştaki bütün ürünlerin stoğu 0 gönderilir, ürünler satın alınamaz. İlanlar silinmez; tekrar açınca stoklar geri gelir."
-      : "Satış yeniden açılsın mı? Bir sonraki çalışmada XML stokları ve fiyatlar yeniden gönderilir.")) return;
+      : "Satış yeniden açılsın mı? Bir sonraki çalışmada XML stokları ve fiyatlar yeniden gönderilir."))) return;
     setToggling(true);
     try {
       const d = await api(`/api/settings?mp=${marketplace}`, { method: "PUT", body: JSON.stringify({ sales_paused: next }) });
@@ -78,7 +79,7 @@ export default function Overview({ api, notify, marketplace }: Props) {
   async function toggleAuto() {
     if (!s || toggling) return;
     const next = !s.auto_sync;
-    if (next && !confirm("Otomatik senkronizasyon açılsın mı? 15 dakikada bir stok ve fiyatlar güncellenir.")) return;
+    if (next && !(await confirmDialog("Otomatik senkronizasyon açılsın mı? 15 dakikada bir stok ve fiyatlar güncellenir."))) return;
     setToggling(true);
     try {
       const d = await api(`/api/settings?mp=${marketplace}`, { method: "PUT", body: JSON.stringify({ auto_sync: next }) });

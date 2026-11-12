@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { when, type Api, type Notify, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const ST: Record<string, [string, string]> = {
   new: ["Yeni", "info"], drafted: ["Taslak hazır", "info"], approved: ["Onaylandı, gönderilecek", "ok"], sending: ["Gönderiliyor", "ok"],
@@ -25,7 +26,7 @@ export default function Inbox({ api, notify }: { api: Api; notify: Notify }) {
   useEffect(() => { loadTg(); }, [loadTg]);
 
   async function act(it: Row, action: "approve" | "ignore") {
-    if (action === "approve" && !confirm("Bu cevap müşteriye pazaryerinde gönderilecek. Onaylıyor musun?")) return;
+    if (action === "approve" && !(await confirmDialog("Bu cevap müşteriye pazaryerinde gönderilecek. Onaylıyor musun?"))) return;
     setBusy(it.id);
     try {
       const r = await api("/api/inbox", { method: "PUT", body: JSON.stringify({ id: it.id, action, text: text[it.id] ?? it.ai_draft ?? "" }) });

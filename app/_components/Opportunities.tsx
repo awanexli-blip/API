@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { tl, when, type Props, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const PART: Record<string, string> = { kar: "Kâr", marj: "Marj", stok: "Stok", satis: "Satış hızı", fiyat: "Fiyat bandı", icerik: "Görsel/açıklama", kategori: "Kategori tahmini", marka: "Marka", varyant: "Varyant" };
 
@@ -21,7 +22,7 @@ export default function Opportunities({ api, notify, marketplace }: Props) {
   const set = (x: Partial<typeof f>) => { setF((o) => ({ ...o, page: 0, ...x })); setSel(new Set()); };
 
   async function send(body: Row, n: number) {
-    if (!confirm(`${n.toLocaleString("tr-TR")} ürün ${marketplace === "trendyol" ? "Trendyol" : marketplace}'a gönderim sırasına alınacak (senkron başına ~2.500). Onaylıyor musun?`)) return;
+    if (!(await confirmDialog(`${n.toLocaleString("tr-TR")} ürün ${marketplace === "trendyol" ? "Trendyol" : marketplace}'a gönderim sırasına alınacak (senkron başına ~2.500). Onaylıyor musun?`))) return;
     setBusy(true);
     try { const r = await api(`/api/opportunity?mp=${marketplace}`, { method: "POST", body: JSON.stringify(body) }); notify("good", `${r.products.toLocaleString("tr-TR")} ürün sıraya alındı (${r.jobs} iş).`); setSel(new Set()); load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(false); }

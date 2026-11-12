@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Props, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const emptyDraft = { xml_category: "", category_id: "", category_name: "", commission_rate: "", vat_rate: "", attributes: "" };
 const STRONG = 0.6; // benzer ürünlerin en az %60'ı aynı kategorideyse öneri "güçlü"
@@ -37,8 +38,8 @@ export default function Categories({ api, notify, marketplace }: Props) {
   }
 
   const approve = (u: Row) => put(fromSuggestion(u), `"${u.xml_category}" → ${u.suggested_category_name} eşleşti.`);
-  const approveAll = () => {
-    if (!confirm(`${strong.length} kategorideki güçlü öneriler onaylansın mı? Sonradan tek tek düzenleyebilir veya silebilirsin.`)) return;
+  const approveAll = async () => {
+    if (!(await confirmDialog(`${strong.length} kategorideki güçlü öneriler onaylansın mı? Sonradan tek tek düzenleyebilir veya silebilirsin.`))) return;
     put({ items: strong.map(fromSuggestion) }, `${strong.length} kategori eşleşti. Ürünler bir sonraki "Yeni ürünleri aç" çalışmasında açılabilir.`);
   };
 
@@ -51,7 +52,7 @@ export default function Categories({ api, notify, marketplace }: Props) {
   }
 
   async function remove(c: Row) {
-    if (!confirm(`"${c.xml_category}" eşleşmesi silinsin mi? Bu kategorideki yeni ürünler artık açılmaz.`)) return;
+    if (!(await confirmDialog(`"${c.xml_category}" eşleşmesi silinsin mi? Bu kategorideki yeni ürünler artık açılmaz.`, { danger: true }))) return;
     try { await api(`/api/categories?mp=${marketplace}&xml_category=${encodeURIComponent(c.xml_category)}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
   }
 

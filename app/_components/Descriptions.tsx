@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { when, type Api, type Notify, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const TABS: [string, string][] = [["ready", "Onay bekleyen"], ["approved", "Onaylanan"], ["skipped", "Yazılamayan"], ["rejected", "Reddedilen"]];
 
@@ -61,7 +62,7 @@ export default function Descriptions({ api, notify, isAdmin }: { api: Api; notif
           {isAdmin && tab === "ready" && <div className="row" style={{ gap: 6 }}>
             <button className="btn" disabled={busy || !sel.size} onClick={() => act({ action: "approve", ids: [...sel] }, "Onaylandı")}>Seçilenleri onayla ({sel.size})</button>
             <button className="btn" disabled={busy || !sel.size} onClick={() => act({ action: "reject", ids: [...sel] }, "Reddedildi")}>Seçilenleri reddet</button>
-            <button className="btn primary" disabled={busy || !c.ready} onClick={() => confirm(`${c.ready} açıklamanın hepsi onaylansın mı? Trendyol'daki ilanlara senkronla gidecek.`) && act({ action: "approve_all_ready", expect: c.ready }, "Hepsi onaylandı")}>Hepsini onayla ({c.ready ?? 0})</button>
+            <button className="btn primary" disabled={busy || !c.ready} onClick={async () => { if (await confirmDialog(`${c.ready} açıklamanın hepsi onaylansın mı? Trendyol'daki ilanlara senkronla gidecek.`)) act({ action: "approve_all_ready", expect: c.ready }, "Hepsi onaylandı"); }}>Hepsini onayla ({c.ready ?? 0})</button>
           </div>}
           {isAdmin && (tab === "approved" || tab === "rejected") && <button className="btn" disabled={busy || !sel.size} onClick={() => act({ action: "reopen", ids: [...sel] }, "Onaya geri alındı")}>Seçilenleri onaya geri al</button>}
         </div>

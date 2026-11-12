@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase-browser";
 import Icon from "./Icon";
 import { when, type Api, type Notify, type Row } from "./shared";
 import type { Theme } from "./theme";
+import { confirmDialog } from "./confirm-dialog";
 
 const ROLE_TR: Record<string, string> = { admin: "Yönetici", editor: "Editör", viewer: "Görüntüleyici" };
 const ROLE_HINT: Record<string, string> = {
@@ -56,7 +57,7 @@ function Users({ api, notify, me }: { api: Api; notify: Notify; me: string }) {
     try { await api("/api/users", { method: "PUT", body: JSON.stringify({ email: u.email, role }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
   async function remove(u: Row) {
-    if (!confirm(`${u.email} kullanıcısının panel erişimi kaldırılsın mı?`)) return;
+    if (!(await confirmDialog(`${u.email} kullanıcısının panel erişimi kaldırılsın mı?`, { danger: true }))) return;
     try { await api(`/api/users?email=${encodeURIComponent(u.email)}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
   }
   return (

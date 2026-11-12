@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { when, type Api, type Notify, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const PRICE_TR: Record<string, string> = { none: "Fiyat yok", cost: "Alış fiyatı", formula: "Satış fiyatı (formül)" };
 const SOURCE_TR: Record<string, string> = { "": "Tüm ürünler", manual: "Elle eklenenler", csv: "Dosyadan gelenler", "xml:bayilik": "BayilikXML ürünleri" };
@@ -19,11 +20,11 @@ export default function Feeds({ api, notify }: { api: Api; notify: Notify }) {
     catch (e: any) { notify("err", e.message); }
   }
   async function rotate(f: Row) {
-    if (!confirm(`"${f.name}" için yeni adres oluşturulsun mu? Eski adres hemen çalışmaz hale gelir.`)) return;
+    if (!(await confirmDialog(`"${f.name}" için yeni adres oluşturulsun mu? Eski adres hemen çalışmaz hale gelir.`))) return;
     try { await api("/api/feeds", { method: "PUT", body: JSON.stringify({ id: f.id, rotate: true }) }); notify("good", "Yeni adres oluşturuldu."); load(); } catch (e: any) { notify("err", e.message); }
   }
   async function remove(f: Row) {
-    if (!confirm(`"${f.name}" feed'i silinsin mi? Adresi kullanan sistemler ürün alamaz.`)) return;
+    if (!(await confirmDialog(`"${f.name}" feed'i silinsin mi? Adresi kullanan sistemler ürün alamaz.`, { danger: true }))) return;
     try { await api(`/api/feeds?id=${f.id}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
   }
   const copy = (t: string) => navigator.clipboard.writeText(url(t)).then(() => notify("good", "Adres kopyalandı."), () => notify("err", "Kopyalanamadı, adresi elle seç."));

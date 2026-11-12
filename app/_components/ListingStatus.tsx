@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { tl, when, type Props, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const ST: Record<string, string> = { queued: "Sırada", sent: "Gönderildi (inceleniyor)", live: "Yayında", error: "Gönderilemedi", rejected: "Reddedildi", closed: "Kapalı", gone: "Mağazadan kalktı", pending_approval: "Onay bekliyor" };
 const GR: Record<string, string> = { kategori: "Kategori eşleşmedi", ozellik: "Zorunlu özellik eksik", gorsel: "Görsel sorunu", marka: "Marka riski", kopya: "Kopya ürün", pazaryeri: "Pazaryeri reddi", diger: "Diğer" };
@@ -24,7 +25,7 @@ export default function ListingStatus({ api, notify, marketplace }: Props) {
   const set = (x: Partial<typeof f>) => setF((o) => ({ ...o, page: 0, ...x }));
 
   async function requeue(body: Row, label: string) {
-    if (!confirm(`${label} yeniden gönderim sırasına alınsın mı? Sistem bir sonraki senkronda (en geç 15 dk) gönderir.`)) return;
+    if (!(await confirmDialog(`${label} yeniden gönderim sırasına alınsın mı? Sistem bir sonraki senkronda (en geç 15 dk) gönderir.`))) return;
     setBusy(true);
     try {
       const r = await api(`/api/listing-status?mp=${marketplace}`, { method: "POST", body: JSON.stringify(body) });

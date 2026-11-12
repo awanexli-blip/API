@@ -103,6 +103,11 @@ pre { margin: 6px 0 0; font-size: 12px; white-space: pre-wrap; word-break: break
 .drawer[open] { animation: slide .18s ease-out; }
 .drawer::backdrop { background: rgba(2, 6, 23, .45); }
 .drawer-in { min-height: 100%; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+dialog.confirm { max-width: min(520px, 92vw); width: 100%; border: 0; padding: 0; color: inherit; background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow-lg); outline: 1px solid var(--line); }
+dialog.confirm::backdrop { background: rgba(2,6,23,.45); }
+dialog.confirm > div { padding: 20px; }
+dialog.confirm .confirm-msg { white-space: pre-wrap; margin: 0 0 16px; line-height: 1.5; overflow-wrap: anywhere; }
+dialog.confirm .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 @keyframes slide { from { transform: translateX(-100%); } to { transform: none; } }
 
 @media (max-width: 900px) {

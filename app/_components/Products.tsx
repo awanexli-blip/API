@@ -11,6 +11,7 @@ import MarketplaceFields, { attrGroup, type MpStatus } from "./MarketplaceFields
 import { calcPrice } from "@/worker/pricing";
 import { applyRules, rulesFor, type PricingRule } from "@/worker/pricing-rules";
 import { cfgFromSettings } from "./pricing-config";
+import { confirmDialog } from "./confirm-dialog";
 
 type Role = "viewer" | "editor" | "admin";
 const STATUS_TR: Record<string, string> = { draft: "Taslak", active: "Aktif", archived: "Arşiv" };
@@ -106,7 +107,7 @@ export default function Products({ api, notify }: { api: Api; notify: Notify }) 
 // "Trendyol'a gönder": kuyruğa al; yönetici isterse senkronu hemen başlat
 async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmin: boolean, marketplace: "trendyol" | "amazon" | "hepsiburada" = "trendyol") {
   const label = { amazon: "Amazon", trendyol: "Trendyol", hepsiburada: "Hepsiburada" }[marketplace];
-  const now = isAdmin && confirm(`${ids.length} ürün ${label}${marketplace === "hepsiburada" ? "'ya" : "'a"} gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
+  const now = isAdmin && (await confirmDialog(`${ids.length} ürün ${label}${marketplace === "hepsiburada" ? "'ya" : "'a"} gönderilsin mi?\n\nHemen gönder: senkron hemen başlasın (birkaç dakika).\nSıraya al: bir sonraki otomatik senkronda gönderilsin.`, { ok: "Hemen gönder", cancel: "Sıraya al" }));
   try {
     const r = await api("/api/listings/send", { method: "POST", body: JSON.stringify({ product_ids: ids, marketplace, now }) });
     const extra = r.problems?.length ? ` Atlananlar: ${r.problems.slice(0, 3).join("; ")}${r.problems.length > 3 ? " ..." : ""}` : "";
@@ -119,7 +120,7 @@ async function sendToMarketplace(api: Api, notify: Notify, ids: string[], isAdmi
 // Tek tık: Trendyol + Hepsiburada. Tek onay; ikisi ayrı kuyruk işi (biri hata verirse diğeri yine gönderilir)
 type MpTarget = "trendyol" | "hepsiburada";
 async function sendToMarketplaces(api: Api, notify: Notify, ids: string[], isAdmin: boolean, targets: MpTarget[] = ["trendyol", "hepsiburada"]) {
-  const now = isAdmin && confirm(`${ids.length} ürün ${targets.map((m) => (m === "trendyol" ? "Trendyol" : "Hepsiburada")).join(" ve ")}'a gönderilsin mi?\n\nTamam: senkron hemen başlasın (birkaç dakika).\nİptal: sıraya alınsın, bir sonraki otomatik senkronda gönderilsin.`);
+  const now = isAdmin && (await confirmDialog(`${ids.length} ürün ${targets.map((m) => (m === "trendyol" ? "Trendyol" : "Hepsiburada")).join(" ve ")}'a gönderilsin mi?\n\nHemen gönder: senkron hemen başlasın (birkaç dakika).\nSıraya al: bir sonraki otomatik senkronda gönderilsin.`, { ok: "Hemen gönder", cancel: "Sıraya al" }));
   const out: string[] = [];
   let ok = false;
   for (const [mp, label] of ([["trendyol", "Trendyol"], ["hepsiburada", "Hepsiburada"]] as const).filter(([m]) => targets.includes(m))) {
@@ -231,7 +232,7 @@ function List({ api, notify, canEdit, onOpen, opts, isAdmin }: { api: Api; notif
   const srcLabel = (s: string) => opts.sources?.find((x) => x.id === s)?.label ?? (s === "manual" ? "Elle" : s);
 
   async function runBulk(patch: Record<string, string>, label: string) {
-    if (!confirm(`${sel.size} ürün için: ${label}. Devam edilsin mi?`)) return;
+    if (!(await confirmDialog(`${sel.size} ürün için: ${label}. Devam edilsin mi?`))) return;
     try { const r = await api("/api/products/bulk", { method: "POST", body: JSON.stringify({ ids: [...sel], ...patch }) }); notify("good", `${r.updated} ürün güncellendi (${label}).`); setSel(new Set()); setBulk(null); load(); }
     catch (e: any) { notify("err", e.message); }
   }
@@ -429,11 +430,11 @@ function Editor({ api, notify, role, initial, opts, onClose, onNew, onCopy }: {
         // Aynı ürün sistemde var: sor, onaylanırsa o ürün formdaki bilgilerle güncellenir (yeni ürün açılmaz)
         const ex = isNew && e?.status === 409 ? e.data?.existing : null;
         if (!ex?.id) throw e;
-        if (!confirm(`Bu ürün sistemde zaten var (${ex.match}):
+        if (!(await confirmDialog(`Bu ürün sistemde zaten var (${ex.match}):
 ${ex.title} (SKU ${ex.sku})
 
-Tamam: mevcut ürün bu formdaki bilgilerle güncellensin (yeni ürün açılmaz).
-İptal: hiçbir şey kaydedilmesin.`)) { notify("err", "Kaydedilmedi: ürün sistemde zaten var."); return; }
+Mevcut ürünü güncelle: mevcut ürün bu formdaki bilgilerle güncellensin (yeni ürün açılmaz).
+Kaydetme: hiçbir şey kaydedilmesin.`, { ok: "Mevcut ürünü güncelle", cancel: "Kaydetme" }))) { notify("err", "Kaydedilmedi: ürün sistemde zaten var."); return; }
         saved = await api("/api/products", { method: "POST", body: JSON.stringify({ ...payload, update_existing: ex.id }) });
       }
       notify("good", `${saved.updated_existing ? "Mevcut ürün güncellendi" : isNew ? "Ürün oluşturuldu" : "Ürün kaydedildi"}: ${saved.title} (SKU ${saved.sku})`);
@@ -448,7 +449,7 @@ Tamam: mevcut ürün bu formdaki bilgilerle güncellensin (yeni ürün açılmaz
   }
 
   async function archive() {
-    if (!confirm("Ürün arşivlensin mi? (Geri alınabilir: durumu tekrar Aktif yapıp kaydet.)")) return;
+    if (!(await confirmDialog("Ürün arşivlensin mi? (Geri alınabilir: durumu tekrar Aktif yapıp kaydet.)", { danger: true }))) return;
     try { await api(`/api/products/${f.id}`, { method: "DELETE" }); notify("good", "Ürün arşivlendi."); onClose(); } catch (e: any) { notify("err", e.message); }
   }
   async function hardDelete() {

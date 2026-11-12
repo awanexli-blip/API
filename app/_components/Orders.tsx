@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { tl, when, type Api, type Notify, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const ST: Record<string, [string, string]> = {
   new: ["Yeni", "info"], ready: ["Hazırlanıyor", "info"], sent_to_supplier: ["Tedarikçiye iletildi", "info"], shipped: ["Kargoda", "ok"],
@@ -80,7 +81,7 @@ function SupplierBox({ api, notify, det, reload }: { api: Api; notify: Notify; d
           </div>
           <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: "wrap" }}>
             <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Kargo firması"><option value="">Kargo firması</option>{PROVIDERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-            <button className="btn" disabled={busy || !provider || o.tracking_push === "pending" || o.tracking_push === "sending"} onClick={() => { if (confirm(`Takip no ${o.supplier_tracking} Trendyol'a bildirilecek. Onaylıyor musun?`)) put({ action: "push_tracking", provider }, "Bildirim sıraya alındı; bir sonraki senkronda gönderilir"); }}>Trendyol'a bildir</button>
+            <button className="btn" disabled={busy || !provider || o.tracking_push === "pending" || o.tracking_push === "sending"} onClick={async () => { if (await confirmDialog(`Takip no ${o.supplier_tracking} Trendyol'a bildirilecek. Onaylıyor musun?`)) put({ action: "push_tracking", provider }, "Bildirim sıraya alındı; bir sonraki senkronda gönderilir"); }}>Trendyol'a bildir</button>
             {o.tracking_push && <span className={`pill ${o.tracking_push === "done" ? "ok" : o.tracking_push === "failed" ? "error" : "info"}`}>{PUSH[o.tracking_push] ?? o.tracking_push}</span>}
           </div>
           {o.tracking_push === "failed" && o.tracking_push_error && <div style={{ fontSize: 12, color: "var(--bad)", marginTop: 4 }}>{o.tracking_push_error}</div>}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { bandsFrom, calcPrice, defaultConfig, type PricingConfig } from "@/worker/pricing";
 import { applyRules, describeCond, rulesFor, type PricingRule } from "@/worker/pricing-rules";
 import { tl, type Props, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 type Draft = { id?: string; marketplace: string; name: string; position: number; enabled: boolean; cost_min: string; cost_max: string; supplier: string; category: string; brand: string; stock_max: string; target: string; minNet: string; add: string; nMin: string; nMax: string };
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -47,11 +48,11 @@ export default function ProfitRules({ api, notify, marketplace }: Props) {
     try { await api("/api/pricing-rules", { method: "PUT", body: JSON.stringify({ ...r, ...p }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
   async function remove(r: Row) {
-    if (!confirm(`"${r.name}" kuralı silinsin mi?`)) return;
+    if (!(await confirmDialog(`"${r.name}" kuralı silinsin mi?`, { danger: true }))) return;
     try { await api(`/api/pricing-rules?id=${r.id}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
   }
   async function seed() {
-    if (!confirm(`Önerilen kademeli kâr kuralları ${label} için eklensin mi? Eklenen kurallar açık gelir; önce aşağıdaki simülasyona bak, istemediğini kapat.`)) return;
+    if (!(await confirmDialog(`Önerilen kademeli kâr kuralları ${label} için eklensin mi? Eklenen kurallar açık gelir; önce aşağıdaki simülasyona bak, istemediğini kapat.`))) return;
     try { await api("/api/pricing-rules", { method: "PUT", body: JSON.stringify({ seed: marketplace }) }); notify("good", "Önerilen kurallar eklendi."); load(); } catch (e: any) { notify("err", e.message); }
   }
   const move = (i: number, dir: -1 | 1) => {

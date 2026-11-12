@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { tl, when, type Api, type Notify, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 // Elle değişen / eklenen ilanlar (/api/holds, migration 074): pazaryerinde elle yapılan değişiklik senkronla ezilmez, karar burada ya da Telegram'da.
 const MP: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada", amazon: "Amazon TR" };
@@ -36,7 +37,7 @@ export default function Holds({ api, notify }: { api: Api; notify: Notify }) {
               <td>{r.status !== "sync" && <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                 {r.status !== "keep_all" && <button className="btn ghost" style={{ fontSize: 12 }} disabled={!!busy} onClick={() => decide(r.id, "keep_all")}>Hepsi kalsın</button>}
                 {r.status !== "keep_price" && <button className="btn ghost" style={{ fontSize: 12 }} disabled={!!busy} onClick={() => decide(r.id, "keep_price")}>Fiyat kalsın</button>}
-                <button className="btn ghost" style={{ fontSize: 12 }} disabled={!!busy} onClick={() => confirm("Bu ilanın fiyat ve stoğu sistemin değerleriyle değiştirilecek. Devam?") && decide(r.id, "sync")}>Sistemle eşitle</button>
+                <button className="btn ghost" style={{ fontSize: 12 }} disabled={!!busy} onClick={async () => { if (await confirmDialog("Bu ilanın fiyat ve stoğu sistemin değerleriyle değiştirilecek. Devam?")) decide(r.id, "sync"); }}>Sistemle eşitle</button>
               </div>}</td>
             </tr>
           ))}</tbody>

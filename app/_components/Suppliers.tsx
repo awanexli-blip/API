@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FIELD_LABEL, type Field } from "@/lib/import";
 import { tl, when, type Api, type Notify, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const FIELDS = Object.keys(FIELD_LABEL) as Field[];
 const STATUS_TR: Record<string, string> = { ok: "tamam", partial: "kısmen", error: "hata", running: "sürüyor" };
@@ -40,7 +41,7 @@ export default function Suppliers({ api, notify }: { api: Api; notify: Notify })
   useEffect(() => { load(); }, [load]);
 
   async function run(code: string, name: string) {
-    if (!confirm(`${name} XML'i ürün veritabanına aktarılsın mı? Var olanlar güncellenir, XML'den kalkanların stoğu 0 olur, hiçbir şey silinmez. Pazaryerlerine bir şey gönderilmez.`)) return;
+    if (!(await confirmDialog(`${name} XML'i ürün veritabanına aktarılsın mı? Var olanlar güncellenir, XML'den kalkanların stoğu 0 olur, hiçbir şey silinmez. Pazaryerlerine bir şey gönderilmez.`))) return;
     try { await api("/api/import", { method: "POST", body: JSON.stringify({ supplier: code }) }); notify("good", `${name} içe aktarma başlatıldı (GitHub Actions). Büyük XML'de ilk sefer 5-10 dakika sürebilir; sonuç "İçe aktar" sekmesindeki geçmişte görünür.`); }
     catch (e: any) { notify("err", e.message); }
   }
@@ -48,7 +49,7 @@ export default function Suppliers({ api, notify }: { api: Api; notify: Notify })
     try { await api("/api/suppliers", { method: "PUT", body: JSON.stringify({ id: s.id, [k]: !s[k] }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
   async function remove(s: Row) {
-    if (!confirm(`"${s.name}" tedarikçisi silinsin mi? Ürünleri veritabanında kalır (istersen Ürün listesinden arşivleyebilirsin).`)) return;
+    if (!(await confirmDialog(`"${s.name}" tedarikçisi silinsin mi? Ürünleri veritabanında kalır (istersen Ürün listesinden arşivleyebilirsin).`, { danger: true }))) return;
     try { await api(`/api/suppliers?id=${s.id}`, { method: "DELETE" }); load(); } catch (e: any) { notify("err", e.message); }
   }
 

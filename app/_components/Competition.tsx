@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { tl, when, type Props, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 const FILTERS: [string, string, string][] = [
   ["suggest", "Öneriler", "Güncel verilere göre önerilen fiyat değişiklikleri (onayını bekler)"],
@@ -36,7 +37,7 @@ export default function Competition({ api, notify, marketplace }: Props) {
   async function approve(list: Row[]) {
     if (!list.length) return;
     const lines = list.slice(0, 8).map((it) => `• ${String(it.title ?? it.listing_key).slice(0, 50)}: ${it.suggestion === "reset" ? "formül fiyatına dön" : `${tl(n(it.our_price) ?? 0)} → ${tl(n(it.target_price)!)} (net ${tl(n(it.net_now) ?? 0)} → ${tl(n(it.net_at_target) ?? 0)})`}`).join("\n");
-    if (!confirm(`${list.length} öneri uygulanacak (sonraki senkronda Trendyol'a gider):\n\n${lines}${list.length > 8 ? `\n... ve ${list.length - 8} tane daha` : ""}\n\nOnaylıyor musun?`)) return;
+    if (!(await confirmDialog(`${list.length} öneri uygulanacak (sonraki senkronda Trendyol'a gider):\n\n${lines}${list.length > 8 ? `\n... ve ${list.length - 8} tane daha` : ""}\n\nOnaylıyor musun?`))) return;
     setBusy(true);
     try {
       const r = await api(`/api/buybox?mp=${marketplace}`, { method: "POST", body: JSON.stringify({ items: list.map((it) => ({ listing_key: it.listing_key, kind: it.suggestion, price: n(it.target_price) })) }) });

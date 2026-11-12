@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { tl, when, type Api, type Notify, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 // Faturalar (GİB e-Arşiv portalı, /api/invoices): sistem taslak oluşturur, K portalda toplu seçip tek SMS ile imzalar,
 // "İmzalananları kontrol et" durumu okur, imzalılar denemeden sonra Trendyol'a yüklenir. Sistem fatura imzalamaz.
@@ -69,7 +70,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   async function draft() {
     const ids = [...sel];
     if (!ids.length) return;
-    if (!confirm(`${ids.length} sipariş için GİB e-Arşiv portalında TASLAK fatura oluşturulacak (toplam ${tl(selectedTotal)}). İmzalanmaz: imzayı portalda sen atarsın. Devam?`)) return;
+    if (!(await confirmDialog(`${ids.length} sipariş için GİB e-Arşiv portalında TASLAK fatura oluşturulacak (toplam ${tl(selectedTotal)}). İmzalanmaz: imzayı portalda sen atarsın. Devam?`))) return;
     let ok = 0; const errs: string[] = [];
     // Hatalı / silinmiş kaydı olan sipariş önce açılır (yoksa "zaten taslak var" der); sunucu yalnızca bu durumları siler
     for (const r of selectedRows) if (r.invoice && ["error", "deleted"].includes(r.invoice.status)) { try { await post({ action: "reset", order_id: r.id }); } catch (e: any) { errs.push(`${r.order_no}: ${e.message}`); } }
@@ -95,7 +96,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   }
   async function delDup() {
     const m = all.filter((r) => dup(r) && r.invoice?.status === "draft").length;
-    if (!m || !confirm(`${m} mükerrer TASLAK portaldan silinecek (yalnızca imzalanmamış taslaklar; kestiğin faturalara dokunulmaz). Devam?`)) return;
+    if (!m || !(await confirmDialog(`${m} mükerrer TASLAK portaldan silinecek (yalnızca imzalanmamış taslaklar; kestiğin faturalara dokunulmaz). Devam?`, { danger: true }))) return;
     setBusy("Mükerrer taslaklar siliniyor...");
     try { const r = await post({ action: "delete_duplicates" }, 120000); notify("good", `${r.deleted} mükerrer taslak silindi. Şimdi "İmzalananları kontrol et" ile elle kestiklerin siparişlere bağlanır.`); await load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
@@ -115,8 +116,8 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     // İlk gerçek yükleme tek fatura: K Trendyol panelinde doğru pakette doğru PDF'i görünce kalanlar gider
     const first = mode === "apply" && !(c.uploaded ?? 0);
     const count = first ? 1 : 200;
-    if (mode === "apply" && !confirm(first ? "İLK yükleme: yalnızca 1 fatura Trendyol'a yüklenecek. Trendyol panelinde o siparişte faturanın doğru göründüğünü kontrol et, sonra kalanları yükle. Devam?"
-      : `Son denemede uygun çıkan ${u?.ok ?? 0} fatura Trendyol'a yüklenecek (kontroller yeniden yapılır, tutmayan atlanır). Trendyol aynı pakete ikinci faturayı kabul etmez. Devam?`)) return;
+    if (mode === "apply" && !(await confirmDialog(first ? "İLK yükleme: yalnızca 1 fatura Trendyol'a yüklenecek. Trendyol panelinde o siparişte faturanın doğru göründüğünü kontrol et, sonra kalanları yükle. Devam?"
+      : `Son denemede uygun çıkan ${u?.ok ?? 0} fatura Trendyol'a yüklenecek (kontroller yeniden yapılır, tutmayan atlanır). Trendyol aynı pakete ikinci faturayı kabul etmez. Devam?`))) return;
     setBusy(mode === "dry" ? "Deneme başlatılıyor..." : "Yükleme başlatılıyor...");
     try {
       await post({ action: "upload", mode, count });
@@ -139,11 +140,11 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     } catch (e: any) { w.close(); notify("err", e.message); }
   }
   async function clearReport(report: "audit" | "upload") {
-    if (!confirm("Bu rapor ekrandan kaldırılacak. Faturalara, GİB portalına ve Trendyol'a dokunulmaz. Devam?")) return;
+    if (!(await confirmDialog("Bu rapor ekrandan kaldırılacak. Faturalara, GİB portalına ve Trendyol'a dokunulmaz. Devam?", { danger: true }))) return;
     try { await post({ action: "clear_report", report }); await load(); } catch (e: any) { notify("err", e.message); }
   }
   async function markReturn(id: string, doc: string | null) {
-    if (doc && !confirm(`"${DOC[doc]}" olarak işaretlenecek. Bu yalnızca panel kaydıdır; GİB'de ve Trendyol'da işlem yapmaz. Devam?`)) return;
+    if (doc && !(await confirmDialog(`"${DOC[doc]}" olarak işaretlenecek. Bu yalnızca panel kaydıdır; GİB'de ve Trendyol'da işlem yapmaz. Devam?`))) return;
     try { await post({ action: "mark_return", id, doc }); await load(); } catch (e: any) { notify("err", e.message); }
   }
   async function reset(id: string) {

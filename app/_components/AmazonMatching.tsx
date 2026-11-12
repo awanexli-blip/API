@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Icon from "./Icon";
 import { type Props, type Row } from "./shared";
+import { confirmDialog } from "./confirm-dialog";
 
 // Amazon toplu eşleştirme: aday bul (kuyruk) -> adayları onayla -> onaylananları gönder
 export default function AmazonMatching({ api, notify }: Props) {
@@ -28,7 +29,7 @@ export default function AmazonMatching({ api, notify }: Props) {
     try { for (const c of variant.candidates) await api("/api/matches", { method: "PUT", body: JSON.stringify({ id: c.id, status: "rejected" }) }); load(); } catch (e: any) { notify("err", e.message); }
   }
   async function sendConfirmed() {
-    if (!confirm("Onaylı eşleşmesi olan ürünler Amazon'a teklif olarak gönderilsin mi? (Var olan Amazon ürününe, yeni durumda, akıllı kâr fiyatıyla)")) return;
+    if (!(await confirmDialog("Onaylı eşleşmesi olan ürünler Amazon'a teklif olarak gönderilsin mi? (Var olan Amazon ürününe, yeni durumda, akıllı kâr fiyatıyla)"))) return;
     setBusy(true);
     try {
       const r = await api("/api/matches/queue", { method: "POST", body: JSON.stringify({ mp: "amazon", send: true, now: true }) });
