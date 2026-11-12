@@ -7,7 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { env, readAll } from "./core/util.ts";
-import { llmJson } from "./core/llm.ts";
+import { llmJson, secondOpinion } from "./core/llm.ts";
 import { normPath } from "../lib/mp-catalog.ts";
 
 const MP = "hepsiburada";
@@ -97,7 +97,16 @@ for (const t of targets) {
   const { data, by } = await llmJson<{ id: string | null; guven: string; neden?: string }>(SYSTEM, prompt(t.category, t.titles, cands), { log });
   const id = data?.id != null ? String(data.id).trim() : null;
   const valid = id && cands.some((c) => c.id === id) ? id : null; // listede olmayan seçim geçersiz
-  done[t.category] = { category: t.category, n: t.n, stocked: t.stocked, truth: t.truth ?? null, pick: valid, guven: valid ? String(data?.guven ?? "dusuk") : (id ? "geçersiz seçim" : String(data?.guven ?? "cevap yok")), neden: data?.neden?.slice(0, 120), inCands: t.truth ? cands.some((c) => c.id === t.truth) : undefined, by };
+  let guven = valid ? String(data?.guven ?? "dusuk") : (id ? "geçersiz seçim" : String(data?.guven ?? "cevap yok"));
+  let by2 = by;
+  // Uzlaşma (12.11 ölçümü: tek model "yüksek"te %79-84): ikinci model (Gemma 4 26B) aynı kategoriyi seçmezse "yuksek" -> "orta"
+  if (guven === "yuksek" && secondOpinion().length) {
+    const s = await llmJson<{ id: string | null; guven: string }>(SYSTEM, prompt(t.category, t.titles, cands), { log, only: secondOpinion(), maxWaitMs: 5 * 60_000 });
+    const id2 = s.data?.id != null ? String(s.data.id).trim() : null;
+    by2 = `${by} + ${s.by}`;
+    if (id2 !== valid) guven = "orta";
+  }
+  done[t.category] = { category: t.category, n: t.n, stocked: t.stocked, truth: t.truth ?? null, pick: valid, guven, neden: data?.neden?.slice(0, 120), inCands: t.truth ? cands.some((c) => c.id === t.truth) : undefined, by: by2 };
   save();
   log(`${t.category.slice(0, 60)} -> ${valid ? byId.get(valid)!.path.slice(-60) : "-"} [${done[t.category].guven}] (${by})`);
   await new Promise((r) => setTimeout(r, 1500));

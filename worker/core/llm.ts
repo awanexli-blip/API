@@ -45,10 +45,15 @@ export function providers(): Provider[] {
   return out;
 }
 
+// İkinci görüş (uzlaşma) için farklı model: Google AI Studio doğrudan Gemma 4 26B (kendi kotamız)
+export function secondOpinion(): Provider[] {
+  return process.env.GEMINI_API_KEY ? [{ name: "google:gemma-4-26b", call: (s, u) => google("gemma-4-26b-a4b-it", s, u) }] : [];
+}
+
 // JSON isteyen tek çağrı; sağlayıcı zinciri ve bekleme. Dönüş: ayrıştırılmış JSON + hangi model.
-export async function llmJson<T>(system: string, user: string, o: { maxWaitMs?: number; log?: (m: string) => void } = {}): Promise<{ data: T | null; by: string }> {
+export async function llmJson<T>(system: string, user: string, o: { maxWaitMs?: number; log?: (m: string) => void; only?: Provider[] } = {}): Promise<{ data: T | null; by: string }> {
   if (unsafe(system + user)) throw new Error("istemde kişisel veri / sır var, gönderilmedi");
-  const list = providers();
+  const list = o.only ?? providers();
   if (!list.length) throw new Error("OPENROUTER_API_KEY / GEMINI_API_KEY yok");
   const restUntil = (globalThis as any).__llmRest ??= new Map<string, number>();
   const deadline = Date.now() + (o.maxWaitMs ?? 15 * 60_000);
