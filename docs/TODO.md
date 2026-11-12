@@ -14,7 +14,7 @@ Son güncelleme: 12.11.2026.
 > 5. [ ] Supabase artık yalnızca acil yedek: Pro gerekmez (K 12.11). Gece "sunucu -> Supabase çekirdek kopya" (SUNUCU_PLAN §2) kota dönünce yazılacak; o zamana kadar Vercel paneli eski veriyi gösterir.
 > 6. [ ] Sunucu kaynak: 3,8 GB RAM eşzamanlı turlara yetmiyor (12.11 swap dolu, load 28, HB turları 90+ dk). İlan turu + içe aktarma bellek sınırları ya da 8 GB'a yükseltme (K).
 > 7. [ ] OpenRouter/Gemma işçileri (K 12.11): ilk iş HB "kategori yok" (~40 bin) — 200 ürünlük isabet ölçümü, %90 üstüyse toplu. Anahtar sunucuda. Hafıza `ai-workers`.
-> 8. [ ] Modern Web Guidance 1.0 paneli tarama (K 12.11): sunucu panelinde Lighthouse / Chrome DevTools MCP + Playwright MCP (yeni oturumda yüklü).
+> 8. [~] Modern Web Guidance 1.0 (K 12.11): yapıldı — sekmeler `next/dynamic`, mobil menü `<dialog>`. Sırada: 30 `confirm()` -> `<dialog>` onay; giriş sonrası ekranlar Chrome DevTools MCP + Playwright MCP ile (yeni oturumda yüklü; K giriş yapar).
 
 > **12.11 devir (ayrıntı PROGRESS 68):**
 > 1. [~] **Toptancım hayalet stok:** K `/root/tcx-zero.sh` çalıştırdı (12.11 00:33). Supabase: 10.601 ürün, 26.542 kalkan, 21.605 stok 0 (stok anlık kaydı zaman aşımı, önemsiz); 00:38 GitHub senkronu 21.877 ilanı gönderdi. Sunucu DB içe aktarması 00:35'te başladı (PROGRESS 69'da sonuç). Doğrulama: sunucu listings senkronundan sonra canlı stoklu ilan sayısı (TY ~34,8 bin -> ~13 bin bekleniyor).

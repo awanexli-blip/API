@@ -10,4 +10,5 @@ WorkingDirectory=/opt/trentakip
 ExecStart=/bin/bash /opt/trentakip/ops/vps/update.sh
 # Panel yeniden derlendiyse yeniden başlat (root)
 ExecStartPost=+/bin/sh -c 'if [ -f /opt/trentakip/.panel-restart ]; then rm -f /opt/trentakip/.panel-restart; systemctl restart trentakip-panel.service; fi'
-TimeoutStartSec=20min
+# 12.11: yük altında panel derlemesi 20 dk'yı aşıyordu (12 dk derleme + tip kontrolü), TERM ile ölüyordu
+TimeoutStartSec=45min
