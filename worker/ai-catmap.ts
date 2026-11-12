@@ -62,24 +62,16 @@ const save = () => writeFileSync(OUT, JSON.stringify(done, null, 1));
 type Target = { category: string; n: number; stocked: number; titles: string[]; truth?: string };
 let targets: Target[] = [];
 if (mode === "eval") {
-  // Doğru cevap: yayındaki HB ilanlarının kategori numarası (tedarikçi kategorisi başına %70+ çoğunluk, en az 3 ilan)
-  const rows = await readAll<any>((a, b) => db.from("marketplace_listings").select("listing_key, category_id, products(category, title)").eq("marketplace", MP).eq("status", "live").not("category_id", "is", null).order("listing_key").range(a, b));
-  if (rows.error) throw new Error(rows.error.message);
-  const g = new Map<string, { ids: Map<string, number>; titles: string[]; n: number }>();
-  for (const r of rows.data as any[]) {
-    const c = r.products?.category; if (!c) continue;
-    const x = g.get(c) ?? { ids: new Map(), titles: [], n: 0 };
-    x.n++; x.ids.set(String(r.category_id), (x.ids.get(String(r.category_id)) ?? 0) + 1);
-    if (x.titles.length < 6) x.titles.push(r.products.title); g.set(c, x);
+  // Doğru cevap: elle girilmiş HB kategori eşlemeleri (category_map; insan kararı). HB yayındaki ilanlarda kategori numarası
+  // saklanmıyor (12.11: 49.820 ilanın 1'i), o yüzden ilanlardan çıkarılamaz. Örnek başlıklar o tedarikçi kategorisinin ürünlerinden.
+  const { data: maps, error } = await db.from("category_map").select("xml_category, category_id").eq("marketplace", MP).limit(5000);
+  if (error) throw new Error(error.message);
+  for (const m of maps ?? []) {
+    if (!byId.has(String(m.category_id))) continue;
+    const { data: ps } = await db.from("products").select("title").eq("category", m.xml_category).eq("status", "active").limit(6);
+    if ((ps ?? []).length) targets.push({ category: m.xml_category, n: ps!.length, stocked: ps!.length, titles: ps!.map((p: any) => p.title), truth: String(m.category_id) });
   }
-  for (const [category, x] of g) {
-    const [top, cnt] = [...x.ids].sort((a, b) => b[1] - a[1])[0];
-    if (x.n >= 3 && cnt / x.n >= 0.7 && byId.has(top)) targets.push({ category, n: x.n, stocked: x.n, titles: x.titles, truth: top });
-  }
-  targets.sort((a, b) => b.n - a.n);
-  // Çeşitlilik: büyükler + rastgele küçükler (yalnızca kolay büyük kategorilerle ölçülmesin)
-  const big = targets.slice(0, 20), rest = targets.slice(20).sort(() => Math.random() - 0.5);
-  targets = [...big, ...rest].slice(0, LIMIT || 60);
+  if (LIMIT) targets = targets.slice(0, LIMIT);
 } else {
   const { data: mapped } = await db.from("category_map").select("xml_category").eq("marketplace", MP).limit(5000);
   const has = new Set((mapped ?? []).map((m: any) => m.xml_category));
