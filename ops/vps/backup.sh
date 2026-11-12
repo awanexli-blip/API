@@ -35,3 +35,6 @@ fi
 find "$DIR" -name '*.dump.gpg' -mtime +7 -delete
 SIZE=$(du -h "$F" | cut -f1)
 echo "yedek tamam: $F ($SIZE, $N tablo)${FS:+ · Supabase: $(du -h "$FS" | cut -f1), $NS tablo}"
+
+# Sunucu dışı kopya (Google Drive, ops/vps/backup-offsite.sh; bağlı değilse atlar)
+bash /opt/trentakip/ops/vps/backup-offsite.sh || true

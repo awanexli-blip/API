@@ -38,3 +38,9 @@ Her yedek runner'da boş bir Postgres'e geri yüklenir, tablo tablo satır sayı
 ## Eski veritabanından kurtarma
 
 Eski proje (`xovqsjiddoituaayyhae`) 28.10'da "ACTIVE_HEALTHY" görünüyor ama bağlantı kabul etmiyor. Destek açarsa: Actions → **Eski veritabanından kurtarma** → `check` (yalnızca rapor) → uygunsa `apply`. Yalnızca yeni veritabanında olmayan satırlar eklenir. Kâr kuralları kapalı gelir, elle fiyat ve kategori komisyonu boş gelir (eski değerler raporda ve istisna notunda), panelden bakıp açarsın.
+
+## Sunucu dışı kopya: Google Drive (K 12.11)
+
+Gece yedeği (03:15, gpg şifreli) `backup-offsite.sh` ile Google Drive'a da kopyalanır: `trentakip-yedek/gunluk` (30 gün), `trentakip-yedek/haftalik` (pazar, 26 hafta). Bağlantı tek seferlik: sunucuda `bash /opt/trentakip/ops/vps/gdrive-setup.sh` (kendi bilgisayarında `rclone authorize` ile Google girişi; kapsam `drive.file`: sunucu yalnızca kendi dosyalarını görür). Token yalnızca sunucuda `/root/.config/rclone/rclone.conf`.
+
+**Şifre çözme parolası (`BACKUP_PASSPHRASE`, sunucuda `/etc/trentakip/backup.env`) sunucu dışında da saklanmalı** (parola yöneticisi). Sunucu kaybolursa Drive'daki yedekler ancak bu parolayla açılır.
