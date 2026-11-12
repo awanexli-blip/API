@@ -66,6 +66,7 @@ const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
 // Sipariş veritabanı (listings modunda Supabase; tanımlı değilse aynı veritabanı)
 const odb = listingsOnly && process.env.ORDERS_SUPABASE_URL && process.env.ORDERS_SERVICE_ROLE_KEY
   ? createClient(process.env.ORDERS_SUPABASE_URL, process.env.ORDERS_SERVICE_ROLE_KEY, { auth: { persistSession: false } }) : db;
+let ordersDbDown: string | null = null; // sipariş veritabanına ulaşılamadı (özet + eksik veriyle devam)
 // Satış durdurma: settings + marketplace_settings (Telegram /satisdurdur Trendyol'da da marketplace_settings'e yazar; eskiden Trendyol'da okunmuyordu)
 async function pausedIn(c: any): Promise<boolean> {
   const [a, b] = await Promise.all([
@@ -169,7 +170,12 @@ async function main() {
   if (s.enabled === false) return { skippedRun: `${marketplaceId} panelde kapalı` };
   if (!ordersOnly) {
     s.sales_paused = s.sales_paused === true || (await pausedIn(db));
-    if (odb !== db) s.sales_paused = s.sales_paused || (await pausedIn(odb));
+    // Sipariş veritabanı (Supabase) ulaşılamazsa (12.11: egress kotası aşıldı, proje kısıtlandı) stok senkronu DURMAZ:
+    // sunucu kendi ayarlarıyla devam eder, eksik kalan yalnızca Supabase'deki duraklatma/gizleme/rezervasyon (o sırada Telegram da kapalıdır)
+    if (odb !== db) {
+      try { s.sales_paused = s.sales_paused || (await pausedIn(odb)); }
+      catch (e: any) { ordersDbDown = String(e?.message ?? e).slice(0, 200); }
+    }
   }
   // Satış durduruldu (panel): otomatik senkron kapalı olsa da çalışır; satıştaki her ilana stok 0, başka hiçbir şey yapılmaz
   const paused = s.sales_paused === true && mode !== "preview" && !lite;
@@ -215,10 +221,10 @@ async function main() {
   const ovMap = new Map<string, any>((await mpRows("product_overrides", "barcode")).map((o: any) => [o.barcode, o]));
   // listings modu: sipariş veritabanındaki istisnalar (Telegram /satisdurdur, /fiyat oraya yazar): gizleme her zaman uygulanır,
   // elle fiyat yalnızca burada kaydı olmayan ürüne. Okunamazsa çalışma durur (gizlenmesi istenen ürün satılmasın).
-  if (odb !== db) {
+  if (odb !== db && !ordersDbDown) {
     const r = await readAll((a, b) => odb.from("product_overrides").select("*").eq("marketplace", marketplaceId).order("barcode").range(a, b));
-    if (r.error) throw new Error(`sipariş veritabanı istisnaları okunamadı: ${r.error.message}`);
-    for (const o of r.data as any[]) {
+    if (r.error) ordersDbDown = `istisnalar okunamadı: ${r.error.message.slice(0, 200)}`; // devam: sunucu DB'deki istisnalar yine uygulanır
+    else for (const o of r.data as any[]) {
       const cur = ovMap.get(o.barcode);
       if (!cur) ovMap.set(o.barcode, o);
       else if (o.hidden === true && cur.hidden !== true) ovMap.set(o.barcode, { ...cur, hidden: true });
@@ -438,7 +444,7 @@ async function main() {
 
   const matched = linked.size;
   const summary: any = {
-    marketplace: mp.id, ...(syncPart ? { part: syncPart } : {}),
+    marketplace: mp.id, ...(syncPart ? { part: syncPart } : {}), ...(ordersDbDown ? { ordersDbDown } : {}),
     xml: raw.length, listings: existing.size, [mp.id]: existing.size, matched, policy, priceMoves, commissionSource: commCount, vatRates: vatCount, categoryPrediction: { examples: examples.length, ...predCount }, categoryLeaves: leafInfo,
     update: toUpdate.length, create: toCreate.length, skipped, pricingRules: ruleCount,
     updated: 0, created: 0, zeroed: 0, failedBatches: 0, batchIds: [] as string[],
