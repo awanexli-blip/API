@@ -108,6 +108,13 @@ function Panel({ token, email }: { token: string; email: string }) {
   const [route, go] = useRoute();
   const [role, setRole] = useState<Role | null>(null);
   const [drawer, setDrawer] = useState(false);
+  const drawerRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = drawerRef.current;
+    if (!d) return;
+    if (drawer && !d.open) d.showModal();
+    else if (!drawer && d.open) d.close();
+  }, [drawer]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [theme, setTheme] = useState<Theme>("system");
   const seq = useRef(0);
@@ -245,17 +252,19 @@ function Panel({ token, email }: { token: string; email: string }) {
         <button onClick={() => setDrawer(true)}><Icon name="more" size={20} />Menü</button>
       </nav>
 
-      {drawer && <>
-        <div className="drawer-back" onClick={() => setDrawer(false)} />
-        <div className="drawer" role="dialog" aria-label="Menü">
+      {/* MWG html: modal katman <dialog> + showModal() (odak içeride, Esc kapatır, arka plan erişilemez, ::backdrop).
+          Arka plana tıklama: dialog'un kendisine düşen tıklama (içerik iç kutuda; closedby="any" her tarayıcıda yok). */}
+      <dialog ref={drawerRef} className="drawer" aria-label="Menü" onClose={() => setDrawer(false)}
+        onClick={(e) => { if (e.target === e.currentTarget) setDrawer(false); }}>
+        {drawer && <div className="drawer-in">
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div className="brand" style={{ padding: "4px 8px" }}><span className="logo"><Icon name="layers" size={18} /></span>Menü</div>
             <button className="btn icon ghost" aria-label="Kapat" onClick={() => setDrawer(false)}><Icon name="x" /></button>
           </div>
           {navList}
           {foot}
-        </div>
-      </>}
+        </div>}
+      </dialog>
 
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
