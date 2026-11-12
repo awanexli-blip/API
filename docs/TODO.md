@@ -14,6 +14,9 @@ Son güncelleme: 12.11.2026.
 > 5. [ ] Supabase artık yalnızca acil yedek: Pro gerekmez (K 12.11). Gece "sunucu -> Supabase çekirdek kopya" (SUNUCU_PLAN §2) kota dönünce yazılacak; o zamana kadar Vercel paneli eski veriyi gösterir.
 > 6. [ ] Sunucu kaynak: 3,8 GB RAM eşzamanlı turlara yetmiyor (12.11 swap dolu, load 28, HB turları 90+ dk). İlan turu + içe aktarma bellek sınırları ya da 8 GB'a yükseltme (K).
 > 7. [ ] OpenRouter/Gemma işçileri (K 12.11): ilk iş HB "kategori yok" (~40 bin) — 200 ürünlük isabet ölçümü, %90 üstüyse toplu. Anahtar sunucuda. Hafıza `ai-workers`.
+> 9. [~] **Trendyol ürün limiti doldu (12.11, "yükleme limitiniz dolmuştur"):** 21,7 bin stok-0 ilan. K onayı: tedarikçide de stoğu olmayanlar çıkar (`worker/ty-clean.ts nostock` -> 50 deneme -> tamamı; 25 saat sonra `ty-clean.ts delete --apply`). Tedarikçide stoklu ama kapalı (kopya, min stok, zararına) silinmez. **Sonra (K):** boşalan yere Bezos + Hepsibayi stoklu ürünleri yükle.
+> 10. [~] **Toptancım KDV iki kez ekleniyordu (12.11):** `suppliers.price_includes_vat=false` -> maliyet = XML price x 1,20 (400/400 örnek). K onayıyla `true` yapıldı (audit_log), zorla içe aktarma; fiyatlar `smart` politikayla turda en çok %10 iner (TY 6.145 + HB 6.138 stoklu ilan). Doğrula: maliyet/XML oranı 1,00.
+> 11. [~] HB "kategori yok" 41 bin ilan / 2.469 tedarikçi kategorisi: `worker/ai-catmap.ts` (aday listesinden Gemma seçimi). eval -> isabet %90+ ise `run --apply` (yalnızca yüksek güven). Yeniden deneme artık eşlenen kategorileri önce alır (9f7d153).
 > 8. [~] Modern Web Guidance 1.0 (K 12.11): yapıldı — sekmeler `next/dynamic`, mobil menü `<dialog>`. Sırada: 30 `confirm()` -> `<dialog>` onay; giriş sonrası ekranlar Chrome DevTools MCP + Playwright MCP ile (yeni oturumda yüklü; K giriş yapar).
 
 > **12.11 devir (ayrıntı PROGRESS 68):**
