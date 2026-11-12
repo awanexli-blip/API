@@ -37,7 +37,7 @@ export function planRetire(listings: Listing[], rows: Map<string, RetireRow>, no
 async function loadRows(db: any, marketplace: string): Promise<Map<string, RetireRow>> {
   const out = new Map<string, RetireRow>();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from("listing_retire").select("listing_key, archived_at, deleted_at, last_attempt_at, attempts, last_error").eq("marketplace", marketplace).range(from, from + 999);
+    const { data, error } = await db.from("listing_retire").select("listing_key, archived_at, deleted_at, last_attempt_at, attempts, last_error").eq("marketplace", marketplace).order("listing_key").range(from, from + 999); // sırasız sayfalama satır atlar (CLAUDE.md 1000 satır)
     if (error) throw new Error(`listing_retire okunamadı (migration 022?): ${error.message}`);
     for (const r of data ?? []) out.set(r.listing_key, r);
     if (!data || data.length < 1000) break;
