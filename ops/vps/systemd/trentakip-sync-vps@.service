@@ -14,5 +14,6 @@ EnvironmentFile=/etc/trentakip/env
 EnvironmentFile=/etc/trentakip/keys.env
 Environment=TRIGGER=schedule ACTOR=sunucu-senkron SYNC_PART=listings TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID=
 ExecStart=/bin/sh -c "ORDERS_SUPABASE_URL=$SUPABASE_URL ORDERS_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=1800 exec /usr/bin/node --experimental-strip-types worker/sync.ts update %i"
-TimeoutStartSec=40min
+# 12.11: SYNC_PART=listings tam tur (95 bin ilan + ret düzeltme) 40 dakikayı aşıyor, ilk tur TERM ile öldü -> 90 dk
+TimeoutStartSec=90min
 Nice=5
