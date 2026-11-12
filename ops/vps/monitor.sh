@@ -35,6 +35,6 @@ if systemctl is-enabled trentakip-panel.service >/dev/null 2>&1; then
   [ "$P" != 200 ] && problem panel "panel yanıt vermiyor (HTTP $P)" || ok panel "panel"
 fi
 # Başarısız zamanlanmış iş (izleme ve yedek hariç: onların kendi uyarısı var)
-F=$(systemctl list-units --state=failed --no-legend --plain 'trentakip-*' 2>/dev/null | awk '{print $1}' | grep -v -e monitor -e backup | tr '\n' ' ')
+F=$(systemctl list-units --state=failed --no-legend --plain 'trentakip-*' 2>/dev/null | awk '{print $1}' | grep -v -e monitor -e backup -e trentakip-job- | tr '\n' ' ')
 [ -n "$F" ] && problem failed "başarısız iş: $F" || ok failed "zamanlanmış işler"
 exit 0
