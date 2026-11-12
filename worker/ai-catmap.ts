@@ -100,8 +100,8 @@ for (const t of targets) {
   let guven = valid ? String(data?.guven ?? "dusuk") : (id ? "geçersiz seçim" : String(data?.guven ?? "cevap yok"));
   let by2 = by;
   // Uzlaşma (12.11 ölçümü: tek model "yüksek"te %79-84): ikinci model (Gemma 4 26B) aynı kategoriyi seçmezse "yuksek" -> "orta"
-  if (guven === "yuksek" && secondOpinion().length) {
-    const s = await llmJson<{ id: string | null; guven: string }>(SYSTEM, prompt(t.category, t.titles, cands), { log, only: secondOpinion(), maxWaitMs: 5 * 60_000 });
+  if (guven === "yuksek" && secondOpinion(by).length) {
+    const s = await llmJson<{ id: string | null; guven: string }>(SYSTEM, prompt(t.category, t.titles, cands), { log, only: secondOpinion(by), maxWaitMs: 5 * 60_000 });
     const id2 = s.data?.id != null ? String(s.data.id).trim() : null;
     by2 = `${by} + ${s.by}`;
     if (id2 !== valid) guven = "orta";

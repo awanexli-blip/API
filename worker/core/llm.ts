@@ -15,7 +15,7 @@ async function openrouter(model: string, system: string, user: string) {
   const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST", signal: AbortSignal.timeout(120_000),
     headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type": "application/json", "X-Title": "trentakip" },
-    body: JSON.stringify({ model, temperature: 0, max_tokens: 400, reasoning: { enabled: false }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+    body: JSON.stringify({ model, temperature: 0, max_tokens: 2000, reasoning: { enabled: false }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
   });
   const j: any = await r.json().catch(() => ({}));
   const code = j?.error?.code ?? r.status;
@@ -28,7 +28,7 @@ async function google(model: string, system: string, user: string) {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST", signal: AbortSignal.timeout(120_000),
     headers: { "x-goog-api-key": String(process.env.GEMINI_API_KEY), "Content-Type": "application/json" },
-    body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { temperature: 0, maxOutputTokens: 600 } }),
+    body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { temperature: 0, maxOutputTokens: 4096 } }), // Gemma önce düşünür (~450 belirteç); 600 sınırı cevaba yer bırakmıyordu (12.11)
   });
   const j: any = await r.json().catch(() => ({}));
   if (r.status === 429 || r.status >= 500) throw new LlmBusy(`${model} ${r.status}`);
@@ -41,13 +41,15 @@ export function providers(): Provider[] {
   const out: Provider[] = [];
   if (process.env.OPENROUTER_API_KEY) out.push({ name: "openrouter:gemma-4-31b", call: (s, u) => openrouter("google/gemma-4-31b-it:free", s, u) });
   if (process.env.GEMINI_API_KEY) out.push({ name: "google:gemma-4-31b", call: (s, u) => google("gemma-4-31b-it", s, u) });
+  if (process.env.GEMINI_API_KEY) out.push({ name: "google:gemma-4-26b", call: (s, u) => google("gemma-4-26b-a4b-it", s, u) }); // 31B sık 500/503 (12.11)
   if (process.env.OPENROUTER_API_KEY) out.push({ name: "openrouter:nemotron-3.5-super", call: (s, u) => openrouter("nvidia/nemotron-3.5-super-vl:free", s, u) });
   return out;
 }
 
-// İkinci görüş (uzlaşma) için farklı model: Google AI Studio doğrudan Gemma 4 26B (kendi kotamız)
-export function secondOpinion(): Provider[] {
-  return process.env.GEMINI_API_KEY ? [{ name: "google:gemma-4-26b", call: (s, u) => google("gemma-4-26b-a4b-it", s, u) }] : [];
+// İkinci görüş (uzlaşma): ilk cevabı veren modelden FARKLI bir Gemma (31B cevap verdiyse 26B, 26B verdiyse 31B)
+export function secondOpinion(firstBy = ""): Provider[] {
+  if (!process.env.GEMINI_API_KEY) return [];
+  return /26b/.test(firstBy) ? [{ name: "google:gemma-4-31b", call: (s, u) => google("gemma-4-31b-it", s, u) }] : [{ name: "google:gemma-4-26b", call: (s, u) => google("gemma-4-26b-a4b-it", s, u) }];
 }
 
 // JSON isteyen tek çağrı; sağlayıcı zinciri ve bekleme. Dönüş: ayrıştırılmış JSON + hangi model.
