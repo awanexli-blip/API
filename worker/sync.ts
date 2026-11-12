@@ -588,7 +588,7 @@ async function main() {
   // Müşteri soruları (F7): çek, taslak, Telegram; yalnızca onaylı cevaplar gönderilir
   if (!lite && !listingsOnly && mp.fetchQuestions && mode !== "preview") summary.inbox = await syncInbox(db, mp, s.answer_tone).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
   // Onaylı ilanlardan öğrenilen özellikler ürün kaydına (her modda; yalnızca veritabanına yazar)
-  summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings).catch((e: any) => ({ error: String(e?.message ?? e) }));
+  summary.learnedAttributes = await learnFromListings(db, marketplaceId, listings, 600).catch((e: any) => ({ error: String(e?.message ?? e) }));
   const dbInv = await dbInventory(dbCtx).catch((e: any) => ({ items: [] as InventoryItem[], stats: { error: String(e?.message ?? e) } as any }));
   summary.dbProducts = dbInv.stats;
   if (!doUpdate) summary.scope = { active: dbCtx.scopeActive, ...scopeStats([...toUpdate, ...dbInv.items], lsBy, dbCtx.scopeText!).stats }; // deneme: kaç ilan kapanır

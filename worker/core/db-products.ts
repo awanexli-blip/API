@@ -583,8 +583,9 @@ export async function learnFromListings(db: any, marketplace: string, listings: 
     }
     if (data.length < 1000) break;
   }
-  for (let i = 0; i < todo.length; i += 10) {
-    const res = await Promise.all(todo.slice(i, i + 10).map((t) => db.from("products").update({ attributes: t.attributes }).eq("id", t.id)));
+  // 12.11 gece: 10 eşzamanlı x 4000 ürün (kategori numarası öğrenmesi 45 bin ürünü birden güncelledi) veritabanını çökertti -> 3 eşzamanlı
+  for (let i = 0; i < todo.length; i += 3) {
+    const res = await Promise.all(todo.slice(i, i + 3).map((t) => db.from("products").update({ attributes: t.attributes }).eq("id", t.id)));
     for (const r of res) if (r.error) out.errors++; else out.updated++;
   }
   return out;

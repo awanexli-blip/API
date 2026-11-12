@@ -6,11 +6,15 @@ set -uo pipefail
 . /etc/trentakip/keys.env 2>/dev/null || true
 S=/var/lib/trentakip/monitor; mkdir -p "$S"
 tg() { [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && curl -s -m 20 -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$1" || true; }
-problem() { # $1 anahtar, $2 mesaj
-  local f="$S/$1"
-  if [ ! -f "$f" ] || [ $(( $(date +%s) - $(stat -c %Y "$f") )) -gt 10800 ]; then tg "⚠️ Sunucu: $2"; touch "$f"; fi
+problem() { # $1 anahtar, $2 mesaj. 12.11: sorun gidip gelince (ok dosyayı siliyordu) her seferinde uyarı gidiyordu (spam).
+  # Artık: iki kontrol üst üste sürmeli (5 dk aralık); aynı anahtar için en çok 3 saatte bir uyarı (.sent damgası ok ile silinmez).
+  local f="$S/$1" sent="$S/$1.sent"
+  [ -f "$f" ] || { touch "$f"; return 0; }                       # ilk görülüş: bekle
+  if [ ! -f "$sent" ] || [ $(( $(date +%s) - $(stat -c %Y "$sent") )) -gt 10800 ]; then tg "⚠️ Sunucu: $2"; touch "$sent" "$S/$1.alerted"; fi
 }
-ok() { rm -f "$S/$1"; return 0; }
+ok() { # düzeldi: bu sorun için uyarı GİTTİYSE tek "düzeldi" mesajı (bastırılan sorunda mesaj yok)
+  if [ -f "$S/$1.alerted" ]; then tg "✅ Sunucu: $2 düzeldi"; rm -f "$S/$1.alerted"; fi
+  rm -f "$S/$1"; return 0; }
 
 # Disk
 D=$(df --output=pcent / | tail -1 | tr -dc 0-9)
