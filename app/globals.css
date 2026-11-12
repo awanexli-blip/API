@@ -163,6 +163,10 @@ td.warn { color: var(--warn); }
   table.cards td.n { text-align: left; }
   table.cards td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
   table.cards td:empty { display: none; }
+  /* Uzun listelerde ekranın altında kalan kartların çizimi ertelenir (content-visibility; MWG defer-rendering-heavy-content).
+     İlk ~12 kart (ilk ekran) hariç tutulur; contain-intrinsic-size kaydırma çubuğu zıplamasını önler, 'auto' gerçek boyu hatırlar.
+     Not: masaüstü tablo satırlarına (tr) uygulanmaz, tablo iç kutularında containment geçersizdir; burada satırlar display:block. */
+  table.cards tbody tr:nth-child(n+13) { content-visibility: auto; contain-intrinsic-size: auto 96px; }
 }
 
 .pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; border: 1px solid var(--line-strong); color: var(--muted); white-space: nowrap; }
