@@ -99,7 +99,12 @@ begin
   on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at where app_state.updated_at is null or excluded.updated_at > app_state.updated_at;
   get diagnostics n = row_count; raise notice 'uygulama durumu eklendi/güncellendi: %', n;
 
-  -- 11) kullanıcı rolleri: eksikler
+  -- 11) ürün istisnaları: yalnızca Supabase'de olanlar (Telegram/panelden girilen gizleme/fiyat kararları); sunucudakine dokunulmaz.
+  -- Sunucu ilan turu bunları 12.11'e kadar ORDERS_SUPABASE_URL'den okuyordu; taşımadan sonra yalnızca kendi veritabanı.
+  insert into public.product_overrides select * from stage.product_overrides on conflict (marketplace, barcode) do nothing;
+  get diagnostics n = row_count; raise notice 'ürün istisnası eklendi: %', n;
+
+  -- 12) kullanıcı rolleri: eksikler
   insert into public.user_roles select * from stage.user_roles on conflict (email) do nothing;
   get diagnostics n = row_count; raise notice 'kullanıcı rolü eklendi: %', n;
 end $$;
