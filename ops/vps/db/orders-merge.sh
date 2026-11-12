@@ -11,7 +11,9 @@ set -a; . /etc/trentakip/env; set +a
 : "${SUPABASE_DB_URL:?SUPABASE_DB_URL yok (/etc/trentakip/env)}"
 DIR=$(cd "$(dirname "$0")" && pwd)
 srv() { docker exec -i trentakip-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
-sup() { docker exec -i -e U="$SUPABASE_DB_URL" trentakip-db-1 sh -c 'psql "$U" -v ON_ERROR_STOP=1 -q "$@"' -- "$@"; }
+# Parola komut satırına (süreç listesi) yazılmaz: "-e U" değeri bu kabuğun ortamından alır
+export U="$SUPABASE_DB_URL"
+sup() { docker exec -i -e U trentakip-db-1 sh -c 'psql "$U" -v ON_ERROR_STOP=1 -q "$@"' -- "$@"; }
 cols() { "$1" -Atc "select column_name from information_schema.columns where table_schema='public' and table_name='$2' order by 1"; }
 
 TABLES="orders order_lines order_events order_invoices claims inbox_items notifications app_state product_overrides settings marketplace_settings user_roles"

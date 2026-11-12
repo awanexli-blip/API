@@ -1,6 +1,7 @@
 // Tüm ürünleri gönder (K, 04.11: "Hepsiburada için puanlama yapma, hepsini gönder"): sunucu tedarikçilerinin (runner=vps) aktif ürünlerinden
 // pazaryerinde HİÇ ilanı olmayanlar gönderim kuyruğuna alınır. Reddedilen (error) ürün yeniden alınmaz (düzeltilince ai-attrs kuyruğa alır);
 // kaldırılmış (gone) ve deneme (DENEME) işaretli olan alınır. Gıda / iç giyim / görselsiz / zararına ürünü gönderim adımı (db-products.ts) eler.
+// K 12.11: yalnızca STOKLU ürünler (en az bir varyantı stok - rezerv >= 1); stoksuz ürün ilan olarak açılmaz, stok gelince sonraki çalıştırma alır.
 // node --experimental-strip-types worker/send-all.ts <pazaryeri> [--apply]   (--apply yoksa yalnızca sayar)
 import { createClient } from "@supabase/supabase-js";
 import { env, chunk, readAll } from "./core/util.ts";
@@ -16,14 +17,19 @@ if (se) throw new Error(se.message);
 const sources = (sups ?? []).map((s: any) => `xml:${s.code}`);
 const prods = await readAll<any>((a, b) => db.from("products").select("id").in("source", sources).eq("status", "active").order("id").range(a, b));
 if (prods.error) throw new Error(prods.error.message);
+// Stoklu ürünler (varyant stok - rezerv >= 1)
+const vs = await readAll<any>((a, b) => db.from("product_variants").select("id, product_id, stock, reserved").gt("stock", 0).order("id").range(a, b));
+if (vs.error) throw new Error(vs.error.message);
+const stocked = new Set<string>(vs.data.filter((v: any) => Number(v.stock ?? 0) - Number(v.reserved ?? 0) >= 1).map((v: any) => v.product_id));
 const has = new Set<string>();
 const ls = await readAll<any>((a, b) => db.from("marketplace_listings").select("product_id, status, last_error").eq("marketplace", mp).not("product_id", "is", null).order("listing_key").range(a, b));
 if (ls.error) throw new Error(ls.error.message);
 for (const l of ls.data) if (l.status !== "gone" && !(l.status === "error" && String(l.last_error ?? "").startsWith("DENEME"))) has.add(l.product_id);
 const { data: q } = await db.from("jobs").select("payload").eq("type", `send_products:${mp}`).in("status", ["queued", "running"]);
 for (const j of q ?? []) for (const id of j.payload?.product_ids ?? []) has.add(id);
-const ids = prods.data.map((p: any) => p.id).filter((id: string) => !has.has(id));
-console.log(`${mp}: ${prods.data.length} aktif ürün (${sources.join(", ")}), ${prods.data.length - ids.length} ilanı var / reddedildi / kuyrukta, ${ids.length} kuyruğa ${apply ? "alınıyor" : "alınacak (deneme; --apply ile)"}`);
+const missing = prods.data.map((p: any) => p.id).filter((id: string) => !has.has(id));
+const ids = missing.filter((id: string) => stocked.has(id));
+console.log(`${mp}: ${prods.data.length} aktif ürün (${sources.join(", ")}), ${prods.data.length - missing.length} ilanı var / reddedildi / kuyrukta, ${missing.length - ids.length} stoksuz (gönderilmez), ${ids.length} kuyruğa ${apply ? "alınıyor" : "alınacak (deneme; --apply ile)"}`);
 if (apply && ids.length) {
   const day = new Date().toISOString().slice(0, 16);
   let n = 0;

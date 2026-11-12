@@ -600,7 +600,7 @@ async function main() {
   let sendRes: Awaited<ReturnType<typeof processSendJobs>> | null = null;
   if (doUpdate || mode === "create" || lite) {
     sendRes = await processSendJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => { summary.sendJobsError = String(e?.message ?? e); return null; });
-    if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
+    if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors, noStock: sendRes.noStock }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
     summary.attrOptions = await flushAttrOptions(db).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     // Eksik zorunlu özellikler yapay zekâ ile (başlık + açıklama, pazaryerinin değer listesinden); eksiği kalmayan yeniden gönderilir
     // K, 06.11: yapay zekâyla zorunlu alan doldurma iptal (başarısız oldu); yalnızca AI_FILL=1 ile açılır

@@ -205,10 +205,10 @@ export function pickBrand(spec: string, sku: string): string {
   return list[h % list.length];
 }
 
-export type SendResult = { jobs: number; sent: number; errors: number; batchIds: string[]; keys: Map<string, number> };
+export type SendResult = { jobs: number; sent: number; errors: number; noStock: number; batchIds: string[]; keys: Map<string, number> };
 
 export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendResult> {
-  const out: SendResult = { jobs: 0, sent: 0, errors: 0, batchIds: [], keys: new Map() };
+  const out: SendResult = { jobs: 0, sent: 0, errors: 0, noStock: 0, batchIds: [], keys: new Map() };
   const { data: jobs, error } = await ctx.db.rpc("job_claim", { worker, kinds: [`send_products:${ctx.marketplaceId}`], max_n: Number(process.env.SEND_JOBS_PER_RUN ?? 25) });
   if (error || !jobs?.length) return out;
   // Pazaryerinde kayıtlı markalar (yoksa ürün markası yerine pazaryeri varsayılan markası kullanılır)
@@ -248,6 +248,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     out.jobs++;
     const now = new Date().toISOString();
     const rows: any[] = [];
+    const noStockKeys: string[] = []; // stoksuz olduğu için açılmayan ilanlar (panelde "kuyrukta" kalmasın)
     const fail = (key: string, p: any, v: any, msg: string) => { out.errors++; rows.push({ marketplace: ctx.marketplaceId, listing_key: key || `?${v.id}`, variant_id: v.id, product_id: p.id, status: "error", title: p.title, last_error: msg.slice(0, 500), updated_at: now }); };
     try {
       const ids: string[] = (job.payload?.product_ids ?? []).slice(0, 200);
@@ -341,7 +342,11 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
         // Çok varyantlı ürün (beden/renk): varyantlar pazaryerinde tek ürün grubu; "aynı başlık" koruması yalnızca ilk varyantta bakılır
         const vlist = [...(p.product_variants ?? [])].sort((a: any, b: any) => a.position - b.position);
         const multi = vlist.length > 1;
-        let titleClaimed = false;
+        // K 12.11: stoğu olmayan ürün yeni ilan olarak AÇILMAZ (stok 0'lı ilan açılıyordu). Varyantlardan en az biri stokta olmalı
+        // (en az minStock, rezerv düşülür); biri stoktaysa grup bütün açılır (beden/renk grubu eksik kalmasın). Pazaryerinde zaten
+        // olan ilanlar etkilenmez. Hata yazılmaz: ürün yalnızca bu işten düşer, stok gelince send-all (yalnızca stoklu) yeniden alır.
+        const inStock = vlist.some((v: any) => Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0)) >= Math.max(1, ctx.minStock));
+        let titleClaimed = false, noStockCounted = false;
         const errBefore = out.errors;
         for (const v of vlist) {
           const key = keyFor(p.source, v);
@@ -365,6 +370,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             continue;
           }
           if (p.status !== "active") { fail(key, p, v, "Ürün aktif değil (taslak/arşiv)"); continue; }
+          if (!inStock) { noStockKeys.push(key); if (!noStockCounted) { out.noStock++; noStockCounted = true; } continue; }
           if (cheaper) { fail(key, p, v, "Aynı ürünün daha ucuz kopyası var (o gönderilir)"); continue; }
           if (win && win.id !== p.id) { fail(key, p, v, `Tedarikçide aynı ürünün kopyası (kod ${win.sku}): stokta en ucuz olan o, yalnızca o gönderilir`); continue; }
           // replace_old (K, 06.11): eski tek seçenekli ilan durduruldu (stok 0), yerine seçenekli ilan açılıyor: eski başlık engel sayılmaz
@@ -458,7 +464,11 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
       if (fpSupported) for (const b of baseline) { const row = rows.find((x) => x.listing_key === b.key); if (row && !row.content_sent) row.content_sent = b.fp; }
       if (fpSupported) for (const row of rows) if (!row.content_sent && sentFp.get(row.listing_key)) row.content_sent = sentFp.get(row.listing_key);
       await upsertListings(ctx.db, rows);
+      // Stoksuz atlananların panelden kalan "kuyrukta" satırı silinir (yalnızca queued; açılmış/hatalı ilana dokunulmaz)
+      for (let i = 0; i < noStockKeys.length; i += 200)
+        await ctx.db.from("marketplace_listings").delete().eq("marketplace", ctx.marketplaceId).eq("status", "queued").in("listing_key", noStockKeys.slice(i, i + 200));
       const result = { sent: sentInJob, errors: rows.filter((r) => r.status === "error").length, already: rows.filter((r) => r.status === "live" || r.status === "pending_approval").length,
+        ...(noStockKeys.length ? { noStock: noStockKeys.length } : {}),
         ...(contentUpdated ? { contentUpdated, fields } : {}), ...(contentUnsupported ? { contentUnsupported } : {}) };
       if (failedBatches && !sentInJob) throw new Error(`${ctx.mp.label} isteği başarısız (${failedBatches} paket)`);
       await ctx.db.rpc("job_finish", { job_id: job.id, ok: true, res: result, err: null });
