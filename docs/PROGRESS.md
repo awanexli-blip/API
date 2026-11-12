@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-12 (71) — İlk tam sunucu turları doğrulandı, satılabilir sayım, Telegram raporu
+- **TY tam `SYNC_PART=listings` turu doğrulandı:** bugün 2 tur hatasız (2716: 39 dk, 2736: 73 dk). 45.073 ilan güncellendi, `failedBatches 0`, 304 yeni ürün açıldı, `retryQueue` 1.075 işi yeniden kuyruğa aldı (kategori eşlemeleri çalışıyor), ret düzeltme 75 yeniden gönderim. `ordersDbDown` dayanıklılığı sahada çalıştı (Supabase kısıtını not edip devam etti).
+- **Zaman sınırı 90 -> 150 dk** (42221e6): öğleden sonra turlar HB 503/504'leri ve ağ yavaşlığıyla 73-90+ dk sürüp TERM yedi (2823/2824 "yarıda kaldı"). HB bugün hiç tam tur bitiremedi; 15 dk'da bir kendiliğinden yeniden deniyor, kuyruk her turda işleniyor.
+- **HB send-all:** 122.296 aktif ürünün 122.294'ü zaten gönderilmiş/kuyrukta/retli; yeni kuyruğa alınan 2 — HB'de eksik ürün kalmadı.
+- **Satılabilir sayım** (stoklu+aktif, kitap/gıda/kadın iç giyim hariç, sunucu DB): toplam ~95.457 — Bezos 67.181/68.266, Toptancım 15.168/18.152 (2.984 kitap), Hepsibayi 13.105/13.588 (471 gıda/iç giyim).
+- **Telegram raporu:** K'nın isteğiyle günün tüm çıktısı 4 mesaj halinde gönderildi (sistem durumu, stok/satışa açma, sayım+Kasım analizi, MWG 1.0). Bilgisayar K'nın isteğiyle kapatıldı.
+- **Açık:** HB tam turunun 150 dk sınırıyla bitmesi; Supabase kararı K'da (TODO 0); Toptancım kalan 7.605 sıfırlama sonraki içe aktarmada.
+
 ## 2026-11-12 (70) — Supabase egress kısıtı, sipariş failover, kategori eşlemeleri, HB toplu gönderim
 - **Supabase kısıtlandı (04:00, exceed_egress_quota):** tüm REST istekleri reddediliyor; Vercel paneli, Telegram, GitHub sipariş senkronu kapalı. Gece yedeğinin 09.11'den beri düşmesinin nedeni de bu (pooler EAUTHQUERY).
 - **Dayanıklılık:** `worker/sync.ts` listings modunda sipariş DB'si ulaşılamazsa durmaz; duraklatma/gizleme/rezervasyon atlanır, özet `ordersDbDown` (cbb5977). 12.11 04:00-07:40 arası sunucu stok senkronu bu yüzden durmuştu; 07:43'te yeni kodla yeniden başladı.
