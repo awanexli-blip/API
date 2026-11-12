@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip GEÇİCİ: Supabase kısıtlıyken sipariş senkronu (15 dakikada bir)
+
+[Timer]
+OnCalendar=*-*-* *:09,24,39,54:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target
