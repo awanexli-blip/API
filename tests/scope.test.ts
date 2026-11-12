@@ -76,3 +76,14 @@ test("+18 ürün bebek/çocuk/oyuncak kategorisinde satılmaz", () => {
   assert.ok(!adultMismatch("+18 Ürünler", null), "kategori yok");
 });
 
+
+test("kitap: yeni gönderim durur, hobi/parti ve kitaplık (mobilya) kitap sayılmaz", async () => {
+  const { bookBlock } = await import("../lib/scope.ts");
+  assert.ok(bookBlock("Kitap, Müzik, Film, Hobi >>> Kitap >>> Çocuk Kitapları", null));
+  assert.ok(bookBlock("Kitap > Roman", null));
+  assert.ok(bookBlock("Hobi > Boyama Kitabı", null));
+  assert.ok(bookBlock(null, "Kitap > Edebiyat > Roman"));
+  assert.equal(bookBlock("Kitap, Müzik, Film, Hobi >>> Parti Malzemeleri >>> Balon", null), null);
+  assert.equal(bookBlock("Ev & Yaşam > Mobilya > Kitaplık", null), null);
+  assert.equal(bookBlock("Elektronik > Tablet > Kitap Okuyucu Kılıfı", "Tablet Kılıfı"), null);
+});

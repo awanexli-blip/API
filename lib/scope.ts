@@ -72,6 +72,16 @@ export function inScopeForSend(supplierCat: string | null | undefined, mpCat: st
   return inScopeAny([supplierCat, mpCat], title);
 }
 
+// Kitap (K 12.11: "kitap, gıda ve kadın iç giyim satamıyoruz"). ŞİMDİLİK YALNIZCA YENİ GÖNDERİMİ durdurur; satıştaki kitap ilanlarının
+// stoğunu sıfırlamak K onayıyla (hafıza sales-restriction: toplu stok etkisini önce K'ya söyle). Tedarikçi yolunun ilk adımı hariç
+// ("Kitap, Müzik, Film, Hobi >>> Parti Malzemeleri" kitap değil) kitap/dergi/roman/ansiklopedi/sözlük geçen adım ya da pazaryeri kategorisi.
+const BOOK_SEG = /(^|\s)(kitap|kitaplar|kitapları|kitabı|roman|romanlar|romanları|dergi|dergiler|dergisi|ansiklopedi|ansiklopedisi|sözlük|sözlüğü|e-kitap)$/u; // adımın SON kelimesi ("Kitap Okuyucu Kılıfı" kitap değil)
+export function bookBlock(supplierCat: string | null | undefined, mpCat: string | null | undefined): string | null {
+  const segs = String(supplierCat ?? "").split(/>{1,3}|\//).map((s) => s.trim().toLocaleLowerCase("tr")).filter(Boolean);
+  const hit = segs.slice(segs.length > 1 ? 1 : 0).find((s) => BOOK_SEG.test(s)) ?? (BOOK_SEG.test(String(mpCat ?? "").toLocaleLowerCase("tr").split(">").pop()?.trim() ?? "") ? String(mpCat) : null);
+  return hit ? `kitap (${hit})` : null;
+}
+
 // Oyuncak uyumsuzluğu (K, 04.11: "beklediği gibi olmaz, ceza verir"): tedarikçide OYUNCAK kategorisindeki ürün pazaryerinde oyuncak dışı
 // kategoride satılmaz (oyuncak süpürge "Araç İçi Süpürge", oyuncak blender "Bluetooth Kulaklık", oyuncak saz "Bağlama" olarak satılıyordu).
 // Pazaryeri kategorisi oyuncak/çocuk/hobi türüyse ya da ürün zaten o türde kullanılan bir şeyse (kaykay, paten, pedallı araç...) geçer.

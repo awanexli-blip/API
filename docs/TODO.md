@@ -9,7 +9,7 @@ Son güncelleme: 12.11.2026.
 > **12.11 akşam — TAM TAŞIMA YAPILDI (PROGRESS 72). Ana sistem sunucu: https://trentakip.duckdns.org**
 > 1. [x] Siparişler/fatura/iade/soru sunucuda (`trentakip-orders.timer`, 15 dk, enabled). Supabase'deki 121 fatura, 168 sipariş, 23 soru, 22 ürün istisnası, bildirim anahtarları `ops/vps/db/orders-merge.sh apply` ile birleştirildi (çift paket 0).
 > 2. [x] Panel düğmeleri + Telegram `/senkron` sunucu iş kuyruğunu tetikler (`RUN_SITE=sunucu`, `ops/vps/runq.sh`, `trentakip-runq.path`); Telegram webhook sunucu panelinde. GitHub `sync.yml` `ops/github-sync-part.txt = off` (çökmede `all`).
-> 3. [ ] (K) GitHub → Settings → Variables → `ACTIVE_SITE` = `sunucu` (sunucu token'ının değişken izni yok, 403). Diğer zamanlı iş akışları (import/catalog/opportunity) bununla durur.
+> 3. [x] GitHub `ACTIVE_SITE=sunucu` (12.11, gh CLI ile).
 > 4. [ ] (K) **Supabase veritabanı parolasını yenile** (12.11 sohbete düştü; yeni değer yalnızca sunucu `/etc/trentakip/env` `SUPABASE_DB_URL`).
 > 5. [ ] Supabase artık yalnızca acil yedek: Pro gerekmez (K 12.11). Gece "sunucu -> Supabase çekirdek kopya" (SUNUCU_PLAN §2) kota dönünce yazılacak; o zamana kadar Vercel paneli eski veriyi gösterir.
 > 6. [ ] Sunucu kaynak: 3,8 GB RAM eşzamanlı turlara yetmiyor (12.11 swap dolu, load 28, HB turları 90+ dk). İlan turu + içe aktarma bellek sınırları ya da 8 GB'a yükseltme (K).

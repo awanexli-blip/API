@@ -12,7 +12,7 @@ import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
 import { genderOf } from "./attr-infer.ts";
-import { trendyolRuleBlock, inScopeAny, inScopeForSend, vatSuspect, toyMismatch, adultMismatch } from "../../lib/scope.ts";
+import { trendyolRuleBlock, inScopeAny, inScopeForSend, vatSuspect, toyMismatch, adultMismatch, bookBlock } from "../../lib/scope.ts";
 
 export type DbCtx = {
   db: any; mp: Marketplace; marketplaceId: string; cfg: PricingConfig; rules: PricingRule[]; fx: Record<string, number>;
@@ -380,7 +380,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           if (!vImages.length) { fail(key, p, v, "Görsel yok"); continue; }
           // Satış kısıtı (K, 01.11): gıda ve iç giyim hiçbir pazaryerine gönderilmez (lib/scope.ts)
           // Pazaryeri kategorisi (varsa) izinli olmalı + tedarikçi ya da pazaryeri kategorisi izinli (lib/scope.ts inScopeForSend)
-          if (ctx.scopeActive) { const vs = vatSuspect(p.vat_rate) ?? toyMismatch(p.category, catName) ?? adultMismatch(p.category, catName); const sc = vs ? { ok: false, reason: vs } : inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Satış kısıtı: ${sc.reason ?? ""} (gıda ve iç giyim satılamaz)`); continue; } }
+          if (ctx.scopeActive) { const vs = vatSuspect(p.vat_rate) ?? toyMismatch(p.category, catName) ?? adultMismatch(p.category, catName) ?? bookBlock(p.category, catName); const sc = vs ? { ok: false, reason: vs } : inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Satış kısıtı: ${sc.reason ?? ""} (gıda, iç giyim ve kitap satılamaz)`); continue; } }
           if (ctx.marketplaceId === "trendyol") { const tr = trendyolRuleBlock(p.title); if (tr) { fail(key, p, v, tr); continue; } }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
