@@ -8,7 +8,7 @@
 //   elle eklendi: özellik açıldıktan sonra görülen, hiç gönderilmemiş, fiyatı sistemin fiyatından belirgin farklı ilan.
 // Tablo / kolonlar yoksa (migration 074 öncesi) koruma kapalıdır, senkron eskisi gibi çalışır.
 import type { InventoryItem, Listing } from "../marketplaces/types.ts";
-import { readAll, chunk, isSupplierKey } from "./util.ts";
+import { readAll, chunk, isOwnListing } from "./util.ts";
 import { esc, telegramEnabled, tgSend } from "./telegram.ts";
 import { notifyOnce } from "./notify.ts";
 
@@ -51,12 +51,12 @@ export function decide(it: InventoryItem, ls: Listing | undefined, s: Sent | und
 
 // Stok sıfırlama (zero_missing / zero_unlinked): bağlı olmayan ilan. Kararlı ilan sıfırlanmaz; özellikten sonra eklenmiş, hiç
 // gönderilmemiş ilan sıfırlanmadan önce sorulur.
-export function decideZero(s: Sent | undefined, h: Hold | undefined, fresh: boolean, key = ""): Decision {
-  // K'nın kendi ilanı (tedarikçi barkodu değil): hiç dokunulmaz, sorulmaz (K 14.11)
-  if (key && !isSupplierKey(key)) return { action: "skip" };
+export function decideZero(s: Sent | undefined, h: Hold | undefined, fresh: boolean, key = "", title: string | null = null): Decision {
+  // K'nın kendi ilanı (Gezer/Voga/Rasing/Hermes, OZ): hiç dokunulmaz, sorulmaz (K 14.11)
+  if (isOwnListing(key, title)) return { action: "skip" };
   if (h) return h.status === "sync" ? { action: "push", resolve: true } : { action: "skip" };
   if (s?.pushed_at) return { action: "push" };
-  return { action: "push" }; // tedarikçi barkodlu bağsız ilan = bizim (ürün tedarikçiden kalkmış): sıfırlanır
+  return { action: "push" }; // K'nın olmayan bağsız ilan = tedarikçiden kalkmış eski ilan: sıfırlanır (karşılıksız satış olmasın)
 }
 
 type NewHold = { listing_key: string; kind: "edited" | "manual_new"; title: string | null; mp_price: number | null; mp_qty: number | null; our_price: number | null; our_qty: number | null; sent_price: number | null; sent_qty: number | null };
@@ -110,7 +110,7 @@ export async function loadGuard(db: any, marketplace: string, lsBy: Map<string, 
     filterZero(ids: string[]): string[] {
       const out: string[] = [];
       for (const id of ids) {
-        const d = decideZero(sent.get(id), holds.get(id), started && !sent.has(id), id);
+        const d = decideZero(sent.get(id), holds.get(id), started && !sent.has(id), id, lsBy.get(id)?.title ?? null);
         if (d.detect) { found.push(holdRow(null, id, d.detect)); stats.detectedNew++; continue; }
         if (d.action === "skip") { stats.zeroHeld++; continue; }
         if (d.resolve) { resolved.push(id); stats.resolved++; }

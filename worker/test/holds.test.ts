@@ -36,7 +36,9 @@ check("tabloda yok + ilk çalışma: sessiz", decide(it, ls(349.9, 5), undefined
 
 check("sıfırlama: tedarikçi barkodlu bağsız ilan sıfırlanır", decideZero(sent({ pushed_at: null }), undefined, false, "TCXBY123").action === "push");
 check("sıfırlama: tedarikçi barkodlu yeni bağsız ilan sorulmadan sıfırlanır", decideZero(sent({ pushed_at: null, first_seen_at: "2026-10-31T00:00:00Z" }), undefined, false, "BZS9").action === "push");
-for (const k of ["SRS0000826", "4522936381177", "OZ123", "10221.00343"]) check(`sıfırlama: K'nın kendi ilanı (${k}) hiç dokunulmaz, sorulmaz`, (() => { const d = decideZero(sent(), undefined, true, k); return d.action === "skip" && !d.detect; })());
+for (const [k, t] of [["OZ123", ""], ["10221.00343", "Gezer Merdane Islak Zemin Açık Terlik Mavi"], ["5550001", "Voga Kadın Terlik"], ["777", "Hermes Erkek Ayakkabı"], ["778", "Rasing Spor Ayakkabı"]]) check(`sıfırlama: K'nın kendi ilanı (${k}) hiç dokunulmaz, sorulmaz`, (() => { const d = decideZero(sent(), undefined, true, k, t); return d.action === "skip" && !d.detect; })());
+check("sıfırlama: Bezos'tan kalkmış eski ilan (SRS) K'nın değil, sıfırlanır", decideZero(sent(), undefined, true, "SRS0000826", "Foot Care Cream Cooling Peppermint").action === "push");
+check("sıfırlama: tedarikçi barkodlu 'Racing' başlıklı ilan K'nın sayılmaz", decideZero(sent(), undefined, true, "TCXBY1", "Racing Oyuncak Araba").action === "push");
 check("sıfırlama: kalsın kararı varsa sıfırlanmaz", decideZero(sent(), { id: "h", listing_key: "K1", status: "keep_all", kind: "manual_new" }, false).action === "skip");
 check("sıfırlama: eşitle kararıyla sıfırlanır", decideZero(sent(), { id: "h", listing_key: "K1", status: "sync", kind: "manual_new" }, false).resolve === true);
 
