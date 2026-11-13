@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-14 (75) — Kurumsal fatura, K'nın kendi ilanları, sahte "elle değişti"
+- **Kurumsal fatura (Trendyol rehberi):** TY `commercial` + `invoiceAddress.company/taxNumber/taxOffice/isEInvoiceAvailable`, HB `companyName/taxNumber/taxOffice/billing*` -> `orders.address.invoice` (adresle 30 gün sonra silinir) + `orders.buyer_type` (migration 080, `order_upsert` güncellendi, sunucuya uygulandı). Fatura: VKN/TCKN + ünvan + vergi dairesi + fatura adresi, tutar yalnızca müşterinin ödediği (TY indirimi yansıtma faturasıyla). e-Fatura mükellefine e-Arşiv açılmaz (HB'de durum bilinmediği için elle). Panelde rozet, kurumsal iadede "iade faturası iste" uyarısı. **Bulgu:** e-Fatura mükellefi 5 kurumsal alıcıya (GIB2026000000043/072/116/121/135) geçmişte bireysel e-Arşiv kesilip yüklenmiş -> K / mali müşavir.
+- **"Elle değişti" (K: "ben değiştirmiyorum"):** TY 7.708 bekletmenin hepsi Toptancım, pazaryeri fiyatı = gönderilen x1,20: 11.11 22:00 sistemin kendi çift KDV'li gönderimi. Algı kapatıldı (`HOLDS_DETECT_EDITED=1` ile açılır); bekleyenler `sync` (sistem doğru fiyatı gönderir).
+- **K'nın ilanları (Gezer, Voga, Rasing/Racing, Hermes; OZ; panelden `manual`):** sıfırlama/sorma yok (`isOwnListing`), `manual` ürünün fiyat/stoğu gönderilmez, yaşam döngüsü dokunmaz. 12.11 toplu temizlik 3 Gezer ilanını arşivlemişti -> geri alındı. Silme/temizlik/yaşam döngüsü yalnızca tedarikçi barkodlu ilanlar (`isSupplierKey`); tedarikçi kalıbında olmayan ~790 arşivli ilan (SRS = eski Bezos, kişiye özel kolye...) silinmedi, K'ya soruldu.
+- **Barkod:** ilanlar XML barkoduyla açılıyor (TY 54.209 / HB 133.869 birebir). Toptancım ~1.100 üründe barkodu değiştirmiş (TCXBY… -> TCXBYP-…): ilan eski barkodla kalır (pazaryeri değiştirtmez), ürüne bağlı olduğu için stok/fiyat doğru gider. Toptancım'da 360 varyantın XML barkodu boş.
+- **Gece zamanlayıcıları (14.11):** 01:15 + 02:20 silme (yalnızca tedarikçi ilanı), 03:30 yıldız sırasıyla TY yükleme, 04:30 Telegram özeti.
+
 ## 2026-11-13 (74) — Akşam: Drive yedeği, silme/yükleme zamanlandı, HB geçici hata, halılar
 - **Drive yedeği bağlandı:** rclone `gdrive` (drive.file), ilk kopya yüklendi (2026-11-13.dump.gpg 180 MB); gece 03:15 yedeğinden sonra otomatik. `rclone authorize` kodu dolgusuz base64 olmalı (yeni rclone `==` reddediyor).
 - **TY silme (K "sil", "daha erken"):** Trendyol 24 saat arşiv ister; `ty-clean delete --after-h` (en az 24,1). Zamanlayıcılar: 14.11 01:15 ve 02:20 (17.887 + 13 ilan). 253 ilan silinemez (Trendyol kilitli, arşivlenemiyor). 03:30 `stars rate` + `send 10..1 trendyol --apply` (LISTING_CAP içinde). 04:30 `ops/vps/gece-rapor.sh` Telegram özeti.
