@@ -33,7 +33,7 @@ const items = new Map<string, Item>();
 for (const r of rows.data as any[]) {
   const p = r.products; if (!p || !r.category_id || items.has(p.id)) continue;
   if (!(p.product_variants ?? []).some((v: any) => Number(v.stock) > 0)) continue;
-  const missing = String(r.last_error).split(":").slice(1).join(":").split(",").map((s: string) => s.replace(/s*(.*$/, "").trim()).filter(Boolean); // "Boyut/Ebat (\"80X80\" listede yok)" -> ad
+  const missing = String(r.last_error).split(":").slice(1).join(":").split(",").map((s: string) => s.replace(/\s*\(.*$/, "").trim()).filter(Boolean); // "Boyut/Ebat (\"80X80\" listede yok)" -> ad
   items.set(p.id, { pid: p.id, cid: String(r.category_id), title: String(p.title ?? ""), text: `${p.title ?? ""}\n${String(p.description ?? "").replace(/<[^>]+>/g, " ")}`.slice(0, 4000), missing, known: p.attributes ?? {}, vattrs: (p.product_variants ?? []).filter((v: any) => Number(v.stock) > 0).map((v: any) => v.attributes ?? {}) });
 }
 let list = [...items.values()];
