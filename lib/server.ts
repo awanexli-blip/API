@@ -23,9 +23,12 @@ export type Actor = { email: string; role: Role };
 export async function getActor(req: NextRequest): Promise<Actor | null> {
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
   if (!token) return null;
-  const { data } = await admin().auth.getUser(token);
+  const { data, error } = await admin().auth.getUser(token);
+  // Kimlik servisi yükte geç/5xx cevap verirse bu "yetkisiz" değil, geçici hata: 401 yerine 500 (istemci yeniden dener; 13.11 yönetici görüntüleyiciye düşüyordu)
+  if (error && ![400, 401, 403, 404, 422].includes(Number((error as any).status))) throw new Error(`kimlik doğrulama servisi cevap vermedi: ${error.message}`);
   return resolveRole(data.user, process.env.ADMIN_EMAIL, async (email) => {
-    const { data: r } = await admin().from("user_roles").select("role").eq("email", email).maybeSingle();
+    const { data: r, error: e } = await admin().from("user_roles").select("role").eq("email", email).maybeSingle();
+    if (e) throw new Error(`rol okunamadı: ${e.message}`);
     return ((r as any)?.role as Role) ?? null;
   });
 }

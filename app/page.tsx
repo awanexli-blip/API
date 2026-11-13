@@ -119,7 +119,6 @@ function Panel({ token, email }: { token: string; email: string }) {
   const [theme, setTheme] = useState<Theme>("system");
   const seq = useRef(0);
   useEffect(() => { setTheme(currentTheme()); }, []);
-  useEffect(() => { api("/api/me").then((m) => setRole(m.role)).catch(() => setRole("viewer")); }, [api]);
 
   // Bildirim: başarılı olanlar 6 sn sonra kapanır, hatalar kapatılana kadar kalır
   const notify: Notify = useCallback((t, m) => {
@@ -127,6 +126,22 @@ function Panel({ token, email }: { token: string; email: string }) {
     setToasts((x) => [...x.slice(-3), { id, t, m }]);
     if (t === "good") setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), 6000);
   }, []);
+  // Rol: sunucu yükte /api/me geçici 401/zaman aşımı verebiliyor (13.11: yönetici "görüntüleyici"ye düşüp tüm menü kayboldu).
+  // 3 deneme; yine olmazsa bilinen rol korunur, hiç yoksa salt okunur açılır ve hata gösterilir (sessiz düşüş yok).
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      for (const wait of [0, 1500, 4000]) {
+        if (wait) await new Promise((r) => setTimeout(r, wait));
+        if (off) return;
+        try { const m = await api("/api/me"); if (!off) setRole(m.role); return; } catch { /* yeniden dene */ }
+      }
+      if (off) return;
+      setRole((r) => r ?? "viewer");
+      notify("err", "Yetki bilgisi alınamadı (sunucu yavaş olabilir). Menü eksik görünürse sayfayı yenile.");
+    })();
+    return () => { off = true; };
+  }, [api, notify]);
   const close = (id: number) => setToasts((x) => x.filter((y) => y.id !== id));
 
   const isAdmin = role === "admin";
