@@ -86,6 +86,9 @@ async function fetchCategoryAttributes(c: ReturnType<typeof hbClient>, categoryI
     mandatory: !!(a.mandatory ?? a.required), type: String(a.type ?? ""), multiValue: !!a.multiValue,
   })));
 }
+// Ağ / hız sınırı / sunucu hatası: değer listesi "yok" (serbest metin) sayılmaz. 13.11: "fetch failed" boş liste sayılıyor, Cinsiyet
+// çıkarılamıyor, ~1.900 ürün kalıcı "zorunlu özellik doldurulamadı: Cinsiyet" hatasına düşüyordu.
+export const hbTransient = (e: any) => /fetch failed|ECONNRESET|ETIMEDOUT|timeout|aborted|socket|Hepsiburada (408|429|5\d\d) /i.test(String(e?.message ?? e) + " " + String(e?.cause?.code ?? ""));
 export async function hbAttributeValues(c: ReturnType<typeof hbClient>, categoryId: string | number, attrId: string) {
   const key = categoryId + ":" + attrId;
   if (valCache.has(key)) return valCache.get(key)!;
@@ -134,12 +137,12 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
     // Garantisiz üründe garanti tipi: listede "garantisiz / yok" varsa o (tedarikçi varsayılanı "İthalatçı Garantili" yazılmasın)
     if (/garanti/i.test(a.name) && warranty === 0) {
       let gv: string[] = [];
-      try { gv = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin */ }
+      try { gv = await hbAttributeValues(c, categoryId, a.id); } catch (e) { if (hbTransient(e)) throw e; /* serbest metin */ }
       const none = gv.find((v) => /garantisiz|garanti yok|^yok$|^0/i.test(lo(v)));
       if (none) { out[a.id] = none; continue; }
     }
     let vals: string[] = [];
-    try { vals = await hbAttributeValues(c, categoryId, a.id); } catch { /* serbest metin olabilir */ }
+    try { vals = await hbAttributeValues(c, categoryId, a.id); } catch (e) { if (hbTransient(e)) throw e; /* serbest metin olabilir */ }
     // Binlerce satıcı değerli liste (renk: "0-Siyah", "1 Siyah"...) serbest metin sayılır: kayıttaki değer olduğu gibi (lib/mp-catalog.ts OPEN_LIST)
     if (vals.length >= 5000) vals = [];
     // Ürün kaydındaki değer: "A|B|C" seçeneklerinden listede olan ilk değer, liste yoksa sonuncusu
@@ -327,7 +330,10 @@ export function createHepsiburada(): Marketplace {
           if (f.missing.length) { no(`zorunlu özellik doldurulamadı: ${f.missing.join(", ")}`); continue; }
           extra = f.attributes;
           p.learned = f.learned;
-        } catch (e: any) { console.error("özellik listesi alınamadı:", e.message); }
+        } catch (e: any) {
+          // Özelliksiz gönderilmez (HB reddeder); "özellik listesi" hatası requeueFixable ile sonraki turlarda yeniden denenir
+          no(`özellik listesi alınamadı (geçici, yeniden denenecek): ${String(e.message).slice(0, 160)}`); continue;
+        }
         payloads.push({
           categoryId: Number(p.cat.category_id),
           merchant: MERCHANT,

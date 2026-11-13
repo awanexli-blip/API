@@ -107,6 +107,9 @@ for (const [name, want] of [["Numara", "42"], ["Ayakkabı Numarası", "42"], ["n
   const got = defaultFor(dv, name);
   console.log(`${got === want ? "OK  " : "HATA"} eş anlamlı özellik: ${name} -> ${got}`); if (got !== want) fails++;
 }
+{ const { hbTransient } = await import("../marketplaces/hepsiburada.ts");
+  const ok = hbTransient(new Error("fetch failed")) && hbTransient(new Error("Hepsiburada 503 /x: busy")) && !hbTransient(new Error("Hepsiburada 404 /x: yok")) && !hbTransient(new Error("Hepsiburada 400 /x: bad"));
+  console.log(`${ok ? "OK  " : "HATA"} HB geçici hata ayrımı (ağ/5xx yeniden denenir, 4xx serbest metin)`); if (!ok) fails++; }
 { const got = defaultFor({ Beden: "80X150" }, "Boyut/Ebat"); console.log(`${got === "80X150" ? "OK  " : "HATA"} halı bedeni -> Boyut/Ebat: ${got}`); if (got !== "80X150") fails++; }
 { const { matchOptions: mo } = await import("../core/attr-infer.ts"); const a = mo("B Siyah Süet / 36").join(","), b = mo("Siyah/Beyaz").join(","), c = mo("Garanti Yok|0 Ay").join(","); const ok = a === "B Siyah Süet / 36,36" && b === "Siyah/Beyaz" && c === "Garanti Yok,0 Ay"; console.log(`${ok ? "OK  " : "HATA"} birleşik beden parçası: ${a} | ${b} | ${c}`); if (!ok) fails++; }
 
