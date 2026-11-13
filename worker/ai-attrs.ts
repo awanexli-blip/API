@@ -18,6 +18,16 @@ const MATCH = arg("--match") ?? "", LIMIT = Number(arg("--limit") ?? 0), APPLY =
 // --fixed "Ad=Değer;Ad2=Değer2": K'nın kararıyla sabit değer (13.11: halıların hepsine "Üretim Şekli=Makine Halısı"); değer izinli listede olmalı
 const FIXED = Object.fromEntries(String(arg("--fixed") ?? "").split(";").map((x) => x.split("=").map((y) => y.trim())).filter((x) => x.length === 2 && x[0] && x[1]));
 // Kaynak ifadede olması gereken kelime: "Taban" için iplik/yüzey bilgisi (polyester iplik) taban sayılmaz (K 13.11: olmayan özellik eklenmez)
+// Sayısal aralık: kaynaktaki "6 mm" seçilen değerin aralığına düşmeli ("İnce (6 mm altı)" 6 mm için yanlış; 13.11 model iki üründe farklı seçti)
+const num = (x: string) => Number(x.replace(",", "."));
+export function inRange(value: string, kaynak: string): boolean {
+  const n = kaynak.match(/(\d+(?:[.,]\d+)?)\s*mm/i); if (!n) return true;
+  const v = num(n[1]);
+  let m = value.match(/(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)\s*mm/i); if (m) return v >= num(m[1]) && v <= num(m[2]);
+  m = value.match(/(\d+(?:[.,]\d+)?)\s*mm\s*alt/i); if (m) return v < num(m[1]);
+  m = value.match(/(\d+(?:[.,]\d+)?)\s*mm\s*(üst|üzer)/i); if (m) return v > num(m[1]);
+  return true;
+}
 const MUST: [RegExp, RegExp][] = [[/^taban$/i, /taban|zemin/i], [/hav/i, /hav/i], [/saçak/i, /saçak|kenar|overlok|kesim/i]];
 if (!["trendyol", "hepsiburada"].includes(MP) || !MATCH) { console.log('kullanım: ai-attrs.ts <trendyol|hepsiburada> --match "Özellik" [--limit N] [--apply]'); process.exit(1); }
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
@@ -85,6 +95,7 @@ for (const it of list) {
       if (!d.values.includes(x.value)) continue;                       // listede birebir değil
       const k = fold(x.kaynak); if (k.length < 3 || !ft.includes(k)) continue; // kaynak metinde aynen yok -> uydurma sayılır
       const must = MUST.find(([n]) => n.test(d.name)); if (must && !must[1].test(x.kaynak)) continue; // kaynak o özelliği anlatmıyor
+      if (!inRange(x.value, x.kaynak)) { const ok = d.values.filter((v) => /\d\s*mm/i.test(v) && inRange(v, x.kaynak)); if (ok.length !== 1) continue; x.value = ok[0]; } // aralığa uyan tek değer
       found[d.name] = { ...x, by: "metin" };
     }
   }
