@@ -1,7 +1,7 @@
 // Trendyol adaptörü — Product V2 servisleri (V1 15.10.2026'da kapandı).
 // Uç listesi: https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint.md
 import { readFileSync } from "node:fs";
-import { isElectric, defaultFor, inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { isElectric, defaultFor, matchOptions, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { jpgUrl, aliveImages } from "../core/img-proxy.ts";
@@ -198,7 +198,7 @@ export function createTrendyol(): Marketplace {
         const vals = await attributeValues(cid, id);
         const opts = def.split("|").map((x) => x.trim()).filter(Boolean);
         const sq = (s: string) => lo(s).replace(/[\s,]+/g, "").replace(/numara$/, "");
-        const hit = opts.map((o) => vals.find((v) => lo(v.name) === lo(o)) ?? vals.find((v) => sq(v.name) === sq(o))).find(Boolean);
+        const hit = matchOptions(def).map((o) => vals.find((v) => lo(v.name) === lo(o)) ?? vals.find((v) => sq(v.name) === sq(o))).find(Boolean);
         if (hit) val = { attributeId: id, attributeValueId: hit.id };
         else if (ca.allowCustom && opts.length) val = { attributeId: id, customAttributeValue: opts[opts.length - 1] };
       }

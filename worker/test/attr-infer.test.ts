@@ -108,6 +108,7 @@ for (const [name, want] of [["Numara", "42"], ["Ayakkabı Numarası", "42"], ["n
   console.log(`${got === want ? "OK  " : "HATA"} eş anlamlı özellik: ${name} -> ${got}`); if (got !== want) fails++;
 }
 { const got = defaultFor({ Beden: "80X150" }, "Boyut/Ebat"); console.log(`${got === "80X150" ? "OK  " : "HATA"} halı bedeni -> Boyut/Ebat: ${got}`); if (got !== "80X150") fails++; }
+{ const { matchOptions: mo } = await import("../core/attr-infer.ts"); const a = mo("B Siyah Süet / 36").join(","), b = mo("Siyah/Beyaz").join(","), c = mo("Garanti Yok|0 Ay").join(","); const ok = a === "B Siyah Süet / 36,36" && b === "Siyah/Beyaz" && c === "Garanti Yok,0 Ay"; console.log(`${ok ? "OK  " : "HATA"} birleşik beden parçası: ${a} | ${b} | ${c}`); if (!ok) fails++; }
 
 // Formda girilen satış fiyatı (TR biçimi; pazaryerine özel değer önce)
 for (const [a, mp, want] of [[{ "Satış fiyatı": "1.299,90" }, "trendyol", 1299.9], [{ "Satış fiyatı": "849.5" }, "trendyol", 849.5], [{ "Satış fiyatı": "500", "Satış fiyatı@hepsiburada": "529,90" }, "hepsiburada", 529.9], [{}, "trendyol", 0], [{ "Satış fiyatı": "abc" }, "trendyol", 0]] as [Record<string, string>, string, number][]) {

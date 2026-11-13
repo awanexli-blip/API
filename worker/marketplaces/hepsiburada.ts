@@ -4,7 +4,7 @@
 // test (SIT) ortamında doğrulanmalı. Varsayılan ortam SIT'tir; canlı için HB_ENV=prod.
 import { readFileSync } from "node:fs";
 import { env, sleep, chunk, san } from "../core/util.ts";
-import { defaultFor, inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { defaultFor, matchOptions, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { hbCommissionMatcher } from "./hepsiburada-commission.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
@@ -145,7 +145,7 @@ export async function hbFillAttributes(c: ReturnType<typeof hbClient>, categoryI
     // Ürün kaydındaki değer: "A|B|C" seçeneklerinden listede olan ilk değer, liste yoksa sonuncusu
     const opts = String(def ?? "").split("|").map((x) => x.trim()).filter(Boolean);
     const sq = (s: string) => lo(s).replace(/[\s,]+/g, "").replace(/numara$/, "");
-    const fromDef = vals.length ? opts.map((o) => vals.find((v) => lo(v) === lo(o)) ?? vals.find((v) => sq(v) === sq(o))).find(Boolean) : opts[opts.length - 1];
+    const fromDef = vals.length ? matchOptions(def).map((o) => vals.find((v) => lo(v) === lo(o)) ?? vals.find((v) => sq(v) === sq(o))).find(Boolean) : opts[opts.length - 1];
     if (!a.mandatory) { if (fromDef) out[a.id] = fromDef; continue; }
     const inferred = fromDef ? undefined : vals.length ? inferAttribute(a.name, vals.map((v, i) => ({ id: i, name: v })), title, description, xmlCategory)?.name : inferCustom(a.name, title, description, xmlCategory) ?? undefined;
     const t = " " + lo(title).replace(/[^0-9a-zçğıöşü]+/g, " ") + " ";

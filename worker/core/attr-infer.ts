@@ -15,6 +15,13 @@ const pick = (vals: AttrValue[], names: string[]) => names.map((n) => vals.find(
 // boyut/ebat: halı bedeni "80X150" -> Trendyol seçenek özelliği "Boyut/Ebat" ("80 x 150"; 13.11, 322 stoklu halı bu yüzden reddediliyordu)
 const ATTR_GROUPS: [string, RegExp][] = [["beden", /beden|numara|size|ölçü|olcu|boyut|ebat/], ["renk", /renk|colou?r/]];
 const groupOf = (name: string) => ATTR_GROUPS.find(([, re]) => re.test(lo(name)))?.[0] ?? null;
+// Kayıttaki "A|B" seçenekleri + birleşik bedenin rakamlı parçaları: tedarikçi "B Siyah Süet / 36" yazıyor, liste "36" bekliyor (13.11, HB 309 ayakkabı).
+// Yalnızca rakam içeren parça eklenir ("Siyah/Beyaz" renk parçalanmaz); serbest metne düşüşte asıl değer kullanılır.
+export function matchOptions(def: string | undefined): string[] {
+  const opts = String(def ?? "").split("|").map((x) => x.trim()).filter(Boolean);
+  const parts = opts.flatMap((o) => (o.includes("/") ? o.split("/").map((x) => x.trim()).filter((x) => /\d/.test(x)).reverse() : []));
+  return [...opts, ...parts.filter((p) => !opts.includes(p))];
+}
 export function defaultFor(defaults: Record<string, string> | undefined, ...names: (string | number | undefined)[]): string | undefined {
   const entries = Object.entries(defaults ?? {}).filter(([, v]) => v != null && String(v).trim() !== "");
   const keys = names.filter((n) => n != null).map((n) => lo(String(n)));
