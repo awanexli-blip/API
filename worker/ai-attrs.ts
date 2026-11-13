@@ -10,10 +10,15 @@ import { createHash } from "node:crypto";
 import { env, readAll } from "./core/util.ts";
 import { llmJson } from "./core/llm.ts";
 import { getAttrs } from "../lib/mp-catalog.ts";
+import { defaultFor } from "./core/attr-infer.ts";
 
 const MP = process.argv[2];
 const arg = (n: string) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : undefined; };
-const MATCH = arg("--match") ?? "", LIMIT = Number(arg("--limit") ?? 0), APPLY = process.argv.includes("--apply");
+const MATCH = arg("--match") ?? "", LIMIT = Number(arg("--limit") ?? 0), APPLY = process.argv.includes("--apply"), CAT = arg("--category");
+// --fixed "Ad=Değer;Ad2=Değer2": K'nın kararıyla sabit değer (13.11: halıların hepsine "Üretim Şekli=Makine Halısı"); değer izinli listede olmalı
+const FIXED = Object.fromEntries(String(arg("--fixed") ?? "").split(";").map((x) => x.split("=").map((y) => y.trim())).filter((x) => x.length === 2 && x[0] && x[1]));
+// Kaynak ifadede olması gereken kelime: "Taban" için iplik/yüzey bilgisi (polyester iplik) taban sayılmaz (K 13.11: olmayan özellik eklenmez)
+const MUST: [RegExp, RegExp][] = [[/^taban$/i, /taban|zemin/i], [/hav/i, /hav/i], [/saçak/i, /saçak|kenar|overlok|kesim/i]];
 if (!["trendyol", "hepsiburada"].includes(MP) || !MATCH) { console.log('kullanım: ai-attrs.ts <trendyol|hepsiburada> --match "Özellik" [--limit N] [--apply]'); process.exit(1); }
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 const OUT = process.env.AI_ATTRS_FILE || `/var/log/trentakip/ai-attrs-${MP}-${MATCH.replace(/[^a-zA-Z0-9]+/g, "_")}.json`;
@@ -21,15 +26,15 @@ const log = (m: string) => console.error(`${new Date().toISOString().slice(11, 1
 const fold = (s: string) => s.toLocaleLowerCase("tr").replace(/<[^>]+>/g, " ").replace(/[^a-zçğıöşü0-9%.,x×]+/g, " ").replace(/\s+/g, " ").trim();
 
 const rows = await readAll<any>((a, b) => db.from("marketplace_listings").select("listing_key, category_id, last_error, product_id, products(id, title, description, attributes, product_variants(stock, attributes))")
-  .eq("marketplace", MP).eq("status", "error").ilike("last_error", `%zorunlu özellik doldurulamadı%${MATCH}%`).order("listing_key").range(a, b));
+  .eq("marketplace", MP).eq("status", "error").ilike("last_error", `%zorunlu özellik doldurulamadı%${MATCH}%`).match(CAT ? { category_id: CAT } : {}).order("listing_key").range(a, b));
 if (rows.error) throw new Error(rows.error.message);
-type Item = { pid: string; cid: string; title: string; text: string; missing: string[]; known: Record<string, string> };
+type Item = { pid: string; cid: string; title: string; text: string; missing: string[]; known: Record<string, string>; vattrs: Record<string, string>[] };
 const items = new Map<string, Item>();
 for (const r of rows.data as any[]) {
   const p = r.products; if (!p || !r.category_id || items.has(p.id)) continue;
   if (!(p.product_variants ?? []).some((v: any) => Number(v.stock) > 0)) continue;
   const missing = String(r.last_error).split(":").slice(1).join(":").split(",").map((s: string) => s.trim()).filter(Boolean);
-  items.set(p.id, { pid: p.id, cid: String(r.category_id), title: String(p.title ?? ""), text: `${p.title ?? ""}\n${String(p.description ?? "").replace(/<[^>]+>/g, " ")}`.slice(0, 4000), missing, known: p.attributes ?? {} });
+  items.set(p.id, { pid: p.id, cid: String(r.category_id), title: String(p.title ?? ""), text: `${p.title ?? ""}\n${String(p.description ?? "").replace(/<[^>]+>/g, " ")}`.slice(0, 4000), missing, known: p.attributes ?? {}, vattrs: (p.product_variants ?? []).filter((v: any) => Number(v.stock) > 0).map((v: any) => v.attributes ?? {}) });
 }
 let list = [...items.values()];
 if (LIMIT) list = list.slice(0, LIMIT);
@@ -54,8 +59,11 @@ for (const it of list) {
   const defs = attrDefs.get(it.cid)!;
   const want = it.missing.map((m) => defs.find((d) => d.name === m)).filter(Boolean) as typeof defs;
   const found: Record<string, { value: string; kaynak: string; by: string }> = {};
+  // Seçenek özelliği (Boyut/Ebat, Beden) her stoklu varyantta kayıtlıysa gönderimde varyanttan gelir (ürüne yazılmaz)
+  for (const d of want) if (d.variant && it.vattrs.length && it.vattrs.every((va) => defaultFor(va, d.name))) found[d.name] = { value: "(varyanttan)", kaynak: "", by: "varyant" };
+  for (const d of want) if (!found[d.name] && FIXED[d.name] && d.values.includes(FIXED[d.name])) found[d.name] = { value: FIXED[d.name], kaynak: "K kararı", by: "sabit" };
   // Ebat: başlık/metindeki NN x NN (izinli listede birebir varsa)
-  for (const d of want.filter((d) => /boyut|ebat/i.test(d.name))) {
+  for (const d of want.filter((d) => /boyut|ebat/i.test(d.name) && !found[d.name])) {
     const m = it.text.match(/(\d{2,3})\s*[x×*]\s*(\d{2,4})\s*(cm)?/i);
     if (m) { const v = `${m[1]} x ${m[2]}`; if (d.values.includes(v)) found[d.name] = { value: v, kaynak: m[0], by: "kural" }; }
   }
@@ -76,6 +84,7 @@ for (const it of list) {
       const x = res[d.name]; if (!x) continue;
       if (!d.values.includes(x.value)) continue;                       // listede birebir değil
       const k = fold(x.kaynak); if (k.length < 3 || !ft.includes(k)) continue; // kaynak metinde aynen yok -> uydurma sayılır
+      const must = MUST.find(([n]) => n.test(d.name)); if (must && !must[1].test(x.kaynak)) continue; // kaynak o özelliği anlatmıyor
       found[d.name] = { ...x, by: "metin" };
     }
   }
@@ -96,7 +105,7 @@ if (APPLY) {
   for (const it of list) {
     const r = done[it.pid]; if (!r?.complete) continue;
     const add: Record<string, string> = {};
-    for (const [k, v] of Object.entries(r.found) as any) if (it.known[`${k}@${MP}`] == null && it.known[k] == null) add[`${k}@${MP}`] = v.value;
+    for (const [k, v] of Object.entries(r.found) as any) if (v.by !== "varyant" && it.known[`${k}@${MP}`] == null && it.known[k] == null) add[`${k}@${MP}`] = v.value;
     if (!Object.keys(add).length) continue;
     const { error } = await db.from("products").update({ attributes: { ...it.known, ...add }, updated_at: new Date().toISOString() }).eq("id", it.pid);
     if (!error) { w++; ids.push(it.pid); }

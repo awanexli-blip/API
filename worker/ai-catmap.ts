@@ -124,8 +124,11 @@ if (mode === "eval") {
     yanlisYuksek: by((r) => r.guven === "yuksek" && r.pick !== r.truth).slice(0, 8).map((r) => `${r.category.slice(0, 50)} | secilen ${byId.get(r.pick!)?.path.slice(-50)} | dogru ${byId.get(r.truth!)?.path.slice(-50)}`),
   }, null, 1));
 } else {
-  const hi = res.filter((r) => r.guven === "yuksek" && r.pick);
-  console.log(JSON.stringify({ kategori: res.length, yuksek: hi.length, yuksekStokluIlan: hi.reduce((s, r) => s + (r.stocked ?? 0), 0), digerleri: res.length - hi.length }));
+  // Oyuncak/bebek kategorileri otomatik eşlenmez (hafıza: oyuncak yanlış kategoride satılmaz; ölçümde yanlışlardan ikisi oyuncaktı) -> panelden elle
+  const TOY = /oyunca|bebek|kostüm|parti/i;
+  const isToy = (r: any) => TOY.test(r.category) || TOY.test(byId.get(r.pick!)?.path ?? "");
+  const hi = res.filter((r) => r.guven === "yuksek" && r.pick && !isToy(r));
+  console.log(JSON.stringify({ kategori: res.length, oyuncakElle: res.filter((r) => r.guven === "yuksek" && r.pick && isToy(r)).length, yuksek: hi.length, yuksekStokluIlan: hi.reduce((s, r) => s + (r.stocked ?? 0), 0), digerleri: res.length - hi.length }));
   if (apply && hi.length) {
     const rows = hi.map((r) => ({ marketplace: MP, xml_category: r.category, category_id: r.pick, category_name: byId.get(r.pick!)!.name }));
     let n = 0;
