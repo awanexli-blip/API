@@ -121,7 +121,11 @@ export async function POST(req: NextRequest) {
     // Claude köprüsü (K 14.11): /claude aç-kapa; açıkken komut olmayan mesaj Claude Code oturumuna gider (claude_inbox)
     if (/^\/claude/i.test(text)) {
       const off = /kapat|off|dur/i.test(text);
-      await admin().from("app_state").upsert({ key: "tg:claude_mode", value: off ? "off" : "on", updated_at: new Date().toISOString() }, { onConflict: "key" });
+      // upsert canlıda sessizce yazmıyordu (14.11): önce güncelle, yoksa ekle; hata K'ya gösterilir
+      const v = off ? "off" : "on", now = new Date().toISOString();
+      const up = await admin().from("app_state").update({ value: v, updated_at: now }).eq("key", "tg:claude_mode").select("key");
+      const w = up.error ? up : up.data?.length ? up : await admin().from("app_state").insert({ key: "tg:claude_mode", value: v, updated_at: now });
+      if (w.error) { await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: `❗ Claude modu kaydedilemedi: ${w.error.message.slice(0, 150)}` }); return NextResponse.json({ ok: true }); }
       await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: off ? "🤖 Claude modu kapandı: mesajlarına yine durum asistanı cevap verir." : `🤖 Claude modu açık: mesajların Claude'a gider, iş bilgisayardaki oturumda yapılır ve cevap buradan gelir.
 Kapatmak için: /claude kapat
 ${await claudeOnline() ? "🟢 Claude şu an açık." : "⚪ Claude şu an açık değil: mesajların kuyrukta bekler, oturum açılınca okunur."}` });
