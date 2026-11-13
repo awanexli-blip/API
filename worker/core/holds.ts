@@ -8,7 +8,7 @@
 //   elle eklendi: özellik açıldıktan sonra görülen, hiç gönderilmemiş, fiyatı sistemin fiyatından belirgin farklı ilan.
 // Tablo / kolonlar yoksa (migration 074 öncesi) koruma kapalıdır, senkron eskisi gibi çalışır.
 import type { InventoryItem, Listing } from "../marketplaces/types.ts";
-import { readAll, chunk } from "./util.ts";
+import { readAll, chunk, isSupplierKey } from "./util.ts";
 import { esc, telegramEnabled, tgSend } from "./telegram.ts";
 import { notifyOnce } from "./notify.ts";
 
@@ -27,6 +27,9 @@ export function decide(it: InventoryItem, ls: Listing | undefined, s: Sent | und
     return { action: "push", resolve: true };
   }
   if (!ls) return { action: "push" };
+  // K 14.11: "ben hiçbir şekilde elle değiştirmiyorum". "Elle değişti" algısı kapalı: 11.11'deki 7.708 bekletme sistemin kendi (çift KDV'li) fiyat
+  // gönderimiydi, K değil. Fiyat/stok her zaman sistemden; yalnızca K'nın panelde verdiği kararlar (bekletme kaydı) geçerli. Açmak için HOLDS_DETECT_EDITED=1.
+  if (process.env.HOLDS_DETECT_EDITED !== "1") return { action: "push" };
   const lp = num(ls.price), lq = num(ls.quantity);
   if (s?.pushed_at) {
     const sp = num(s.sent_price), sq = num(s.sent_qty), prevP = num(s.price), prevQ = num(s.stock);
@@ -48,10 +51,12 @@ export function decide(it: InventoryItem, ls: Listing | undefined, s: Sent | und
 
 // Stok sıfırlama (zero_missing / zero_unlinked): bağlı olmayan ilan. Kararlı ilan sıfırlanmaz; özellikten sonra eklenmiş, hiç
 // gönderilmemiş ilan sıfırlanmadan önce sorulur.
-export function decideZero(s: Sent | undefined, h: Hold | undefined, fresh: boolean): Decision {
+export function decideZero(s: Sent | undefined, h: Hold | undefined, fresh: boolean, key = ""): Decision {
+  // K'nın kendi ilanı (tedarikçi barkodu değil): hiç dokunulmaz, sorulmaz (K 14.11)
+  if (key && !isSupplierKey(key)) return { action: "skip" };
   if (h) return h.status === "sync" ? { action: "push", resolve: true } : { action: "skip" };
   if (s?.pushed_at) return { action: "push" };
-  return (s ? s.first_seen_at != null : fresh) ? { action: "skip", detect: "manual_new" } : { action: "push" };
+  return { action: "push" }; // tedarikçi barkodlu bağsız ilan = bizim (ürün tedarikçiden kalkmış): sıfırlanır
 }
 
 type NewHold = { listing_key: string; kind: "edited" | "manual_new"; title: string | null; mp_price: number | null; mp_qty: number | null; our_price: number | null; our_qty: number | null; sent_price: number | null; sent_qty: number | null };
@@ -105,7 +110,7 @@ export async function loadGuard(db: any, marketplace: string, lsBy: Map<string, 
     filterZero(ids: string[]): string[] {
       const out: string[] = [];
       for (const id of ids) {
-        const d = decideZero(sent.get(id), holds.get(id), started && !sent.has(id));
+        const d = decideZero(sent.get(id), holds.get(id), started && !sent.has(id), id);
         if (d.detect) { found.push(holdRow(null, id, d.detect)); stats.detectedNew++; continue; }
         if (d.action === "skip") { stats.zeroHeld++; continue; }
         if (d.resolve) { resolved.push(id); stats.resolved++; }

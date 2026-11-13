@@ -84,7 +84,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 {
   const { calls, s } = run("update", { MOCK_ZERO: "1", MOCK_BULK: "50" });
   const zeroed = calls.trendyolWrites.flatMap((w) => w.body.items).filter((i) => i.quantity === 0 && !("salePrice" in i)).map((i) => i.barcode);
-  check("zero_missing: yetim ürün sıfırlandı", zeroed.includes("ORPHAN-1") && s.zeroed >= 1, JSON.stringify(zeroed));
+  check("zero_missing: yetim ürün sıfırlandı", zeroed.includes("TCXORPHAN-1") && s.zeroed >= 1, JSON.stringify(zeroed));
 }
 
 // 5) smart politikası
@@ -194,7 +194,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 // 9e) Faz 4: veritabanından gönderilmiş ilan XML'de yok diye sıfırlanmaz, stok/fiyatı veritabanından gelir
 {
   const { calls, s } = run("update", { MOCK_ZERO: "1", MOCK_BULK: "50", MOCK_DB: "1" });
-  const items = calls.trendyolWrites.flatMap((w) => w.body.items ?? []).filter((i) => i.barcode === "ORPHAN-1");
+  const items = calls.trendyolWrites.flatMap((w) => w.body.items ?? []).filter((i) => i.barcode === "TCXORPHAN-1");
   check("faz4: veritabanı ilanı sıfırlanmadı", items.length === 1 && items[0].quantity === 20, JSON.stringify(items));
   check("faz4: fiyat maliyetten hesaplandı (≥ 30×1,3)", items[0]?.salePrice >= 39, JSON.stringify(items));
   check("faz4: özet", s.dbProducts?.updated === 1, JSON.stringify(s.dbProducts));
@@ -284,7 +284,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 {
   const p = run("auto", { SYNC_SOURCES: "xml:toptanci", MOCK_DB: "1" });
   const items = p.calls.trendyolWrites.filter((w) => w.path.includes("price-and-inventory")).flatMap((w) => w.body.items ?? []);
-  check("SYNC_SOURCES: yalnızca o kaynağın ilanı gönderilir", items.length > 0 && items.every((i) => i.barcode === "ORPHAN-1"), items.map((i) => i.barcode).slice(0, 5));
+  check("SYNC_SOURCES: yalnızca o kaynağın ilanı gönderilir", items.length > 0 && items.every((i) => i.barcode === "TCXORPHAN-1"), items.map((i) => i.barcode).slice(0, 5));
   check("SYNC_SOURCES: XML'den ürün açılmaz, cevap / silme yok", !p.calls.trendyolWrites.some((w) => w.path.includes("/v2/products") || /answers|delete|archive/i.test(w.path)));
   const q = run("auto", { SYNC_SOURCES: "xml:baska", MOCK_DB: "1" });
   check("SYNC_SOURCES: kaynak dışı ilana hiç stok/fiyat gitmez", !q.calls.trendyolWrites.some((w) => w.path.includes("price-and-inventory") && (w.body.items ?? []).length));

@@ -9,6 +9,7 @@ const ls = (price: number, quantity: number): any => ({ id: "K1", price, quantit
 // Önceki görüntü = gönderdiğimiz (pazaryeri uygulamış); "uygulanmamış" testlerinde price/stock eski değer
 const sent = (o: Partial<any> = {}): any => ({ sent_price: 299.9, sent_qty: 12, price: 299.9, stock: 12, pushed_at: "2026-10-30T10:00:00Z", first_seen_at: null, ...o });
 const o = { fresh: false, soldRecently: 0 };
+process.env.HOLDS_DETECT_EDITED = "1"; // algı mantığı testleri (varsayılan kapalı, K 14.11)
 
 check("değişiklik yok: gönderilir", decide(it, ls(299.9, 12), sent(), undefined, o).action === "push");
 check("pazaryeri fiyatı sistemin göndereceği fiyat (kayıt eski): elle sayılmaz", decide({ id: "K1", price: 486.07, quantity: 147 }, ls(486.07, 147), sent({ sent_price: 462.93, sent_qty: 147, price: 462.93, stock: 147 }), undefined, o).action === "push");
@@ -33,8 +34,9 @@ check("yeni ilan, fiyatı sistemle aynı (bizim açtığımız): gönderilir", d
 check("tabloda hiç yok + koruma başlamış (ürüne bağlı): gönderilir", decide(it, ls(349.9, 5), undefined, undefined, { ...o, fresh: true }).action === "push");
 check("tabloda yok + ilk çalışma: sessiz", decide(it, ls(349.9, 5), undefined, undefined, o).action === "push");
 
-check("sıfırlama: eski bağsız ilan sıfırlanır", decideZero(sent({ pushed_at: null }), undefined, false).action === "push");
-check("sıfırlama: özellikten sonra eklenmiş bağsız ilan sorulur", decideZero(sent({ pushed_at: null, first_seen_at: "2026-10-31T00:00:00Z" }), undefined, false).detect === "manual_new");
+check("sıfırlama: tedarikçi barkodlu bağsız ilan sıfırlanır", decideZero(sent({ pushed_at: null }), undefined, false, "TCXBY123").action === "push");
+check("sıfırlama: tedarikçi barkodlu yeni bağsız ilan sorulmadan sıfırlanır", decideZero(sent({ pushed_at: null, first_seen_at: "2026-10-31T00:00:00Z" }), undefined, false, "BZS9").action === "push");
+for (const k of ["SRS0000826", "4522936381177", "OZ123", "10221.00343"]) check(`sıfırlama: K'nın kendi ilanı (${k}) hiç dokunulmaz, sorulmaz`, (() => { const d = decideZero(sent(), undefined, true, k); return d.action === "skip" && !d.detect; })());
 check("sıfırlama: kalsın kararı varsa sıfırlanmaz", decideZero(sent(), { id: "h", listing_key: "K1", status: "keep_all", kind: "manual_new" }, false).action === "skip");
 check("sıfırlama: eşitle kararıyla sıfırlanır", decideZero(sent(), { id: "h", listing_key: "K1", status: "sync", kind: "manual_new" }, false).resolve === true);
 
@@ -42,4 +44,7 @@ const t = holdText("Trendyol", { listing_key: "K1", kind: "edited", title: "Priz
 check("mesaj: fiyatlar ve kaçış", /349,90 TL/.test(t) && /299,90 TL/.test(t) && /&lt;Çift&gt;/.test(t), t);
 check("düğme verisi 64 bayt altı", holdButtons("123e4567-e89b-12d3-a456-426614174000").flat().every((b) => Buffer.byteLength(b.data) <= 64));
 
+delete process.env.HOLDS_DETECT_EDITED;
+check("K 14.11: elle değişti algısı varsayılan kapalı", decide(it, ls(349.9, 12), sent(), undefined, o).action === "push" && !decide(it, ls(349.9, 12), sent(), undefined, o).detect);
+check("K 14.11: kararı olan bekletme yine geçerli", decide(it, ls(349.9, 12), sent(), { id: "h", listing_key: "K1", status: "keep_all", kind: "edited" }, o).action === "skip");
 if (fails) { console.log(`${fails} hata`); process.exit(1); }

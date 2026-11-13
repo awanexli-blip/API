@@ -7,7 +7,7 @@
 //   5) YENİDEN GÖNDER: silinmiş (gone) ilanın ürünü yeniden stokta -> gönderim kuyruğu. Onaylı ilanın kategori numarası ve özellikleri
 //      ürüne öğrenilmiş olduğundan (learnFromListings) kategori/özellik yeniden tahmin edilmez.
 // Kapatma: app_state "lifecycle:trendyol" = "off". Tur başına sınırlar: arşiv/sil 3000, yeniden gönderim 2000 ürün.
-import { readAll, chunk } from "./util.ts";
+import { readAll, chunk, isSupplierKey } from "./util.ts";
 import type { Listing, Marketplace } from "../marketplaces/types.ts";
 
 const H = 3600_000;
@@ -26,6 +26,7 @@ export function planLifecycle(rows: LcRow[], live: Map<string, Pick<Listing, "st
   const setOut: string[] = [], clearOut: string[] = [], archive: string[] = [], unarchive: string[] = [], del: string[] = [], resend = new Set<string>();
   const age = (t: string | null) => (t ? (o.now - Date.parse(t)) / H : 0);
   for (const r of rows) {
+    if (!isSupplierKey(r.key)) continue; // K'nın kendi ilanı: arşiv/silme yok (K 14.11)
     if (!r.inStock && !r.outSince) setOut.push(r.key);
     if (r.inStock && r.outSince) clearOut.push(r.key);
     const l = live.get(r.key), rt = retire.get(r.key);
@@ -54,12 +55,13 @@ export async function runLifecycle(db: any, mp: Marketplace, marketplace: string
   const hidden = new Set<string>();
   { const r = await readAll<any>((a, b) => db.from("product_overrides").select("barcode").eq("marketplace", marketplace).eq("hidden", true).order("barcode").range(a, b)); for (const x of r.data ?? []) hidden.add(x.barcode); }
   for (let last = ""; ; ) {
-    const { data, error } = await db.from("marketplace_listings").select("listing_key, product_id, status, out_since, product_variants(stock, reserved), products(status)")
+    const { data, error } = await db.from("marketplace_listings").select("listing_key, product_id, status, out_since, product_variants(stock, reserved), products(status, source)")
       .eq("marketplace", marketplace).not("variant_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
     if (error) { if (/out_since/.test(error.message)) return { skipped: "migration 079 yok" }; throw new Error(error.message); }
     if (!data?.length) break;
     last = data[data.length - 1].listing_key;
     for (const r of data as any[]) {
+      if (r.products?.source === "manual") continue; // K'nın panelden eklediği ürün: fiyat/stok/arşiv tamamen K'da (14.11)
       const v = r.product_variants, active = r.products?.status === "active";
       const avail = Math.max(0, Number(v?.stock ?? 0) - Number(v?.reserved ?? 0));
       rows.push({ key: r.listing_key, productId: r.product_id, status: r.status, outSince: r.out_since, productActive: active, inStock: active && avail >= Math.max(1, minStock) && !hidden.has(r.listing_key) });

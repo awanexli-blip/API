@@ -16,7 +16,7 @@ const approved = [
   content("DIRECT-1", "Urun D", 150),
   content("ÖS13-KILITLI", "Kilitli Urun", 120, { locked: true }),
   content("ÖS13-SIFIR", "Sifir Fiyat", 0),
-  content("ORPHAN-1", "Yetim Urun", 50),
+  content("TCXORPHAN-1", "Yetim Urun", 50),
   content("X-SAME", "Ayni Baslikli Urun Burada", 80),
   content("DEAD-1", "Olu Bolge Urunu", 359.9),                    // 300-410 arası: 299,90 hem ucuz hem kârlı
   content("PAHALI-1", "Pahali Urun", 1000),                       // formülün çok üstünde: kademeli düşüş
@@ -104,7 +104,7 @@ globalThis.fetch = async (url, init = {}) => {
       if (t === "category_map") return json(catMap);
       if (t === "product_overrides") return json([]);
       // Faz 4: veritabanından gönderilmiş ilan (XML'de yok) ve gönderilecek ürünler
-      if (t === "marketplace_listings" && process.env.MOCK_DB === "1") return json(Number(u.searchParams.get("offset") ?? 0) > 0 ? [] : [{ listing_key: "ORPHAN-1", product_variants: { stock: 20, reserved: 0, cost_price: null }, products: { source: "xml:toptanci", status: "active", cost_price: 30, currency: "TRY", vat_rate: 20, category: "Cat1", brand: "X" } }]);
+      if (t === "marketplace_listings" && process.env.MOCK_DB === "1") return json(Number(u.searchParams.get("offset") ?? 0) > 0 ? [] : [{ listing_key: "TCXORPHAN-1", product_variants: { stock: 20, reserved: 0, cost_price: null }, products: { source: "xml:toptanci", status: "active", cost_price: 30, currency: "TRY", vat_rate: 20, category: "Cat1", brand: "X" } }]);
       // HB test aracı "send": ürün veritabanından (marka geçen başlık atlanmalı)
       if (t === "products" && process.env.MOCK_HB_PRODUCTS === "1") return json(Number(u.searchParams.get("offset") ?? 0) > 0 ? [] : [
         { id: "h1", sku: "TCX-1", title: "Siyah Plastik Kirli Sepeti", description: "aciklama", category: "Banyo", desi: 2, cost_price: 120, vat_rate: 20, source: "xml:toptacim", product_variants: [{ sku: "TCX-1", barcode: "B1", stock: 9, cost_price: 120 }], product_images: [{ url: "https://i/1.jpg", position: 0 }] },

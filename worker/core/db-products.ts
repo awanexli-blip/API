@@ -123,6 +123,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
     for (const r of data as any[]) {
       const p = r.products, v = r.product_variants, key = r.listing_key as string;
       if (!p || !v || p.source === "xml:bayilik") continue; // BayilikXML ilanları XML akışında
+      if (p.source === "manual") continue; // K 14.11: elle eklediği ürünlerin fiyat ve stoğu tamamen K'da, senkron göndermez
       if (ctx.sources && !ctx.sources.has(p.source)) continue; // kısmi senkron: başka sistemin yönettiği ilan
       stats.listings++;
       ctx.linked.add(key); // "XML'den kalkan" sayılıp stoğu sıfırlanmasın

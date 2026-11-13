@@ -50,3 +50,8 @@ export const maskName = (v?: string | null) => String(v ?? "").trim().split(/\s+
 export const maskAddress = (v?: string | null) => { const s = String(v ?? "").trim(); return s ? `${s.split(/[\s,]+/).slice(-1)[0]} (adres gizli)` : "***"; };
 // CSV hücresi: ayraç/satır sonu temizlenir, formül gibi başlayan hücre (= + - @ sekme CR) Excel'de çalışmasın diye ' ile başlar
 export const csvCell = (v: unknown) => { const s = String(v ?? "").replace(/;/g, ",").replace(/\r?\n/g, " "); return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s; };
+
+// Tedarikçi ilanı mı (K 14.11: "XML'den gelmeyen, elle eklediğim ürünlere sistem hiçbir şekilde dokunmasın"). Barkod önekleri inbox.ts supplierOfBarcode ile aynı:
+// toptancim TCX, Bezos BZ/BZS/BEZ/BOZ, Hepsibayi HS/HBY, eski BayilikXML ÖS13-/OS13-/BX. Bunların dışındaki ilan (OZ, rakamlı, SRS...) K'nındır:
+// stok sıfırlama, arşiv, silme, "elle değişti/eklendi" bekletmesi uygulanmaz.
+export const isSupplierKey = (key: string | null | undefined) => /^(ÖS13-|OS13-|TCX|BZS?|BEZ|BOZ|HS|HBY|BX)/i.test(String(key ?? ""));
