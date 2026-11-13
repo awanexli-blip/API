@@ -27,7 +27,7 @@ type Out = { belge_no: string | null; order_no: string | null; ok: boolean; reas
 const report: Out[] = [];
 
 const { data: rows, error } = await db.from("order_invoices")
-  .select("order_id, ettn, belge_no, amount, vat, status, error, orders(marketplace, package_id, order_no, total, status, customer_name, order_lines(ty_discount, title, qty, unit_price, vat_rate, product_id))")
+  .select("order_id, ettn, belge_no, amount, vat, status, error, orders(marketplace, package_id, order_no, total, status, customer_name, buyer_type, address, order_lines(ty_discount, title, qty, unit_price, vat_rate, product_id))")
   .eq("status", "signed").order("belge_no");
 if (error) throw new Error(error.message);
 let list = (rows ?? []).filter((r: any) => r.orders?.marketplace === "trendyol");
@@ -75,7 +75,11 @@ try {
       if (/^MÜKERRER/.test(r.error ?? "")) throw new Error("mükerrer fatura: portalda elle kesilmiş imzalı fatura da var, biri iptal edilmeden yüklenmez");
       if (!o.customer_name) throw new Error("alıcı adı sistemde yok (silinmiş olabilir): elle yükle");
       if (BAD_STATUS.test(o.status ?? "")) throw new Error(`sipariş durumu ${o.status}`);
-      const tyDisc = (o.order_lines ?? []).reduce((a: number, l: any) => a + (Number(l.ty_discount) || 0), 0);
+      // Kurumsal (Trendyol rehberi): fatura müşterinin ödediği tutarla, şirket ünvanıyla kesilir; Trendyol indirimi ayrıca yansıtma faturası
+      const corp = o.address?.invoice?.taxNumber ? o.address.invoice : null;
+      if (o.buyer_type && o.buyer_type !== "bireysel" && !corp) throw new Error("kurumsal sipariş ama ünvan/VKN bilgisi yok: elle kontrol et");
+      const disc = (l: any) => (corp ? 0 : Number(l.ty_discount) || 0);
+      const tyDisc = (o.order_lines ?? []).reduce((a: number, l: any) => a + disc(l), 0);
       const expected = r2(Number(o.total) + tyDisc);
       if (Math.abs(Number(r.amount) - expected) > 0.01) throw new Error(`fatura tutarı ${Number(r.amount).toFixed(2)} ≠ sipariş ${expected.toFixed(2)}`);
       // KDV: faturadaki tutar, satırın / ürünün kayıtlı oranıyla aynı olmalı (K, 06.11). Oran kayıtlı değilse karşılaştırılamaz: rapora yazılır, engellemez.
@@ -83,15 +87,15 @@ try {
       let expectedVat = 0, unknownRate = 0;
       for (const l of lines) {
         const rate = l.vat_rate != null ? Number(l.vat_rate) : vatOf.get(l.product_id) ?? null;
-        const gross = Number(l.qty) * Number(l.unit_price) + (Number(l.ty_discount) || 0);
+        const gross = Number(l.qty) * Number(l.unit_price) + disc(l);
         if (rate == null) { unknownRate++; expectedVat += (gross * 20) / 120; } else expectedVat += (gross * rate) / (100 + rate);
       }
       if (r.vat != null && !unknownRate && Math.abs(Number(r.vat) - expectedVat) > 0.05) throw new Error(`KDV uyuşmuyor: faturada ${Number(r.vat).toFixed(2)}, ürün oranına göre ${expectedVat.toFixed(2)}`);
       // 2) GİB belgesi
       const html = await gib.invoiceHtml(r.ettn, true);
-      const v = verifyInvoice({ html, ettn: r.ettn, belgeNo: r.belge_no, orderNo: o.order_no ?? "", amount: Number(r.amount), customerName: o.customer_name, vat: r.vat != null ? Number(r.vat) : null, lineTitles: lines.map((l) => String(l.title ?? "")) });
+      const v = verifyInvoice({ html, ettn: r.ettn, belgeNo: r.belge_no, orderNo: o.order_no ?? "", amount: Number(r.amount), customerName: corp?.company ?? o.customer_name, vat: r.vat != null ? Number(r.vat) : null, lineTitles: lines.map((l) => String(l.title ?? "")) });
       // Tanı yalnızca rapora (veritabanı; günlüğe yazılmaz), ilk 3 başarısız belge
-      if (!v.ok && report.filter((x) => x.diag).length < 3) out.diag = invoiceDiag(html, o.customer_name);
+      if (!v.ok && report.filter((x) => x.diag).length < 3) out.diag = invoiceDiag(html, corp?.company ?? o.customer_name);
       if (!v.ok) throw new Error(`GİB belgesi: ${v.problems.join(", ")}`);
       // 3) Trendyol paketi (canlı)
       const pk = await ty.orderPackages!(String(o.order_no));

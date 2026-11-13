@@ -5,7 +5,9 @@
 
 export type InvLine = { title: string; qty: number; unit_price: number; ty_discount?: number | null; vat_rate?: number | null; known?: (string | null)[] };
 export type InvOrder = { order_no: string | null; ordered_at: string | null; customer_name: string | null;
-  address: { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string } | null; city?: string | null; lines: InvLine[] };
+  address: { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string; invoice?: InvCompany } | null; city?: string | null; lines: InvLine[] };
+// Kurumsal alıcı (orders.address.invoice, worker/core/invoice-info.ts)
+export type InvCompany = { company: string; taxNumber: string; taxOffice: string; eInvoice: boolean | null; fullAddress?: string; district?: string; city?: string; postalCode?: string };
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const f2 = (n: number) => r2(n).toFixed(2);
@@ -71,27 +73,30 @@ export function buildInvoice(o: InvOrder, now = new Date()) {
   if (!o.lines.length) throw new Error("Sipariş satırı yok");
   const { date, time } = trDateTime(now);
   const ord = o.ordered_at ? trDateTime(new Date(o.ordered_at)).date : "";
+  const corp = o.address?.invoice?.taxNumber ? o.address.invoice : null;
   const rows = o.lines.map((l) => {
     const qty = Math.max(1, Math.floor(Number(l.qty) || 1));
     const vat = [0, 1, 10, 20].includes(Number(l.vat_rate)) ? Number(l.vat_rate) : 20;
-    const gross = r2(Number(l.unit_price) * qty + (Number(l.ty_discount) || 0)); // KDV dahil satır tutarı
+    // KDV dahil satır tutarı. Kurumsal: yalnızca müşterinin ödediği (Trendyol rehberi: pazaryerinin karşıladığı indirim ona ayrıca yansıtma faturasıyla)
+    const gross = r2(Number(l.unit_price) * qty + (corp ? 0 : Number(l.ty_discount) || 0));
     const unitNet = r2(gross / (1 + vat / 100) / qty);
     const net = r2(unitNet * qty), kdv = r2(gross - net);
     return { qty, vat, gross, unitNet, net, kdv, name: (invoiceItemName(String(l.title ?? ""), l.known ?? []) || "Ürün").slice(0, 200) };
   });
   const matrah = r2(rows.reduce((t, r) => t + r.net, 0)), kdv = r2(rows.reduce((t, r) => t + r.kdv, 0)), total = r2(matrah + kdv);
   const { ad, soyad } = splitName(o.customer_name);
-  const a = o.address ?? {};
+  const a: Record<string, any> = corp?.fullAddress ? corp : o.address ?? {}; // kurumsalda fatura adresi
+  const vkn = corp?.taxNumber.length === 10;
   const zero = (keys: string[], amount: boolean) => Object.fromEntries(keys.map((k) => [k, amount ? "0" : 0]));
   const fees = ["komisyon", "navlun", "hammaliye", "nakliye"];
   const extra = ["halRusumu", "ticaretBorsasi", "milliSavunmaFonu", "diger"];
   return {
     faturaUuid: "", belgeNumarasi: "", faturaTarihi: date, saat: time, paraBirimi: "TRY", dovzTLkur: "0", faturaTipi: "SATIS", hangiTip: "5000/30000",
     siparisNumarasi: o.order_no ?? "", siparisTarihi: ord, irsaliyeNumarasi: "", irsaliyeTarihi: "", fisNo: "", fisTarihi: "", fisSaati: " ", fisTipi: " ", zRaporNo: "", okcSeriNo: "",
-    vknTckn: "11111111111", aliciUnvan: "", aliciAdi: ad.slice(0, 100), aliciSoyadi: soyad.slice(0, 100),
+    vknTckn: corp?.taxNumber ?? "11111111111", aliciUnvan: corp?.company.slice(0, 200) ?? "", aliciAdi: vkn ? "" : ad.slice(0, 100), aliciSoyadi: vkn ? "" : soyad.slice(0, 100),
     bulvarcaddesokak: String(a.fullAddress ?? "").slice(0, 250), binaAdi: "", binaNo: "", kapiNo: "", kasabaKoy: "",
     mahalleSemtIlce: String(a.district ?? "").slice(0, 100), sehir: String(a.city ?? o.city ?? " ").slice(0, 60) || " ", ulke: "Türkiye", postaKodu: String(a.postalCode ?? "").slice(0, 10),
-    tel: "", fax: "", eposta: "", websitesi: "", vergiDairesi: "",
+    tel: "", fax: "", eposta: "", websitesi: "", vergiDairesi: corp?.taxOffice.slice(0, 100) ?? "",
     ...zero(fees.map((f) => `${f}Orani`), false), ...zero(fees.map((f) => `${f}Tutari`), true),
     ...zero(fees.map((f) => `${f}KDVOrani`), false), ...zero(fees.map((f) => `${f}KDVTutari`), true),
     gelirVergisiOrani: 0, bagkurTevkifatiOrani: 0, gelirVergisiTevkifatiTutari: "0", bagkurTevkifatiTutari: "0",

@@ -25,8 +25,14 @@ export interface Listing {
 export type OrderLineIn = { lineNo: number; key: string; title: string; qty: number; unitPrice: number; listPrice?: number | null; discount?: number | null; tyDiscount?: number | null;
   commissionRate?: number | null; commissionAmt?: number | null }; // pazaryerinin siparişte bildirdiği komisyon (oran 0-1 / tutar KDV dahil)
 // Alıcı ad-soyad ve teslimat adresi: yalnızca tedarikçiye sipariş vermek için (K kararı 23.10), loglanmaz, 30 gün sonra silinir
-export type OrderCustomer = { name: string | null; address: { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string } | null };
-export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; customer?: OrderCustomer; lines: OrderLineIn[] };
+// Kurumsal fatura bilgisi (K 13.11, Trendyol "Kurumsal Faturalı Siparişler" rehberi): adresle birlikte saklanır, 30 gün sonra adresle silinir.
+// eInvoice: alıcı e-Fatura mükellefi mi (Trendyol isEInvoiceAvailable; HB bildirmez -> null = bilinmiyor)
+export type OrderInvoiceInfo = { company: string; taxNumber: string; taxOffice: string; eInvoice: boolean | null; fullAddress?: string; district?: string; city?: string; postalCode?: string };
+export type OrderAddress = { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string; invoice?: OrderInvoiceInfo };
+export type OrderCustomer = { name: string | null; address: OrderAddress | null };
+// buyerType: kişisel veri değil, adres silinse de kalır (panel rozeti / iade uyarısı)
+export type BuyerType = "bireysel" | "kurumsal" | "kurumsal_efatura";
+export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; customer?: OrderCustomer; buyerType?: BuyerType; lines: OrderLineIn[] };
 export type QuestionIn = { id: string; text: string; productTitle: string; productKey: string | null; imageUrl: string | null; askedAt: number | null };
 // İade talebi (müşteri adı alınmaz)
 export type ClaimLineIn = { key: string; title: string; qty: number; price: number; status: string; reason: string | null };

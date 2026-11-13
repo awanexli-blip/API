@@ -52,6 +52,7 @@ export function orderRow(marketplace: string, o: OrderIn, refs: Map<string, Ref>
     marketplace, package_id: o.packageId, order_no: o.orderNo || null, status: st.status, marketplace_status: o.status, total: o.total, currency: o.currency,
     ordered_at: o.orderedAt ? new Date(o.orderedAt).toISOString() : null, ship_deadline: o.deadline ? new Date(o.deadline).toISOString() : null,
     cargo_provider: o.cargo, tracking_no: o.tracking, city: o.city, customer_name: o.customer?.name ?? null, address: o.customer?.address ?? null, est_cost: cost, est_net: net,
+    buyer_type: o.buyerType ?? "bireysel", // kurumsal fatura (migration 080); kişisel veri değil, adres silinse de kalır
     needs_attention: !!attention, attention_reason: attention, lines, units, fin,
   };
 }

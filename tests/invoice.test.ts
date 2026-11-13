@@ -171,3 +171,15 @@ test("deneme: KDV tutarı ve ürün adı da belgede aranır (K, 06.11)", () => {
   assert.deepEqual(verifyInvoice(base).problems, [], "verilmezse aranmaz");
 });
 
+
+test("kurumsal: ünvan + VKN + vergi dairesi, fatura adresi, tutar yalnızca müşterinin ödediği (Trendyol rehberi)", () => {
+  const corp = { company: "Örnek Ticaret Ltd. Şti.", taxNumber: "1234567890", taxOffice: "Kadıköy", eInvoice: false, fullAddress: "Fatura Cad. No:5", district: "Ataşehir", city: "İstanbul", postalCode: "34750" };
+  const inv = buildInvoice({ ...order, address: { ...order.address, invoice: corp } }, new Date("2026-10-30T20:30:00Z"));
+  assert.equal(inv.vknTckn, "1234567890"); assert.equal(inv.aliciUnvan, "Örnek Ticaret Ltd. Şti."); assert.equal(inv.vergiDairesi, "Kadıköy");
+  assert.equal(inv.aliciAdi, ""); assert.equal(inv.aliciSoyadi, "");
+  assert.equal(inv.bulvarcaddesokak, "Fatura Cad. No:5"); assert.equal(inv.mahalleSemtIlce, "Ataşehir");
+  assert.equal(inv.vergilerDahilToplamTutar, "546.40"); // 446,40 + 2 x 50; Trendyol indirimi (23,50) faturaya girmez
+  // Şahıs şirketi (TCKN 11 hane): ünvan + ad soyad
+  const sahis = buildInvoice({ ...order, address: { ...order.address, invoice: { ...corp, taxNumber: "12345678901" } } });
+  assert.equal(sahis.vknTckn, "12345678901"); assert.equal(sahis.aliciAdi, "Ayşe Nur");
+});

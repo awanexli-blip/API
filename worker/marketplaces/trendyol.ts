@@ -8,6 +8,7 @@ import { jpgUrl, aliveImages } from "../core/img-proxy.ts";
 import { noteMissing } from "../core/attr-options.ts";
 import { descHashOf } from "../core/content-diff.ts";
 import type { ClaimRow, BatchCheck, BatchResult, BuyboxInfo, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn, QuestionIn, SalesDay, SettlementIn } from "./types.ts";
+import { tyInvoiceInfo, buyerTypeOf } from "../core/invoice-info.ts";
 
 // Ya hep ya hiç: seçenek grubunda gönderilemeyen varsa grubun diğer ürünleri de bu turda gönderilmez
 function dropPartialGroups(items: NewProduct[], res: BatchResult): Set<string> {
@@ -549,7 +550,8 @@ export function createTrendyol(): Marketplace {
               city: o.shipmentAddress?.city ?? null,
               // Tedarikçiye sipariş için (K kararı 23.10): ad-soyad + adres; telefon/e-posta alınmaz. Loglanmaz.
               customer: { name: String(o.shipmentAddress?.fullName ?? [o.shipmentAddress?.firstName, o.shipmentAddress?.lastName].filter(Boolean).join(" ")).trim() || null,
-                address: o.shipmentAddress ? { fullAddress: o.shipmentAddress.fullAddress ?? [o.shipmentAddress.address1, o.shipmentAddress.address2].filter(Boolean).join(" "), neighborhood: o.shipmentAddress.neighborhood ?? undefined, district: o.shipmentAddress.district ?? undefined, city: o.shipmentAddress.city ?? undefined, postalCode: o.shipmentAddress.postalCode ?? undefined } : null },
+                address: o.shipmentAddress ? { fullAddress: o.shipmentAddress.fullAddress ?? [o.shipmentAddress.address1, o.shipmentAddress.address2].filter(Boolean).join(" "), neighborhood: o.shipmentAddress.neighborhood ?? undefined, district: o.shipmentAddress.district ?? undefined, city: o.shipmentAddress.city ?? undefined, postalCode: o.shipmentAddress.postalCode ?? undefined, invoice: tyInvoiceInfo(o) ?? undefined } : null },
+              buyerType: buyerTypeOf(tyInvoiceInfo(o)),
               // İndirim: price = müşterinin ödediği birim fiyat, tyDiscount = Trendyol'un karşıladığı kısım (satıcıya ödenir). Alanlar doğrulanmadı.
               lines: lines.map((l, i) => {
                 const qty = Number(l.quantity ?? 1) || 1;

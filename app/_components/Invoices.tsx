@@ -45,7 +45,8 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const retAll: Row[] = [...(ret?.cancelled ?? []), ...(ret?.rows ?? [])];
   const retOpen = retAll.filter((r) => !ret?.marks?.[r.id] && !isDropped(String(r.status)));
   const n = (t: Tab) => (t === "ret" ? retOpen.length : all.filter(inTab[t]).length);
-  const selectable = (r: Row) => r.has_customer && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
+  // e-Fatura mükellefi kurumsal alıcıya e-Arşiv kesilmez (Trendyol kurumsal fatura rehberi): seçilemez, GİB e-Fatura portalından elle
+  const selectable = (r: Row) => r.has_customer && r.buyer_type !== "kurumsal_efatura" && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
   // Kullanıcı sekme seçmediyse yapılacak iş olan ilk sekme
   const cur: Tab = tab ?? (n("todo") ? "todo" : n("sign") ? "sign" : n("upload") ? "upload" : "todo");
   const rows = all.filter(inTab[cur]);
@@ -235,7 +236,8 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
               return (
                 <tr key={r.id} style={dropped ? { opacity: 0.55 } : undefined}>
                   <td data-label="Sipariş">{r.order_no}<br /><span className="muted" style={{ fontSize: 12 }}>{r.barcode ?? r.marketplace}</span></td>
-                  <td data-label="Talep">{when(r.at)}<br /><span className="muted" style={{ fontSize: 12 }}>{r.reason}</span></td>
+                  <td data-label="Talep">{when(r.at)}<br /><span className="muted" style={{ fontSize: 12 }}>{r.reason}</span>
+                    {r.buyer_type && r.buyer_type !== "bireysel" && <div style={{ color: "var(--warn)", fontSize: 12 }}>Kurumsal iade: müşteriden iade faturası gelmeden iade işlemine başlama</div>}</td>
                   <td data-label="Ürün" style={{ fontSize: 13 }}>{r.title}{r.qty > 1 ? ` (${r.qty} adet)` : ""}<div><span className={`pill ${dropped ? "" : done ? "ok" : "partial"}`}>{dropped ? "Talep iptal" : done ? (r.status === "İptal" ? "Sipariş iptal" : "İade kabul") : "İşlem bekliyor"}</span></div></td>
                   <td data-label="Tutar" className="n" style={{ whiteSpace: "nowrap" }}>{tl(Number(r.price))}</td>
                   <td data-label="Fatura">{inv ? <>{inv.belge_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{tl(Number(inv.amount))} · {days} gün önce</span></> : <span className="muted">Fatura kaydı yok</span>}</td>
@@ -268,7 +270,9 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
             return (
               <tr key={r.id}>
                 {cur === "todo" && <td><input type="checkbox" aria-label={`${r.order_no} seç`} disabled={!selectable(r)} checked={sel.has(r.id)} onChange={(e) => { const s = new Set(sel); if (e.target.checked) s.add(r.id); else s.delete(r.id); setSel(s); }} /></td>}
-                <td data-label="Sipariş">{r.order_no}<br /><span className="muted" style={{ fontSize: 12 }}>{r.marketplace}</span></td>
+                <td data-label="Sipariş">{r.order_no}<br /><span className="muted" style={{ fontSize: 12 }}>{r.marketplace}</span>
+                  {r.buyer_type && r.buyer_type !== "bireysel" && <div><span className="pill info" title="Şirket ünvanı, VKN ve vergi dairesiyle kesilir; tutar müşterinin ödediği (pazaryeri indirimi ayrıca yansıtma faturasıyla)">Kurumsal fatura</span></div>}
+                  {r.buyer_type === "kurumsal_efatura" && !r.invoice && <div className="muted" style={{ fontSize: 12 }}>Alıcı e-Fatura mükellefi: e-Arşiv değil, GİB e-Fatura portalından e-Fatura kes</div>}</td>
                 <td data-label="Tarih">{when(r.ordered_at)}</td>
                 <td data-label="Ürünler" style={{ fontSize: 13 }}>{r.items}</td>
                 <td data-label="Tutar" className="n" style={{ whiteSpace: "nowrap" }}>{tl(Number(r.invoice?.amount ?? r.total))}</td>

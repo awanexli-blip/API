@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   const db = orderDb();
   const since = new Date(Date.now() - 60 * 86400000).toISOString();
   const [{ data: orders, error }, inv, rep, aud] = await Promise.all([
-    db.from("orders").select("id, marketplace, order_no, status, total, ordered_at, customer_name, order_lines(title, qty)").in("status", OPEN).gte("ordered_at", since).order("ordered_at", { ascending: true }).limit(1000),
+    db.from("orders").select("id, marketplace, order_no, status, total, ordered_at, customer_name, buyer_type, order_lines(title, qty)").in("status", OPEN).gte("ordered_at", since).order("ordered_at", { ascending: true }).limit(1000),
     db.from("order_invoices").select("order_id, status, ettn, belge_no, amount, error, updated_at"),
     db.from("app_state").select("value").eq("key", "invoice_upload_report").maybeSingle().then((r: any) => r, () => ({ data: null })),
     db.from("app_state").select("value").eq("key", "invoice_audit_report").maybeSingle().then((r: any) => r, () => ({ data: null })),
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   const rows = (orders ?? []).map((o: any) => {
     const i: any = byOrder.get(o.id);
     return { id: o.id, marketplace: o.marketplace, order_no: o.order_no, status: o.status, total: o.total, ordered_at: o.ordered_at,
-      has_customer: !!o.customer_name, items: (o.order_lines ?? []).map((l: any) => `${l.qty} × ${l.title}`).join(", ").slice(0, 200),
+      has_customer: !!o.customer_name, buyer_type: o.buyer_type ?? "bireysel", items: (o.order_lines ?? []).map((l: any) => `${l.qty} × ${l.title}`).join(", ").slice(0, 200),
       invoice: i ? { status: i.status, ettn: i.ettn, belge_no: i.belge_no, amount: i.amount, error: i.error, updated_at: i.updated_at } : null };
   });
   const counts = rows.reduce((c: Record<string, number>, r) => { const k = r.invoice?.status ?? "none"; c[k] = (c[k] ?? 0) + 1; return c; }, {});
@@ -45,11 +45,11 @@ export async function GET(req: NextRequest) {
   const retRep = stateOf("returns_report:trendyol"), marks: Record<string, any> = stateOf("returns_marks") ?? {};
   const claims: any[] = retRep?.rows ?? [];
   const nos = [...new Set(claims.map((c) => c.order_no).filter(Boolean))];
-  const invByNo = new Map<string, any>();
-  if (nos.length) { const { data } = await db.from("orders").select("order_no, order_invoices(status, belge_no, amount, signed_at, created_at)").in("order_no", nos); for (const o of data ?? []) { const i: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices; if (i) invByNo.set(o.order_no, i); } }
+  const invByNo = new Map<string, any>(), buyerByNo = new Map<string, string>();
+  if (nos.length) { const { data } = await db.from("orders").select("order_no, buyer_type, order_invoices(status, belge_no, amount, signed_at, created_at)").in("order_no", nos); for (const o of data ?? []) { if (o.buyer_type) buyerByNo.set(o.order_no, o.buyer_type); const i: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices; if (i) invByNo.set(o.order_no, i); } }
   const { data: cancelledRows } = await db.from("orders").select("id, order_no, marketplace, total, ordered_at, order_invoices!inner(status, belge_no, amount, signed_at, created_at)").eq("status", "cancelled").in("order_invoices.status", ["signed", "uploaded"]);
   const returns = { at: retRep?.at ?? null, marks,
-    rows: claims.map((c) => ({ ...c, invoice: invByNo.get(c.order_no) ?? null })),
+    rows: claims.map((c) => ({ ...c, buyer_type: buyerByNo.get(c.order_no) ?? "bireysel", invoice: invByNo.get(c.order_no) ?? null })),
     cancelled: (cancelledRows ?? []).map((o: any) => ({ id: `iptal:${o.order_no}`, order_no: o.order_no, marketplace: o.marketplace, at: o.ordered_at, title: "Sipariş iptal, fatura kesilmiş", price: Number(o.total), status: "İptal", reason: "", invoice: Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices })) };
   return NextResponse.json({ rows, counts, upload, audit, returns, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS), uploadReady: !!(process.env.GH_TOKEN && process.env.GH_REPO) });
 }
@@ -227,7 +227,7 @@ export async function POST(req: NextRequest) {
   const ids: string[] = [...new Set<string>((Array.isArray(b.order_ids) ? b.order_ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 25);
   if (!ids.length) return bad("Sipariş seç (en fazla 25)");
   // order_lines.vat_rate (migration 077) yoksa kolonsuz okunur (sunucu ürünlerinde KDV bilinmez -> o siparişler kesilmez)
-  const ORDER_COLS = "id, marketplace, order_no, status, ordered_at, customer_name, address, city, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, supplier_sku";
+  const ORDER_COLS = "id, marketplace, order_no, status, ordered_at, customer_name, address, city, buyer_type, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, supplier_sku";
   let r0: { data: any[] | null; error: any } = await db.from("orders").select(`${ORDER_COLS}, vat_rate)`).in("id", ids);
   if (r0.error && /vat_rate/.test(r0.error.message)) r0 = await db.from("orders").select(`${ORDER_COLS})`).in("id", ids);
   const { data: orders, error } = r0;
@@ -246,6 +246,12 @@ export async function POST(req: NextRequest) {
     for (const o of (orders ?? []) as any[]) {
       if (!OPEN.includes(o.status)) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: "Sipariş iptal/iade: fatura kesilmez" }); continue; }
       if (!o.customer_name) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: "Alıcı bilgisi yok (30 gün sonra silinir): portalda elle kes" }); continue; }
+      // Kurumsal (Trendyol rehberi madde 3): alıcı e-Fatura mükellefiyse e-Arşiv geçersiz; durum bilinmiyorsa (HB) otomatik kesilmez
+      const corp = o.address?.invoice;
+      const corpWhy = o.buyer_type && o.buyer_type !== "bireysel" && !corp?.taxNumber ? "Kurumsal sipariş ama ünvan/VKN bilgisi yok: pazaryeri panelinden bakıp elle kes"
+        : corp?.eInvoice === true ? `Alıcı e-Fatura mükellefi (${corp.company}): e-Arşiv geçersiz, GİB e-Fatura portalından e-Fatura kes`
+        : corp && corp.eInvoice == null ? `Kurumsal alıcının e-Fatura durumu bilinmiyor (${corp.company}): GİB'den sorgulayıp elle kes` : null;
+      if (corpWhy) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: corpWhy }); continue; }
       // Kilit: aynı sipariş için ikinci taslak açılmasın (birincil anahtar). Hatalı/silinmiş kayıt "reset" ile açılır.
       const claim = await db.from("order_invoices").insert({ order_id: o.id, status: "creating", created_by: "panel", updated_at: now });
       if (claim.error) { results.push({ order_id: o.id, order_no: o.order_no, ok: false, error: claim.error.code === "23505" ? "Bu sipariş için zaten taslak/fatura var" : claim.error.message }); continue; }

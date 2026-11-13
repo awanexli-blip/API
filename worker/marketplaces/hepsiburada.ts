@@ -12,6 +12,7 @@ import { noteMissing } from "../core/attr-options.ts";
 // Garanti (K, 22.10): yalnızca elektrikli/elektronik ürünlerde 24 ay (ithalatçı garantili, faturalı); diğerlerinde 0
 const ELECTRONIC = /elektron|elektrik|şarj|pilli|usb|bluetooth|kulaklık|hoparlör|\bled\b|makine|makinası|cihaz|akıllı saat|powerbank|adaptör|lamba|vantilatör|\bfan\b|ısıtıcı|kamera|mikrofon|tıraş|epilatör|süpürge|terazi|tartı|baskül|radyo|drone|konsol|projeksiyon|kettle|blender|kompresör|watt|\d+\s?w\b|\d+\s?v\b|\d+\s?mah\b/i;
 export const hbWarrantyMonths = (title: string, category = "") => (ELECTRONIC.test(`${title} ${category}`) ? 24 : 0);
+import { hbInvoiceInfo, buyerTypeOf } from "../core/invoice-info.ts";
 import type { BatchCheck, BatchResult, ClaimIn, Commission, InventoryItem, Listing, Marketplace, NewProduct, OrderIn } from "./types.ts";
 
 // Ya hep ya hiç: seçenek grubunda gönderilemeyen varsa grubun diğer ürünleri de bu turda gönderilmez
@@ -537,7 +538,8 @@ export function hbOrder(x: any, tag: string): OrderIn | null {
     deadline: msOf(x.dueDate ?? first.dueDate ?? x.deliveryDueDate), cargo: x.cargoCompany ?? first.cargoCompany ?? x.cargoCompanyModel?.name ?? null,
     tracking: x.trackingNumber ?? x.barcode ?? first.trackingNumber ?? null, city: a?.city ?? null,
     customer: { name: String(x.customerName ?? first.customerName ?? a?.name ?? x.recipientName ?? "").trim() || null,
-      address: a ? { fullAddress: a.address ?? a.fullAddress ?? undefined, district: a.district ?? a.town ?? undefined, city: a.city ?? undefined, postalCode: a.postalCode ?? undefined } : null },
+      address: a ? { fullAddress: a.address ?? a.fullAddress ?? undefined, district: a.district ?? a.town ?? undefined, city: a.city ?? undefined, postalCode: a.postalCode ?? undefined, invoice: (hbInvoiceInfo(x) ?? hbInvoiceInfo(first)) ?? undefined } : null },
+    buyerType: buyerTypeOf(hbInvoiceInfo(x) ?? hbInvoiceInfo(first)),
     lines,
   };
 }
@@ -549,6 +551,7 @@ export function mergeOrder(map: Map<string, OrderIn>, o: OrderIn) {
   const seen = new Set(cur.lines.map((l: any) => l.lineId));
   const extra = o.lines.filter((l: any) => !seen.has(l.lineId));
   const lines = [...cur.lines, ...extra].map((l, i) => ({ ...l, lineNo: i + 1 }));
-  map.set(o.packageId, { ...cur, ...o, customer: o.customer?.name ? o.customer : cur.customer, tracking: o.tracking ?? cur.tracking, cargo: o.cargo ?? cur.cargo,
+  map.set(o.packageId, { ...cur, ...o, customer: o.customer?.address?.invoice || (o.customer?.name && !cur.customer?.address?.invoice) ? o.customer : cur.customer,
+    buyerType: o.buyerType && o.buyerType !== "bireysel" ? o.buyerType : cur.buyerType ?? o.buyerType, tracking: o.tracking ?? cur.tracking, cargo: o.cargo ?? cur.cargo,
     orderedAt: o.orderedAt ?? cur.orderedAt, deadline: o.deadline ?? cur.deadline, lines, total: Math.round(lines.reduce((t, l) => t + l.unitPrice * l.qty, 0) * 100) / 100 });
 }
