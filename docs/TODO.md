@@ -2,9 +2,21 @@
 
 Durum: `[ ]` bekliyor · `[~]` devam · `[x]` bitti · `(K)` kullanıcı işi/onayı gerekir.
 Kural: her oturumda önce `docs/PROGRESS.md`, sonra bu dosya okunur; iş bittikçe burada işaretlenir, ayrıntı PROGRESS'e yazılır.
-Son güncelleme: 12.11.2026.
+Son güncelleme: 14.11.2026.
 
 ## Şu an
+
+> **14.11 gece (PROGRESS 73-75):**
+> 1. [~] TY kalıcı silme 01:15 + 02:20 (tedarikçi ilanı + tedarikçiden kalkmış eski ilan; K markaları Gezer/Voga/Rasing/Hermes hariç), 03:30 yıldız sırasıyla TY yükleme (Bezos/Hepsibayi stoklu), 04:30 Telegram özeti. Sabah sonuçları kontrol.
+> 2. [~] Panel derlemesi (kurumsal fatura ekranı + Telegram `/claude` köprüsü): bitince köprüyü uçtan uca dene.
+> 3. [ ] (K) e-Fatura mükellefi 5 kurumsal alıcıya bireysel e-Arşiv kesilmiş (GIB2026000000043/072/116/121/135): mali müşavir.
+> 4. [ ] (K) "Barkod eşleşmiyor": K örnek verecek. Bilinen: Toptancım ~1.100 üründe XML barkodunu değiştirmiş (ilan eski barkodla, stok/fiyat doğru), 360 üründe XML barkodu boş.
+> 5. [~] HB kategori eşleme (yapay zekâ, yüksek güven otomatik, oyuncak hariç): 1.603 kategori, 1-2 gün.
+> 6. [~] HB kuyruk: 11 bin tablet/kalem + 2.811 Cinsiyet + 161 ayakkabı yeniden gönderim; geçici ağ hatası artık kalıcı hata yapmıyor.
+> 7. [ ] Takılı hatalar: TY marka uyuşmazlığı (497), bozuk görseller (~230, K'ya liste), halılarda Saçak/Taban metinde yok (K: olmayan eklenmez).
+> 8. [ ] Panel yenileme (modern, mobil, analiz): önce tasarım önerisi K'ya.
+> 9. [ ] (K) Yeni sunucu: K hatırlatacak (IP + tedarikçi beyaz liste).
+> 10. [ ] (K) Yedek şifresi `BACKUP_PASSPHRASE` sunucu dışında saklanmalı (Drive kopyaları onunla açılır).
 
 > **12.11 akşam — TAM TAŞIMA YAPILDI (PROGRESS 72). Ana sistem sunucu: https://trentakip.duckdns.org**
 > 1. [x] Siparişler/fatura/iade/soru sunucuda (`trentakip-orders.timer`, 15 dk, enabled). Supabase'deki 121 fatura, 168 sipariş, 23 soru, 22 ürün istisnası, bildirim anahtarları `ops/vps/db/orders-merge.sh apply` ile birleştirildi (çift paket 0).
