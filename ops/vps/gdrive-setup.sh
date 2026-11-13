@@ -11,7 +11,7 @@ cat <<'EOF'
    (kurulumdan sonra PowerShell'i kapatıp yeniden aç)
 2) Bilgisayarında şunu çalıştır, açılan tarayıcıda Google hesabınla (yedeklerin gideceği hesap) giriş yap ve izin ver:
 
-   rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ=="
+   rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ"
 
 3) Bilgisayardaki ekranda "Paste the following into your remote machine --->" altında { ile başlayan uzun satırı
    (<---End paste satırına kadar) kopyala ve aşağıya yapıştır (yazdığın görünmez), Enter.
