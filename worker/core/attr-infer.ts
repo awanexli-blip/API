@@ -12,7 +12,8 @@ const pick = (vals: AttrValue[], names: string[]) => names.map((n) => vals.find(
 
 // Ürün/varyant kaydındaki özellik değeri (defaults) pazaryeri özellik adıyla: önce birebir ad, sonra eş anlamlı grup
 // (panelde "Beden: 42" girilen ayakkabı Trendyol/HB'de "Numara"/"Ayakkabı Numarası"/"numara_variant_property" olabilir; renk de "Web Color" vb.)
-const ATTR_GROUPS: [string, RegExp][] = [["beden", /beden|numara|size|ölçü|olcu/], ["renk", /renk|colou?r/]];
+// boyut/ebat: halı bedeni "80X150" -> Trendyol seçenek özelliği "Boyut/Ebat" ("80 x 150"; 13.11, 322 stoklu halı bu yüzden reddediliyordu)
+const ATTR_GROUPS: [string, RegExp][] = [["beden", /beden|numara|size|ölçü|olcu|boyut|ebat/], ["renk", /renk|colou?r/]];
 const groupOf = (name: string) => ATTR_GROUPS.find(([, re]) => re.test(lo(name)))?.[0] ?? null;
 export function defaultFor(defaults: Record<string, string> | undefined, ...names: (string | number | undefined)[]): string | undefined {
   const entries = Object.entries(defaults ?? {}).filter(([, v]) => v != null && String(v).trim() !== "");
