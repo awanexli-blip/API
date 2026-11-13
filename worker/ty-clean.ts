@@ -7,6 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 import { getMarketplace } from "./marketplaces/index.ts";
 import { env, readAll, chunk } from "./core/util.ts";
 import { DELETE_AFTER_H } from "./core/retire.ts";
+// Trendyol en az 24 saat arşiv ister; --after-h ile pay küçültülebilir (en az 24,1; K 13.11 "daha erken silelim")
+const AFTER_H = Math.max(24.1, Number(process.argv[process.argv.indexOf("--after-h") + 1]) || DELETE_AFTER_H);
 
 const cmd = process.argv[2];
 const apply = process.argv.includes("--apply");
@@ -75,7 +77,7 @@ if (cmd === "archive") {
 } else if (cmd === "delete") {
   const rows = await readAll<any>((a, b) => db.from("listing_retire").select("listing_key, archived_at, deleted_at, attempts").eq("marketplace", "trendyol").order("listing_key").range(a, b));
   if (rows.error) throw new Error(rows.error.message);
-  const ids = rows.data.filter((r: any) => r.archived_at && !r.deleted_at && (Date.now() - Date.parse(r.archived_at)) / 3600_000 >= DELETE_AFTER_H).map((r: any) => r.listing_key);
+  const ids = rows.data.filter((r: any) => r.archived_at && !r.deleted_at && (Date.now() - Date.parse(r.archived_at)) / 3600_000 >= AFTER_H).map((r: any) => r.listing_key);
   console.log(JSON.stringify({ silinecek: ids.length }));
   if (apply && ids.length) {
     const r = await mp.deleteProducts!(ids);
