@@ -5,7 +5,7 @@
 // Durum listing_retire tablosunda. K'nın "hepsi kalsın" kararı verdiği ilan (listing_holds keep_all) ve yayında stoklu ilan atlanır.
 import { createClient } from "@supabase/supabase-js";
 import { getMarketplace } from "./marketplaces/index.ts";
-import { env, readAll, chunk, isSupplierKey } from "./core/util.ts";
+import { env, readAll, chunk, isSupplierKey, isOwnListing } from "./core/util.ts";
 import { DELETE_AFTER_H } from "./core/retire.ts";
 // Trendyol en az 24 saat arşiv ister; --after-h ile pay küçültülebilir (en az 24,1; K 13.11 "daha erken silelim")
 const AFTER_H = Math.max(24.1, Number(process.argv[process.argv.indexOf("--after-h") + 1]) || DELETE_AFTER_H);
@@ -77,7 +77,11 @@ if (cmd === "archive") {
 } else if (cmd === "delete") {
   const rows = await readAll<any>((a, b) => db.from("listing_retire").select("listing_key, archived_at, deleted_at, attempts").eq("marketplace", "trendyol").order("listing_key").range(a, b));
   if (rows.error) throw new Error(rows.error.message);
-  const ids = rows.data.filter((r: any) => isSupplierKey(r.listing_key) && r.archived_at && !r.deleted_at && (Date.now() - Date.parse(r.archived_at)) / 3600_000 >= AFTER_H).map((r: any) => r.listing_key);
+  // --eski: tedarikçi kalıbında olmayan ama K'nın da olmayan arşivli ilanlar (tedarikçiden kalkmış eski ilan; K 14.11 "sil, kişiye özel falan benim değil")
+  const titles = new Map<string, string>();
+  if (process.argv.includes("--eski")) { const t = await readAll<any>((a, b) => db.from("marketplace_listings").select("listing_key, title").eq("marketplace", "trendyol").is("variant_id", null).order("listing_key").range(a, b)); for (const x of t.data ?? []) titles.set(x.listing_key, x.title ?? ""); }
+  const mine = (k: string) => isSupplierKey(k) || (process.argv.includes("--eski") && !isOwnListing(k, titles.get(k) ?? null) && titles.has(k));
+  const ids = rows.data.filter((r: any) => mine(r.listing_key) && r.archived_at && !r.deleted_at && (Date.now() - Date.parse(r.archived_at)) / 3600_000 >= AFTER_H).map((r: any) => r.listing_key);
   console.log(JSON.stringify({ silinecek: ids.length }));
   if (apply && ids.length) {
     const r = await mp.deleteProducts!(ids);
