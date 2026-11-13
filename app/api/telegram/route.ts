@@ -118,6 +118,20 @@ export async function POST(req: NextRequest) {
     }
     // Diğer mesajlar: durum asistanı (salt okunur). Telegram'a hemen 200 dönülür (yeniden gönderim olmasın), cevap sonra yazılır.
     const text = msg.text.trim();
+    // Claude köprüsü (K 14.11): /claude aç-kapa; açıkken komut olmayan mesaj Claude Code oturumuna gider (claude_inbox)
+    if (/^\/claude/i.test(text)) {
+      const off = /kapat|off|dur/i.test(text);
+      await admin().from("app_state").upsert({ key: "tg:claude_mode", value: off ? "off" : "on", updated_at: new Date().toISOString() }, { onConflict: "key" });
+      await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: off ? "🤖 Claude modu kapandı: mesajlarına yine durum asistanı cevap verir." : `🤖 Claude modu açık: mesajların Claude'a gider, iş bilgisayardaki oturumda yapılır ve cevap buradan gelir.
+Kapatmak için: /claude kapat
+${await claudeOnline() ? "🟢 Claude şu an açık." : "⚪ Claude şu an açık değil: mesajların kuyrukta bekler, oturum açılınca okunur."}` });
+      return NextResponse.json({ ok: true });
+    }
+    if (!text.startsWith("/") && (await admin().from("app_state").select("value").eq("key", "tg:claude_mode").maybeSingle()).data?.value === "on") {
+      const { error } = await admin().from("claude_inbox").insert({ text: text.slice(0, 4000), tg_message_id: msg.message_id });
+      await tg("sendMessage", { chat_id: chat, reply_to_message_id: msg.message_id, text: error ? `❗ Claude'a iletilemedi: ${error.message.slice(0, 120)}` : (await claudeOnline()) ? "📨 Claude'a iletildi." : "📨 Kuyruğa alındı. ⚪ Claude şu an açık değil; oturum açılınca okunur." });
+      return NextResponse.json({ ok: true });
+    }
     // Acil durum komutları (lib/tg-commands.ts); komut değilse asistan
     const cr = await handleCommand(text).catch((e: any) => ({ text: `❗ ${String(e?.message ?? e).slice(0, 200)}` }) as CmdReply);
     if (cr) {
@@ -133,4 +147,10 @@ export async function POST(req: NextRequest) {
     }
   }
   return NextResponse.json({ ok: true });
+}
+
+// Claude Code oturumu son 3 dakikada kuyruğu yokladı mı (ops/vps/claude-inbox.sh nabız yazar)
+async function claudeOnline() {
+  const { data } = await admin().from("app_state").select("value").eq("key", "claude:heartbeat").maybeSingle();
+  return !!data?.value && Date.now() - Date.parse(data.value) < 3 * 60_000;
 }
