@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-13 (74) — Akşam: Drive yedeği, silme/yükleme zamanlandı, HB geçici hata, halılar
+- **Drive yedeği bağlandı:** rclone `gdrive` (drive.file), ilk kopya yüklendi (2026-11-13.dump.gpg 180 MB); gece 03:15 yedeğinden sonra otomatik. `rclone authorize` kodu dolgusuz base64 olmalı (yeni rclone `==` reddediyor).
+- **TY silme (K "sil", "daha erken"):** Trendyol 24 saat arşiv ister; `ty-clean delete --after-h` (en az 24,1). Zamanlayıcılar: 14.11 01:15 ve 02:20 (17.887 + 13 ilan). 253 ilan silinemez (Trendyol kilitli, arşivlenemiyor). 03:30 `stars rate` + `send 10..1 trendyol --apply` (LISTING_CAP içinde). 04:30 `ops/vps/gece-rapor.sh` Telegram özeti.
+- **HB Cinsiyet ~1.900 ürün kök neden:** değer listesi isteği ağ hatası verince "serbest metin" sayılıyordu -> `hbTransient` ile yeniden fırlatılır, özellik listesi alınamazsa ürün özelliksiz gönderilmez ("özellik listesi" hatası requeueFixable ile tekrar denenir) (f35d9a9). 2.811 stoklu ürün yeniden kuyrukta.
+- **Halı (K):** Üretim Şekli hepsine Makine Halısı (`--fixed`), Hav/Saçak metinden, Taban yalnızca metinde "taban" geçerse; mm değeri seçilen aralığa düşmeli (model 6 mm'ye "İnce (6 mm altı)" demişti). Deneme: 104 modelden 9 eksiksiz (çoğunda saçak tipi yazmıyor); `--apply` çalışıyor. 80X80 Trendyol ebat listesinde yok.
+- **HB kategori eşleme (K "otomatik"):** ölçüm 44/48 (%92); `ai-catmap run --apply` 1.603 kategori, oyuncak/bebek/kostüm/parti hariç; durum dosyası `/var/lib/trentakip/ai/`.
+
 ## 2026-11-13 (73) — Gece: stoksuz TY temizliği, otomatik yaşam döngüsü, KDV düzeltmesi, yapay zekâ işçileri, Telegram spam
 - **Trendyol yükleme sınırı (K "stoğu olmayanları çıkar"):** `ty-clean.ts nostock --apply`: 18.968 stoksuz ilan arşivlendi, 0 hata (son 30 günde siparişli, keep_all, TY'de hâlâ stoklu olanlar hariç); 19.018 satıra neden yazıldı. Kalıcı silme arşivde ≥25 saat sonra (13.11 akşamı), K onayıyla `ty-clean.ts delete --apply`; ardından Bezos/Hepsibayi stoklu ürünler.
 - **Yaşam döngüsü (K):** `worker/core/lifecycle.ts` + migration 079: stok 48 saat yoksa arşiv, stok gelince arşivden çıkar, ölü (pasif / 30 gün stoksuz / toplu temizlik) arşivdekini 25 saat sonra sil, yalnızca bizim sildiğimizi yeniden aç. Kapatma: `app_state lifecycle:trendyol=off`. Öğrenilen TY kategorisi ürüne yazılır (`learnFromListings`, turda 600 ürün / 3 eşzamanlı).
