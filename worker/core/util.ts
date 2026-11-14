@@ -61,3 +61,11 @@ export const isSupplierKey = (key: string | null | undefined) => /^(ÖS13-|OS13-
 // Eski tedarikçi ilanları (ör. Bezos'tan kalkmış SRS…) K'nın değildir: stoğu kalırsa karşılıksız satılır, sıfırlanır.
 export const OWN_BRANDS = /(^|[^a-zçğıöşü])(gezer|voga|rasing|racing|hermes)($|[^a-zçğıöşü])/i;
 export const isOwnListing = (key: string | null | undefined, title?: string | null) => /^OZ/i.test(String(key ?? "")) || (!isSupplierKey(key) && OWN_BRANDS.test(String(title ?? "")));
+
+// Pazaryeri engel listesi (K 15.11): app_state "exclude_sources:<mp>" (tedarikçi kaynakları, ör. ["xml:toptancim"]) ve
+// "exclude_products:<mp>" (ürün kimlikleri; geri çekilen revize ilanlar). Gönderim, yıldızla kuyruğa alma ve yaşam döngüsü bunlara ilan açmaz.
+export async function loadExclusions(db: any, marketplace: string): Promise<{ sources: Set<string>; products: Set<string> }> {
+  const { data } = await db.from("app_state").select("key, value").in("key", [`exclude_sources:${marketplace}`, `exclude_products:${marketplace}`]);
+  const get = (k: string) => { try { const v = JSON.parse((data ?? []).find((x: any) => x.key === k)?.value ?? "[]"); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
+  return { sources: new Set(get(`exclude_sources:${marketplace}`)), products: new Set(get(`exclude_products:${marketplace}`)) };
+}

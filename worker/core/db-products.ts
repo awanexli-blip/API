@@ -5,7 +5,7 @@
 import { breakdown, calcPrice, existingPriceSafe, type PricingConfig } from "../pricing.ts";
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
-import { normTitle, normFull, readAll } from "./util.ts";
+import { normTitle, normFull, readAll, loadExclusions } from "./util.ts";
 import { salePriceOf } from "./sale-price.ts";
 import { contentChanges, fpOf, type ContentFp } from "./content-diff.ts";
 import { marginFor, type DynMargin } from "./dynamic-margin.ts";
@@ -206,7 +206,7 @@ export function pickBrand(spec: string, sku: string): string {
   return list[h % list.length];
 }
 
-export type SendResult = { jobs: number; sent: number; errors: number; noStock: number; batchIds: string[]; keys: Map<string, number> };
+export type SendResult = { jobs: number; sent: number; errors: number; noStock: number; excluded?: number; batchIds: string[]; keys: Map<string, number> };
 
 export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendResult> {
   const out: SendResult = { jobs: 0, sent: 0, errors: 0, noStock: 0, batchIds: [], keys: new Map() };
@@ -244,6 +244,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
 
   const keyFor = (source: string, v: any) => (ctx.mp.listingKeyFor ? ctx.mp.listingKeyFor(source, v) : listingKeyOf(source, v));
   const needsCategory = ctx.mp.requiresCategory !== false;
+  const excl = await loadExclusions(ctx.db, ctx.marketplaceId); // K 15.11: Trendyol'da toptancım kapalı, geri çekilen revize ilanlar
 
   for (const job of jobs as any[]) {
     out.jobs++;
@@ -253,8 +254,9 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     const fail = (key: string, p: any, v: any, msg: string) => { out.errors++; rows.push({ marketplace: ctx.marketplaceId, listing_key: key || `?${v.id}`, variant_id: v.id, product_id: p.id, status: "error", title: p.title, last_error: msg.slice(0, 500), updated_at: now }); };
     try {
       const ids: string[] = (job.payload?.product_ids ?? []).slice(0, 200);
-      const { data: products, error: pe } = await ctx.db.from("products").select("*, product_variants(*), product_images(url, position)").in("id", ids);
+      const { data: products0, error: pe } = await ctx.db.from("products").select("*, product_variants(*), product_images(url, position)").in("id", ids);
       if (pe) throw new Error(pe.message);
+      const products = (products0 ?? []).filter((p: any) => { const x = excl.sources.has(p.source) || excl.products.has(p.id); if (x) out.excluded = (out.excluded ?? 0) + 1; return !x; });
       // Panelde onaylanan yapay zekâ açıklaması (migration 067) tedarikçi metninin yerine gönderilir; tablo yoksa tedarikçi metni
       {
         const ad = await ctx.db.from("product_descriptions").select("product_id, draft").eq("status", "approved").in("product_id", ids);

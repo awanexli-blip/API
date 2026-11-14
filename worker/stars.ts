@@ -6,7 +6,7 @@
 // send: --apply yoksa yalnızca sayar (deneme). Pazaryerinde ilanı olan / kuyrukta bekleyen ürün atlanır. Trendyol üst sınırı LISTING_CAP (48.000).
 // Kuyruktaki işi senkronun gönderim adımı işler (faaliyet kapsamı, marka riski, fiyat formülü, kargo orada yeniden uygulanır).
 import { createClient } from "@supabase/supabase-js";
-import { env, chunk, readAll, normFull } from "./core/util.ts";
+import { env, chunk, readAll, normFull, loadExclusions } from "./core/util.ts";
 
 const [cmd, a1, a2] = process.argv.slice(2);
 const apply = process.argv.includes("--apply");
@@ -57,7 +57,8 @@ async function send(star: number, mp: string) {
   for (const l of ls.data ?? []) if (l.status !== "gone" && !(l.status === "error" && String(l.last_error ?? "").startsWith("DENEME"))) has.add(l.product_id);
   const { data: q } = await db.from("jobs").select("payload").eq("type", `send_products:${mp}`).in("status", ["queued", "running"]);
   for (const j of q ?? []) for (const id of j.payload?.product_ids ?? []) has.add(id);
-  let ids = o.data.map((x: any) => x.product_id).filter((id: string) => !has.has(id));
+  const excl = await loadExclusions(db, mp); // K 15.11: Trendyol'da toptancım kapalı / geri çekilen ürünler
+  let ids = o.data.filter((x: any) => !excl.sources.has(x.source) && !excl.products.has(x.product_id)).map((x: any) => x.product_id).filter((id: string) => !has.has(id));
   // Trendyol ürün sınırı: mevcut ilan + kuyruk + yeni <= LISTING_CAP
   const cap = Number(process.env.LISTING_CAP ?? (mp === "trendyol" ? 48000 : 0));
   if (cap) {

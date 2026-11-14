@@ -7,7 +7,7 @@
 //   5) YENİDEN GÖNDER: silinmiş (gone) ilanın ürünü yeniden stokta -> gönderim kuyruğu. Onaylı ilanın kategori numarası ve özellikleri
 //      ürüne öğrenilmiş olduğundan (learnFromListings) kategori/özellik yeniden tahmin edilmez.
 // Kapatma: app_state "lifecycle:trendyol" = "off". Tur başına sınırlar: arşiv/sil 3000, yeniden gönderim 2000 ürün.
-import { readAll, chunk, isSupplierKey } from "./util.ts";
+import { readAll, chunk, isSupplierKey, loadExclusions } from "./util.ts";
 import type { Listing, Marketplace } from "../marketplaces/types.ts";
 
 const H = 3600_000;
@@ -54,6 +54,7 @@ export async function runLifecycle(db: any, mp: Marketplace, marketplace: string
   const rows: LcRow[] = [];
   const hidden = new Set<string>();
   { const r = await readAll<any>((a, b) => db.from("product_overrides").select("barcode").eq("marketplace", marketplace).eq("hidden", true).order("barcode").range(a, b)); for (const x of r.data ?? []) hidden.add(x.barcode); }
+  const excl = await loadExclusions(db, marketplace);
   for (let last = ""; ; ) {
     const { data, error } = await db.from("marketplace_listings").select("listing_key, product_id, status, out_since, product_variants(stock, reserved), products(status, source)")
       .eq("marketplace", marketplace).not("variant_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
@@ -62,6 +63,7 @@ export async function runLifecycle(db: any, mp: Marketplace, marketplace: string
     last = data[data.length - 1].listing_key;
     for (const r of data as any[]) {
       if (r.products?.source === "manual") continue; // K'nın panelden eklediği ürün: fiyat/stok/arşiv tamamen K'da (14.11)
+      if (excl.sources.has(r.products?.source) || excl.products.has(r.product_id)) continue; // K 15.11: bu pazaryerinde kapalı tedarikçi/ürün (arşivden çıkarılmaz, yeniden açılmaz)
       const v = r.product_variants, active = r.products?.status === "active";
       const avail = Math.max(0, Number(v?.stock ?? 0) - Number(v?.reserved ?? 0));
       rows.push({ key: r.listing_key, productId: r.product_id, status: r.status, outSince: r.out_since, productActive: active, inStock: active && avail >= Math.max(1, minStock) && !hidden.has(r.listing_key) });

@@ -93,6 +93,44 @@ if (cmd === "archive") {
     await upsert(ids.map((k) => ({ marketplace: "trendyol", listing_key: k, deleted_at: fail.has(k) ? null : now, last_attempt_at: now, last_error: fail.get(k)?.slice(0, 300) ?? null })));
     console.log(JSON.stringify({ silinen: ids.length - fail.size, hatali: fail.size, nedenler: [...new Set(fail.values())].slice(0, 5).map((s) => s.slice(0, 160)) }));
   }
+} else if (cmd === "retire-source" || cmd === "withdraw-rejected") {
+  // K 15.11: "toptancım bayisini Trendyol'dan tamamen kaldır" (retire-source xml:toptancim) / "1500+ revize bekleyeni geri çek" (withdraw-rejected).
+  // Onaylı (canlı/kapalı) ilan arşivlenir (24 saat sonra "delete" siler); onaysız/reddedilen ilan doğrudan silinir. Ürünler engel listesine
+  // (app_state exclude_sources / exclude_products) yazılır: gönderim, yıldız kuyruğu ve yaşam döngüsü yeniden açmaz. Ürün kaydı bizde kalır (HB'ye gider).
+  const source = cmd === "retire-source" ? process.argv[3] : null;
+  if (cmd === "retire-source" && !/^xml:[a-z0-9_-]+$/.test(source ?? "")) throw new Error("kullanım: ty-clean.ts retire-source xml:<tedarikçi> [--apply]");
+  const ls = await readAll<any>((a, b) => db.from("marketplace_listings").select("listing_key, product_id, status, products(source)").eq("marketplace", "trendyol").neq("status", "gone").order("listing_key").range(a, b));
+  if (ls.error) throw new Error(ls.error.message);
+  const mine = ls.data.filter((l: any) => isSupplierKey(l.listing_key) || l.product_id);
+  const pick = source ? mine.filter((l: any) => l.products?.source === source) : mine.filter((l: any) => l.status === "rejected");
+  const archiveIds = pick.filter((l: any) => ["live", "closed"].includes(l.status)).map((l: any) => l.listing_key);
+  const deleteIds = pick.filter((l: any) => ["rejected", "pending_approval"].includes(l.status)).map((l: any) => l.listing_key);
+  const pids = [...new Set(pick.map((l: any) => l.product_id).filter(Boolean))] as string[];
+  console.log(JSON.stringify({ komut: cmd, kaynak: source, arsivlenecek: archiveIds.length, dogrudanSilinecek: deleteIds.length, urun: pids.length }));
+  if (apply) {
+    const now = new Date().toISOString();
+    // önce engel listesi (iş yarıda kalsa da yeniden gönderilmesin)
+    const key = source ? "exclude_sources:trendyol" : "exclude_products:trendyol";
+    const { data: cur } = await db.from("app_state").select("value").eq("key", key).maybeSingle();
+    let list: string[] = []; try { list = JSON.parse(cur?.value ?? "[]"); } catch { list = []; }
+    const next = [...new Set([...list, ...(source ? [source] : pids)])];
+    const { error: ae } = await db.from("app_state").upsert({ key, value: JSON.stringify(next), updated_at: now }, { onConflict: "key" });
+    if (ae) throw new Error(`engel listesi yazılamadı: ${ae.message}`);
+    const reason = source ? `tedarikçi Trendyol'dan kaldırıldı (K 15.11): ${source}` : "revize bekleyen geri çekildi (K 15.11)";
+    const run = async (ids: string[], fn: (x: string[]) => Promise<any>) => {
+      if (!ids.length) return new Map<string, string>();
+      const r = await fn(ids); const chk = r.batchIds.length && mp.checkBatches ? await mp.checkBatches(r.batchIds) : null;
+      const fail = new Map<string, string>(); for (const f of [...(r.failedItems ?? []), ...(chk?.failed ?? [])]) fail.set(f.id, f.reason); return fail;
+    };
+    const fa = await run(archiveIds, (x) => mp.archiveProducts!(x));
+    await upsert(archiveIds.map((k) => ({ marketplace: "trendyol", listing_key: k, archived_at: fa.has(k) && !/daha önce yapılmış/i.test(fa.get(k)!) ? null : now, reason, last_attempt_at: now, attempts: 1, last_error: fa.get(k)?.slice(0, 300) ?? null })));
+    const fd = await run(deleteIds, (x) => mp.deleteProducts!(x));
+    const gone = deleteIds.filter((k) => !fd.has(k));
+    await upsert(deleteIds.map((k) => ({ marketplace: "trendyol", listing_key: k, archived_at: now, deleted_at: fd.has(k) ? null : now, reason, last_attempt_at: now, last_error: fd.get(k)?.slice(0, 300) ?? null })));
+    for (const part of chunk(gone, 500)) await db.from("marketplace_listings").update({ status: "gone", last_error: reason, updated_at: now }).eq("marketplace", "trendyol").in("listing_key", part);
+    await db.from("audit_log").insert({ actor: "claude ty-clean", action: cmd, entity: "marketplace_listings", entity_id: source ?? "rejected", before: null, after: { arsivlenen: archiveIds.length - fa.size, silinen: gone.length, hata: fa.size + fd.size } });
+    console.log(JSON.stringify({ arsivlenen: archiveIds.length - fa.size, silinen: gone.length, arsivHata: fa.size, silmeHata: fd.size, nedenler: [...new Set([...fa.values(), ...fd.values()])].slice(0, 5).map((x) => x.slice(0, 160)) }));
+  }
 } else if (cmd === "restore-own") {
   // K 14.11: 12.11 toplu temizlik K'nın kendi (tedarikçi barkodu olmayan) stoksuz ilanlarını da arşivledi -> arşivden çıkar, dokunma
   const rows = await readAll<any>((a, b) => db.from("listing_retire").select("listing_key, archived_at, deleted_at").eq("marketplace", "trendyol").order("listing_key").range(a, b));
@@ -110,5 +148,5 @@ if (cmd === "archive") {
     console.log(JSON.stringify({ arsivdenCikan: ids.length - fail.size, hatali: fail.size, nedenler: [...new Set(fail.values())].slice(0, 5).map((s) => s.slice(0, 160)) }));
   }
 } else {
-  console.log("kullanım: ty-clean.ts archive|nostock|delete|restore-own [--limit N] [--apply]");
+  console.log("kullanım: ty-clean.ts archive|nostock|delete|restore-own|retire-source <xml:x>|withdraw-rejected [--limit N] [--apply]");
 }
