@@ -6,6 +6,12 @@ Son güncelleme: 14.11.2026.
 
 ## Şu an
 
+> **15.11 (PROGRESS 76):**
+> 1. [~] TY: Toptancım 6.400 arşivde -> 16.11 02:30 kalıcı silme, 03:30 yıldız dolumu (Çerçici 3.500 uygun ürün dahil). Revize 1.280 geri çekildi (engel listesi).
+> 2. [~] HB: 6.567 ürün kuyrukta (Çerçici + kalanlar); 35 bin hatalı ilan (kategori/özellik) yeniden deneniyor, yapay zekâ kategori eşleme sürüyor.
+> 3. [ ] (K) Buybox: rakipler ayrı ürün sayfalarında. Trendyol API'sinde mevcut sayfaya teklif ekleme belgelenmemiş -> K panelde "Trendyol'da bulunan ürünü sat" var mı bakacak / API desteğine sorulacak. Aynı sayfadaki 138 ilana otomatik buybox fiyatı K onayı bekliyor.
+> 4. [x] Kâr tabanı 60 TL (K 15.11).
+
 > **14.11 gece (PROGRESS 73-75):**
 > 1. [~] TY kalıcı silme 01:15 + 02:20 (tedarikçi ilanı + tedarikçiden kalkmış eski ilan; K markaları Gezer/Voga/Rasing/Hermes hariç), 03:30 yıldız sırasıyla TY yükleme (Bezos/Hepsibayi stoklu), 04:30 Telegram özeti. Sabah sonuçları kontrol.
 > 2. [~] Panel derlemesi (kurumsal fatura ekranı + Telegram `/claude` köprüsü): bitince köprüyü uçtan uca dene.
