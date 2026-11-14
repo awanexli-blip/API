@@ -57,9 +57,22 @@ export function orderRow(marketplace: string, o: OrderIn, refs: Map<string, Ref>
   };
 }
 
+// Satır kodu pazaryerinin kendi numarasıysa (HB "HBCV…") barkoda çevir (migration 082 mp_sku). K 15.11: hep barkod görünsün.
+export async function resolveMpSkus(db: any, marketplace: string, keys: string[]): Promise<Map<string, string>> {
+  const want = [...new Set(keys.filter((k) => /^HBC/i.test(k)))];
+  const map = new Map<string, string>();
+  for (let i = 0; i < want.length; i += 200) {
+    const { data, error } = await db.from("marketplace_listings").select("listing_key, mp_sku").eq("marketplace", marketplace).in("mp_sku", want.slice(i, i + 200));
+    if (error) break; // migration 082 yoksa olduğu gibi kalır
+    for (const r of data ?? []) map.set(r.mp_sku, r.listing_key);
+  }
+  return map;
+}
+
 export async function syncOrders(db: any, mp: Marketplace, cfg: PricingConfig, costOf: (key: string) => number | null, days = 14) {
   if (!mp.fetchOrders) return { skipped: "pazaryerinde sipariş çekme yok" };
   const orders = await mp.fetchOrders(Date.now() - days * 86400000, Date.now());
+  { const m = await resolveMpSkus(db, mp.id, orders.flatMap((o) => o.lines.map((l) => l.key))); if (m.size) for (const o of orders) for (const l of o.lines) l.key = m.get(l.key) ?? l.key; }
   const keys = [...new Set(orders.flatMap((o) => o.lines.map((l) => l.key)).filter(Boolean))];
   const refs = new Map<string, Ref>();
   for (let i = 0; i < keys.length; i += 300) {
@@ -94,6 +107,7 @@ export async function syncOrders(db: any, mp: Marketplace, cfg: PricingConfig, c
 export async function syncClaims(db: any, mp: Marketplace, days = 30) {
   if (!mp.fetchClaims) return { skipped: true };
   const list = await mp.fetchClaims(Date.now() - days * 86400000, Date.now());
+  { const m = await resolveMpSkus(db, mp.id, list.flatMap((c) => (c.lines ?? []).map((l: any) => String(l.key ?? "")))); if (m.size) for (const c of list) for (const l of (c.lines ?? []) as any[]) l.key = m.get(l.key) ?? l.key; }
   const nos = [...new Set(list.map((c) => c.orderNo).filter(Boolean))] as string[];
   const byNo = new Map<string, string>();
   for (let i = 0; i < nos.length; i += 200) {

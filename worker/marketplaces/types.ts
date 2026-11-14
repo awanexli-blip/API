@@ -3,6 +3,7 @@
 /** Pazaryerinde zaten yayında olan bir ilan */
 export interface Listing {
   id: string;        // pazaryerindeki benzersiz anahtar (Trendyol'da barkod)
+  mpSku?: string;    // pazaryerinin kendi ürün numarası (HB hepsiburadaSku "HBCV…"; migration 082)
   title: string;
   price: number;     // mevcut satış fiyatı (NaN olabilir)
   quantity: number;

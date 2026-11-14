@@ -211,7 +211,7 @@ export function createHepsiburada(): Marketplace {
           // kilit / askı / dondurma ya da stoklu iken satılamaz olan kapalıdır.
           const blocked = l.isSuspended === true || l.isLocked === true || l.isFrozen === true;
           const closed = blocked || (l.isSalable === false && Number(l.availableStock ?? 0) > 0);
-          out.push({ id: sku, title: String(l.productName ?? l.title ?? "").slice(0, 120), price: Number(l.price), quantity: Number(l.availableStock), status: closed ? "closed" : "active" });
+          out.push({ id: sku, mpSku: l.hepsiburadaSku ? String(l.hepsiburadaSku) : undefined, title: String(l.productName ?? l.title ?? "").slice(0, 120), price: Number(l.price), quantity: Number(l.availableStock), status: closed ? "closed" : "active" });
           items.push({ sku, hbSku: l.hepsiburadaSku, price: l.price, stock: l.availableStock, closed });
         }
         await sleep(300);

@@ -16,7 +16,7 @@ export function listingRows(marketplace: string, listings: Listing[], now: strin
     price: Number.isFinite(l.price) ? l.price : null,
     stock: Number.isFinite(l.quantity) ? Math.max(0, Math.floor(l.quantity)) : null,
     commission: l.commission ?? null, category_id: l.categoryId ?? null, category_name: l.categoryName || null,
-    seen_at: now, updated_at: now,
+    seen_at: now, updated_at: now, ...(l.mpSku ? { mp_sku: l.mpSku } : {}),
     ...(calc ? (() => { const c = calc.get(l.id); return { xml_cost: c?.cost ?? null, calc_price: c?.price ?? null, calc_net: c?.net ?? null, calc_note: c ? c.note.slice(0, 300) : "XML ile eşleşmedi: fiyat/stok sistem tarafından yönetilmiyor", xml_stock: c?.xmlStock ?? null, sent_stock: c?.sentStock ?? null }; })() : {}),
   }));
 }
@@ -40,6 +40,7 @@ export async function snapshotListings(db: any, marketplace: string, listings: L
     let { error } = await db.from("marketplace_listings").upsert(part, { onConflict: "marketplace,listing_key" });
     // migration 074 öncesi: gönderim kolonları yok, onlarsız yaz
     if (error && /sent_|pushed_at/.test(error.message)) ({ error } = await db.from("marketplace_listings").upsert(part.map(({ sent_price, sent_qty, pushed_at, ...rest }: any) => rest), { onConflict: "marketplace,listing_key" }));
+    if (error && /mp_sku/.test(error.message)) ({ error } = await db.from("marketplace_listings").upsert(part.map(({ mp_sku, ...rest }: any) => rest), { onConflict: "marketplace,listing_key" })); // migration 082 öncesi
     // Tek paketin hatası kalan ilanları durdurmaz (yazılmayan paket sonraki çalışmada yazılır)
     if (error) { firstError ??= error.message; continue; }
     written += part.length;
