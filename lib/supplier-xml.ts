@@ -7,7 +7,9 @@ import type { ApiSource } from "./supplier-api.ts";
 export type Supplier = {
   code: string; mapping: Record<string, Field>; item_path?: string | null; sku_prefix?: string; sku_ascii?: boolean;
   price_includes_vat?: boolean; default_vat?: number; default_brand?: string; currency?: string;
+  cost_add?: number | null; // ürün başına ek maliyet, KDV dahil TL (Çerçici +9,90 hizmet/paketleme; migration 083)
 };
+const addCost = (sup: Supplier, c: number) => Math.round((c + (Number(sup.cost_add) > 0 ? Number(sup.cost_add) : 0)) * 100) / 100;
 
 // Aynı tedarikçinin ek XML linki (suppliers.feeds, migration 048). Boş alanlar ana linkin ayarını kullanır.
 // type "api": REST API (lib/supplier-api.ts, ayar api alanında); yoksa XML
@@ -194,7 +196,7 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
   p.vat_rate = [0, 1, 10, 20].includes(Number(p.vat_rate)) ? Number(p.vat_rate) : sup.default_vat ?? 20;
   if (!["TRY", "USD", "EUR"].includes(p.currency)) p.currency = sup.currency ?? "TRY";
   const cost = Number(p.cost_price);
-  p.cost_price = cost > 0 ? Math.round((sup.price_includes_vat === false ? cost * (1 + p.vat_rate / 100) : cost) * 100) / 100 : null;
+  p.cost_price = cost > 0 ? addCost(sup, sup.price_includes_vat === false ? cost * (1 + p.vat_rate / 100) : cost) : null;
   const desi = Number(p.desi); p.desi = desi > 0 ? desi : null;
   p.status = p.status === "draft" ? "draft" : "active"; // XML pasif işaretliyse taslak (ör. active=0)
   p.source_ref = String(g.model).slice(0, 200);
@@ -206,7 +208,7 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
     const out: any = { sku, stock: Math.max(0, Math.min(1_000_000, Math.floor(Number(v.stock) || 0))) };
     // Seçeneğin kendi fiyatı (Bezos: halı 80x80 975 TL, 300x400 11.283 TL): üründekinden farklıysa varyanta yazılır, fiyat motoru onu kullanır
     const vc = Number(String(g.rows[i]?.values.cost_price ?? "").replace(/\s/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
-    if (vc > 0) { const c = Math.round((sup.price_includes_vat === false ? vc * (1 + p.vat_rate / 100) : vc) * 100) / 100; if (c !== p.cost_price) out.cost_price = c; }
+    if (vc > 0) { const c = addCost(sup, sup.price_includes_vat === false ? vc * (1 + p.vat_rate / 100) : vc); if (c !== p.cost_price) out.cost_price = c; }
     const b = String(v.barcode ?? "").replace(/\s/g, "");
     if (b && CODE_RE.test(b) && gtinOk(b) && !seenBarcodes.has(b.toLowerCase())) { out.barcode = b; seenBarcodes.add(b.toLowerCase()); }
     if (v.attributes) out.attributes = v.attributes;

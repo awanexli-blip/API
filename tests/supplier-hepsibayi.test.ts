@@ -103,3 +103,12 @@ test("Bezos mobilya notu: yalnızca Mobilya yolunda ve yalnızca Bezos'ta", () =
   const c = supplierPayload(itemsToGroups(items, m)[0], { code: "hepsibayi" } as any, new Set()).payload;
   assert.equal(c.description, "Metin");
 });
+
+test("Çerçici: ürün başına ek maliyet (cost_add +9,90) alış fiyatına eklenir; barkod XML barkodu", () => {
+  const x = `<products><product><productCode>CSM-1210</productCode><barcode>3879608952649</barcode><name>Parti Maskesi 12 Adet</name><price>796.67</price><tax>0.2</tax><quantity>68</quantity><currency>TRY</currency><image1>https://percdn.com/a.png</image1></product></products>`;
+  const { items } = findItems(new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }).parse(x));
+  const m = { productCode: "model", barcode: "barcode", name: "title", price: "cost_price", tax: "vat_rate", quantity: "stock", currency: "currency", image1: "images" } as any;
+  const [p] = itemsToGroups(items, m).map((g) => supplierPayload(g, { code: "cercici", name: "Çerçici", sku_prefix: "CRC", price_includes_vat: true, cost_add: 9.9 } as any, new Set()).payload);
+  assert.equal(p.cost_price, 806.57);
+  assert.equal(p.variants[0].barcode, "3879608952649");
+});
