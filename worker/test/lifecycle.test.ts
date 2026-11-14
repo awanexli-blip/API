@@ -32,7 +32,8 @@ const retire = new Map<string, LcRetire>([
   ["TCXsilinmisGeldi", { archived_at: ago(100), deleted_at: ago(70), reason: "arşivde, tedarikçide yok / 30 gün stoksuz" }],
 ]);
 live.set("SRS0001", { status: "closed", archived: true }); live.set("4522936381177", { status: "active" });
-rows.push(row("SRS0001", { productActive: false, outSince: ago(100) }), row("4522936381177", { outSince: ago(100) }));
+rows.push(row("SRS0001", { productActive: false, outSince: ago(100), own: true }), row("4522936381177", { outSince: ago(100), own: true }), row("3879608952649", { outSince: ago(100) }));
+live.set("3879608952649", { status: "active" });
 retire.set("SRS0001", { archived_at: ago(30), deleted_at: null, reason: "toplu temizlik (K 12.11): tedarikçide stok yok" });
 const p = planLifecycle(rows, live, retire, { now, sold: new Set(["TCXsatildi"]), keep: new Set(["TCXkalsin"]) });
 check("stoksuz kalan ilk kez işaretlenir", p.setOut.includes("TCXyeni0") && !p.setOut.includes("TCXs49"), p.setOut);
@@ -47,6 +48,7 @@ check("K onaylı toplu temizlik 25 saat sonra silinir", p.del.includes("TCXtoplu
 check("bizim sildiğimiz ürün stoğa girince yeniden gönderilir", p.resend.includes("p-silinmisGeldi"), p.resend);
 check("Trendyol'un kaldırdığı (bizim kaydımız yok) yeniden gönderilmez", !p.resend.includes("p-tyKapatti"), p.resend);
 
+check("15.11: öneksiz tedarikçi barkodu (Çerçici/Bezos EAN) yönetilir", p.archive.includes("3879608952649"), p);
 check("K 14.11: kendi ilanı (tedarikçi barkodu değil) arşivlenmez/silinmez", ![...p.archive, ...p.del, ...p.setOut].some((k) => k === "SRS0001" || k === "4522936381177"), p);
 if (fails) { console.log(`\n${fails} yaşam döngüsü testi başarısız`); process.exit(1); }
 console.log("\nYaşam döngüsü testleri geçti");
