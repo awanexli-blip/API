@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-15 (76) — Toptancım Trendyol'dan kaldırıldı, revize geri çekildi, Çerçici karşılaştırması
+- **Engel listesi:** `app_state exclude_sources:<mp>` / `exclude_products:<mp>` (`loadExclusions`): gönderim, yıldız kuyruğu, yaşam döngüsü bu ürünlere ilan açmaz. `exclude_sources:trendyol = ["xml:toptancim"]`, `exclude_products:trendyol` = geri çekilen 1.242 ürün.
+- **Toptancım (K):** `ty-clean retire-source xml:toptancim --apply`: 6.400 arşiv, 531 onaysız silindi; kalıcı silme 16.11 02:30 (`trentakip-job-tydeltcx`), ardından 03:30 yıldız dolumu. HB'de Toptancım kalır; yeni 29 ürün Bezos/Hepsibayi ile barkod/başlıkça aynı değil.
+- **Revize (K "geri çekmemişsin"):** `withdraw-rejected --apply`: 749 (+Toptancım 531) reddedilen ilan silindi.
+- **Dolum:** TY yıldız 10..1: 4.162 ürün kuyrukta (Toptancım hariç). HB send-all: 2.639 stoklu ürün kuyrukta.
+- **Çerçici (aday tedarikçi, eklenmedi):** 6.365 ürün, KDV dahil + 9,90 TL. Başlık eşleşmesi yanıltıyordu (K: kapı zili farklı ürün) -> görsel dHash (Hamming <= 6): 1.394 birebir ürün, 502 belirgin fark (501'inde Çerçici ucuz). Dosyalar `kaynaklar/cercici/` (git dışı).
+
 ## 2026-11-14 (75) — Kurumsal fatura, K'nın kendi ilanları, sahte "elle değişti"
 - **Kurumsal fatura (Trendyol rehberi):** TY `commercial` + `invoiceAddress.company/taxNumber/taxOffice/isEInvoiceAvailable`, HB `companyName/taxNumber/taxOffice/billing*` -> `orders.address.invoice` (adresle 30 gün sonra silinir) + `orders.buyer_type` (migration 080, `order_upsert` güncellendi, sunucuya uygulandı). Fatura: VKN/TCKN + ünvan + vergi dairesi + fatura adresi, tutar yalnızca müşterinin ödediği (TY indirimi yansıtma faturasıyla). e-Fatura mükellefine e-Arşiv açılmaz (HB'de durum bilinmediği için elle). Panelde rozet, kurumsal iadede "iade faturası iste" uyarısı. **Bulgu:** e-Fatura mükellefi 5 kurumsal alıcıya (GIB2026000000043/072/116/121/135) geçmişte bireysel e-Arşiv kesilip yüklenmiş -> K / mali müşavir.
 - **"Elle değişti" (K: "ben değiştirmiyorum"):** TY 7.708 bekletmenin hepsi Toptancım, pazaryeri fiyatı = gönderilen x1,20: 11.11 22:00 sistemin kendi çift KDV'li gönderimi. Algı kapatıldı (`HOLDS_DETECT_EDITED=1` ile açılır); bekleyenler `sync` (sistem doğru fiyatı gönderir).
