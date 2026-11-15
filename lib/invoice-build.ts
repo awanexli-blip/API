@@ -113,3 +113,13 @@ export function buildInvoice(o: InvOrder, now = new Date()) {
     _ozet: { total, kdv, matrah }, // sunucuda çıkarılır, GİB'e gitmez
   };
 }
+
+// İade faturası (K 15.11): e-Arşiv "IADE" tipi; orijinal satış faturası iadeTable'da (belge no + düzenlenme tarihi).
+// lines: yalnızca iade edilen ürünler ve adetler (birim fiyat satıştaki gibi; kurumsalda pazaryeri indirimi hariç, buildInvoice kuralı).
+export function buildReturnInvoice(o: InvOrder, original: { belge_no: string; date: Date }, now = new Date()) {
+  const no = String(original.belge_no ?? "").split(/[\s/]+/)[0];
+  if (!/^[A-Z0-9]{8,20}$/.test(no)) throw new Error("Orijinal fatura numarası yok: iade faturası kesilemez");
+  const inv = buildInvoice(o, now);
+  return { ...inv, faturaTipi: "IADE", iadeTable: [{ faturaNo: no, duzenlenmeTarihi: trDateTime(original.date).date }], _iade: { original: no } };
+}
+

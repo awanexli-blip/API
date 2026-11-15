@@ -34,7 +34,10 @@ try {
 type Row = { belge_no: string | null; onay: string; tarih: string | null; kind: string; order_no?: string | null; marketplace?: string; our_belge_no?: string | null; our_status?: string; our_amount?: number | null; candidates?: number };
 const rows: Row[] = [];
 const all = [...docs.values()];
-const foreign = all.filter((d) => !ours.has(d.ettn) && !isDeleted(d));
+// Sistemin iade faturaları (IADE, migration 086) elle kesilmiş sayılmaz (yoksa iade faturası sahte "mükerrer" üretirdi)
+const ret = await db.from("order_return_invoices").select("ettn").not("ettn", "is", null).then((r: any) => r, () => ({ data: [] }));
+const returnEttn = new Set<string>((ret.data ?? []).map((r: any) => r.ettn));
+const foreign = all.filter((d) => !ours.has(d.ettn) && !returnEttn.has(d.ettn) && !isDeleted(d));
 for (const d of foreign) {
   const name = fold(docName(d)), t = docTime(d);
   const cands = name.length >= 4 ? ord.data.filter((o) => fold(o.customer_name) === name && (t == null || !o.ordered_at || Date.parse(o.ordered_at) <= t + 86400000)) : [];

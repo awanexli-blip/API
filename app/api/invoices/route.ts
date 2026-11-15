@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { orderDb, guard, unauthorized, bad } from "@/lib/server";
 import { EarsivClient, isDeleted, isSigned } from "@/lib/earsiv";
-import { buildInvoice, trDateTime } from "@/lib/invoice-build";
+import { buildInvoice, buildReturnInvoice, trDateTime } from "@/lib/invoice-build";
 import { matchManualInvoices, docName, docTime } from "@/lib/invoice-match";
 import { dispatchWorkflow } from "@/lib/github";
 
@@ -39,17 +39,17 @@ export async function GET(req: NextRequest) {
   let upload: any = null, audit: any = null;
   try { upload = rep?.data?.value ? JSON.parse(rep.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
   try { audit = aud?.data?.value ? JSON.parse(aud.data.value) : null; } catch { /* bozuk rapor yok sayılır */ }
-  // İadeler: Trendyol talepleri (senkron yazar) + bağlı fatura; iptal edilmiş ama faturası kesilmiş siparişler; K'nın işaretleri
-  const retState = await db.from("app_state").select("key, value").in("key", ["returns_report:trendyol", "returns_marks"]).then((r: any) => r.data ?? [], () => []);
-  const stateOf = (k: string) => { try { const v = retState.find((x: any) => x.key === k)?.value; return v ? JSON.parse(v) : null; } catch { return null; } };
-  const retRep = stateOf("returns_report:trendyol"), marks: Record<string, any> = stateOf("returns_marks") ?? {};
-  const claims: any[] = retRep?.rows ?? [];
-  const nos = [...new Set(claims.map((c) => c.order_no).filter(Boolean))];
+  // İadeler (K 15.11): Trendyol + Hepsiburada talepleri satır satır (rapor ham talep yazar: orderNo + lines), bağlı satış faturası, iade faturası,
+  // iptal edilmiş ama faturası kesilmiş siparişler (müşteriye ulaşmadan iptal: fatura portalda iptal edilir), K'nın işaretleri
+  const { rows: flat, at: retAt, marks } = await loadReturns(db);
+  const nos = [...new Set(flat.map((c) => c.order_no).filter(Boolean))] as string[];
   const invByNo = new Map<string, any>(), buyerByNo = new Map<string, string>();
-  if (nos.length) { const { data } = await db.from("orders").select("order_no, buyer_type, order_invoices(status, belge_no, amount, signed_at, created_at)").in("order_no", nos); for (const o of data ?? []) { if (o.buyer_type) buyerByNo.set(o.order_no, o.buyer_type); const i: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices; if (i) invByNo.set(o.order_no, i); } }
+  if (nos.length) { const { data } = await db.from("orders").select("order_no, marketplace, buyer_type, order_invoices(status, belge_no, amount, signed_at, created_at)").in("order_no", nos); for (const o of data ?? []) { const k = `${o.marketplace}|${o.order_no}`; if (o.buyer_type) buyerByNo.set(k, o.buyer_type); const i: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices; if (i) invByNo.set(k, i); } }
+  const retInv = new Map<string, any>();
+  if (flat.length) { const { data } = await db.from("order_return_invoices").select("return_key, status, belge_no, ettn, amount, error, created_at, signed_at").in("return_key", flat.map((r) => r.id)); for (const x of data ?? []) retInv.set(x.return_key, x); }
   const { data: cancelledRows } = await db.from("orders").select("id, order_no, marketplace, total, ordered_at, order_invoices!inner(status, belge_no, amount, signed_at, created_at)").eq("status", "cancelled").in("order_invoices.status", ["signed", "uploaded"]);
-  const returns = { at: retRep?.at ?? null, marks,
-    rows: claims.map((c) => ({ ...c, buyer_type: buyerByNo.get(c.order_no) ?? "bireysel", invoice: invByNo.get(c.order_no) ?? null })),
+  const returns = { at: retAt, marks,
+    rows: flat.map((c) => ({ ...c, buyer_type: buyerByNo.get(`${c.marketplace}|${c.order_no}`) ?? "bireysel", invoice: invByNo.get(`${c.marketplace}|${c.order_no}`) ?? null, return_invoice: retInv.get(c.id) ?? null })),
     cancelled: (cancelledRows ?? []).map((o: any) => ({ id: `iptal:${o.order_no}`, order_no: o.order_no, marketplace: o.marketplace, at: o.ordered_at, title: "Sipariş iptal, fatura kesilmiş", price: Number(o.total), status: "İptal", reason: "", invoice: Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices })) };
   return NextResponse.json({ rows, counts, upload, audit, returns, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS), uploadReady: !!(process.env.GH_TOKEN && process.env.GH_REPO) });
 }
@@ -156,6 +156,60 @@ export async function POST(req: NextRequest) {
 
   // Sistemin portal oturumunu kapat (portal tek oturuma izin veriyor; K giriş yapamıyorsa): giriş + hemen çıkış
   // İmzalı faturanın GİB görünümü (panelde açılır, K tarayıcıdan PDF kaydeder; dosya adı = alıcı adı). Belge yalnızca isteyen admin'e döner, saklanmaz/loglanmaz.
+  // İade faturası (K 15.11): kabul edilmiş iade satırları için e-Arşiv IADE taslağı (imza K'da). Veri istemciden değil rapordan yeniden okunur.
+  if (b.action === "return_draft") {
+    const ids: string[] = [...new Set<string>((Array.isArray(b.ids) ? b.ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 20);
+    if (!ids.length) return bad("İade seç (en fazla 20)");
+    const { rows: flat } = await loadReturns(db);
+    const want = flat.filter((r) => ids.includes(r.id));
+    const results: { id: string; ok: boolean; error?: string; amount?: number }[] = [];
+    const DONE = /accepted|refunded|kabul|iade edildi/i;
+    try {
+      await login();
+      for (const r of want) {
+        const fail = async (why: string, mark = true) => { results.push({ id: r.id, ok: false, error: why }); if (mark) await db.from("order_return_invoices").update({ status: "error", error: why.slice(0, 300), updated_at: new Date().toISOString() }).eq("return_key", r.id); };
+        if (!DONE.test(r.status)) { results.push({ id: r.id, ok: false, error: "İade henüz kabul edilmedi (pazaryeri kararı bekleniyor)" }); continue; }
+        const { data: o } = await db.from("orders").select("id, marketplace, order_no, ordered_at, customer_name, address, city, buyer_type, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, vat_rate), order_invoices(status, belge_no, signed_at, created_at)").eq("marketplace", r.marketplace).eq("order_no", r.order_no ?? "").maybeSingle();
+        if (!o) { results.push({ id: r.id, ok: false, error: "Sipariş kaydı bulunamadı" }); continue; }
+        const orig: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices;
+        if (!orig || !["signed", "uploaded"].includes(orig.status) || !orig.belge_no) { results.push({ id: r.id, ok: false, error: "Siparişin imzalı satış faturası yok: önce satış faturası" }); continue; }
+        if (!o.customer_name) { results.push({ id: r.id, ok: false, error: "Alıcı bilgisi silinmiş (30 gün): iade faturasını portalda elle kes" }); continue; }
+        if (o.buyer_type === "kurumsal_efatura") { results.push({ id: r.id, ok: false, error: "Alıcı e-Fatura mükellefi: e-Arşiv iade faturası geçersiz; iade faturasını müşteri keser" }); continue; }
+        const ls: any[] = o.order_lines ?? [];
+        const line = ls.find((l) => l.listing_key && l.listing_key === r.barcode) ?? (ls.length === 1 ? ls[0] : ls.find((l) => r.title && String(r.title).startsWith(String(l.title ?? "").slice(0, 25))));
+        if (!line) { results.push({ id: r.id, ok: false, error: "İade edilen ürün siparişte bulunamadı" }); continue; }
+        const lq = Math.max(1, Number(line.qty) || 1), q = Math.min(lq, Math.max(1, Number(r.qty) || 1));
+        let vatRate = line.vat_rate != null ? Number(line.vat_rate) : null;
+        if (vatRate == null && line.product_id) { const { data: pr } = await db.from("products").select("vat_rate").eq("id", line.product_id).maybeSingle(); vatRate = pr?.vat_rate != null ? Number(pr.vat_rate) : null; }
+        const claim = await db.from("order_return_invoices").insert({ return_key: r.id, order_id: o.id, order_no: o.order_no, marketplace: o.marketplace, status: "creating", original_belge_no: orig.belge_no, created_by: "panel", updated_at: now });
+        if (claim.error) { results.push({ id: r.id, ok: false, error: claim.error.code === "23505" ? "Bu iade için zaten iade faturası var" : claim.error.message }); continue; }
+        try {
+          const inv = buildReturnInvoice({ ...o, lines: [{ title: line.title, qty: q, unit_price: Number(line.unit_price), ty_discount: (Number(line.ty_discount) || 0) * q / lq, vat_rate: vatRate ?? 20 }] } as any,
+            { belge_no: orig.belge_no, date: new Date(orig.signed_at ?? orig.created_at ?? o.ordered_at ?? Date.now()) });
+          const { _ozet, _iade, ...payload } = inv as any;
+          const doc = await gib.createDraft(payload);
+          await db.from("order_return_invoices").update({ status: "draft", ettn: doc.ettn, belge_no: doc.belgeNumarasi ?? null, amount: _ozet.total, vat: _ozet.kdv, lines: [{ title: line.title, qty: q }], error: null, updated_at: new Date().toISOString() }).eq("return_key", r.id);
+          results.push({ id: r.id, ok: true, amount: _ozet.total });
+        } catch (e: any) { await fail(String(e?.message ?? e).slice(0, 300)); }
+      }
+    } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
+    finally { await logout(); }
+    return NextResponse.json({ created: results.filter((x) => x.ok).length, results });
+  }
+  if (b.action === "return_reset") {
+    if (typeof b.id !== "string") return bad("id gerekli");
+    const { error } = await db.from("order_return_invoices").delete().eq("return_key", b.id).in("status", ["error", "deleted", "creating"]);
+    return error ? bad(error.message) : NextResponse.json({ ok: true });
+  }
+  if (b.action === "return_html") {
+    if (typeof b.id !== "string") return bad("id gerekli");
+    const { data: row } = await db.from("order_return_invoices").select("ettn, status, belge_no").eq("return_key", b.id).maybeSingle();
+    if (!row?.ettn || !["draft", "signed"].includes(row.status)) return bad("Bu iadenin iade faturası yok");
+    try { await login(); const html = await gib.invoiceHtml(row.ettn, row.status === "signed"); return NextResponse.json({ html, name: `iade ${row.belge_no ?? ""}`.trim(), belge_no: row.belge_no }); }
+    catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
+    finally { await logout(); }
+  }
+
   if (b.action === "html") {
     if (typeof b.order_id !== "string") return bad("order_id gerekli");
     const { data: row } = await db.from("order_invoices").select("ettn, status, belge_no, orders(customer_name, order_no)").eq("order_id", b.order_id).maybeSingle();
@@ -202,9 +256,11 @@ export async function POST(req: NextRequest) {
     const { data: all, error } = await db.from("order_invoices").select("order_id, ettn, status, created_at");
     if (error) return bad(error.message);
     const drafts = (all ?? []).filter((d: any) => d.status === "draft" && d.ettn);
+    const { data: retAll } = await db.from("order_return_invoices").select("return_key, ettn, status, created_at");
+    const retDrafts = (retAll ?? []).filter((d: any) => d.status === "draft" && d.ettn);
     try {
       await login();
-      const list = await listDays(drafts.map((d: any) => d.created_at));
+      const list = await listDays([...drafts, ...retDrafts].map((d: any) => d.created_at));
       const docs = new Map(list.map((d) => [d.ettn, d]));
       let signed = 0, deleted = 0, waiting = 0, missing = 0;
       const gone = new Set<string>(); // taslağı silinen siparişler: elle kesilen fatura bunlara bağlanabilir
@@ -217,7 +273,14 @@ export async function POST(req: NextRequest) {
         else waiting++;
       }
       // Mükerrer: bizim imzalanmamış taslağımızın siparişi için portalda (bizim olmayan) imzalı ya da elle oluşturulmuş taslak var (aynı alıcı, sipariş sonrası tarih)
-      const ours = new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean));
+      // İade faturaları (IADE) da bizim: imzalandıysa durum güncellenir; mükerrer aramasında "elle kesilmiş" sayılmaz
+      let retSigned = 0;
+      for (const d of retDrafts as any[]) {
+        const doc = docs.get(d.ettn);
+        if (doc && isSigned(doc)) { retSigned++; await db.from("order_return_invoices").update({ status: "signed", belge_no: doc.belgeNumarasi ?? null, signed_at: now, updated_at: now }).eq("return_key", d.return_key); }
+        else if (doc && isDeleted(doc)) await db.from("order_return_invoices").update({ status: "deleted", error: "Taslak portalda silinmiş", updated_at: now }).eq("return_key", d.return_key);
+      }
+      const ours = new Set([...(all ?? []), ...(retAll ?? [])].map((d: any) => d.ettn).filter(Boolean));
       const manual = list.filter((d) => !ours.has(d.ettn) && !isDeleted(d));
       const waitingRows = (drafts as any[]).filter((d) => { const doc = docs.get(d.ettn); return doc && !isSigned(doc) && !isDeleted(doc); });
       let duplicate = 0;
@@ -243,7 +306,7 @@ export async function POST(req: NextRequest) {
         .gte("ordered_at", new Date(Date.now() - 60 * 86400000).toISOString());
       const m = matchManualInvoices(list, (cand ?? []).filter((o: any) => !has.has(o.id)), new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean)));
       for (const l of m.links) await db.from("order_invoices").upsert({ order_id: l.order_id, status: "signed", ettn: l.ettn, belge_no: l.belge_no, error: null, created_by: "portal (elle)", signed_at: now, updated_at: now }, { onConflict: "order_id" });
-      return NextResponse.json({ signed, deleted, waiting, missing, duplicate, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
+      return NextResponse.json({ signed, deleted, waiting, missing, duplicate, returnSigned: retSigned, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
     finally { await logout(); }
   }
@@ -325,4 +388,23 @@ export async function POST(req: NextRequest) {
     return bad(String(e?.message ?? e).slice(0, 300));
   } finally { await logout(); }
   return NextResponse.json({ created: results.filter((r) => r.ok).length, results });
+}
+
+// İade raporlarını (worker/sync.ts ordersPart: app_state returns_report:<mp>, ham talep) satır satır düzleştirir. Satır kimliği: <mp>:<talep>:<satır sırası>
+async function loadReturns(db: any): Promise<{ rows: any[]; at: string | null; marks: Record<string, any> }> {
+  const keys = ["returns_report:trendyol", "returns_report:hepsiburada", "returns_marks"];
+  const st = await db.from("app_state").select("key, value").in("key", keys).then((r: any) => r.data ?? [], () => []);
+  const of = (k: string) => { try { const v = st.find((x: any) => x.key === k)?.value; return v ? JSON.parse(v) : null; } catch { return null; } };
+  const rows: any[] = []; let at: string | null = null;
+  for (const mp of ["trendyol", "hepsiburada"]) {
+    const rep = of(`returns_report:${mp}`);
+    if (rep?.at && (!at || rep.at > at)) at = rep.at;
+    for (const c of rep?.rows ?? []) {
+      const lines: any[] = Array.isArray(c.lines) && c.lines.length ? c.lines : [{ key: "", title: "", qty: 1, price: c.amount, status: c.status, reason: c.reason }];
+      lines.forEach((l, i) => rows.push({ id: `${mp}:${c.id}:${i}`, marketplace: mp, order_no: c.orderNo ? String(c.orderNo) : null, at: c.claimedAt ? new Date(Number(c.claimedAt)).toISOString() : null,
+        title: String(l.title ?? ""), qty: Math.max(1, Number(l.qty) || 1), price: Number(l.price) || 0, barcode: String(l.key ?? ""), status: String(l.status || c.status || ""), reason: String(l.reason ?? c.reason ?? "") }));
+    }
+  }
+  rows.sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")));
+  return { rows, at, marks: of("returns_marks") ?? {} };
 }

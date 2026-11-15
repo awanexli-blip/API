@@ -183,3 +183,14 @@ test("kurumsal: ünvan + VKN + vergi dairesi, fatura adresi, tutar yalnızca mü
   const sahis = buildInvoice({ ...order, address: { ...order.address, invoice: { ...corp, taxNumber: "12345678901" } } });
   assert.equal(sahis.vknTckn, "12345678901"); assert.equal(sahis.aliciAdi, "Ayşe Nur");
 });
+
+import { buildReturnInvoice } from "../lib/invoice-build.ts";
+test("iade faturası: IADE tipi, orijinal fatura iadeTable'da, yalnızca iade edilen adet", () => {
+  const ret = buildReturnInvoice({ ...order, lines: [{ title: "Kitap", qty: 1, unit_price: 50, vat_rate: 10 }] }, { belge_no: "GIB2026000000116", date: new Date("2026-11-01T10:00:00Z") }, new Date("2026-11-10T10:00:00Z"));
+  assert.equal(ret.faturaTipi, "IADE");
+  assert.deepEqual(ret.iadeTable, [{ faturaNo: "GIB2026000000116", duzenlenmeTarihi: "01/11/2026" }]);
+  assert.equal(ret.vergilerDahilToplamTutar, "50.00");
+  assert.equal(ret.vknTckn, "11111111111");
+  assert.equal(buildReturnInvoice(order, { belge_no: "GIB2026000000006 / GIB2026000000007", date: new Date() }).iadeTable[0].faturaNo, "GIB2026000000006");
+  assert.throws(() => buildReturnInvoice(order, { belge_no: "elle (portal)", date: new Date() }), /Orijinal fatura numarası/);
+});

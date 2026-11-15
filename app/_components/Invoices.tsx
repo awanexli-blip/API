@@ -13,7 +13,7 @@ type Tab = "todo" | "sign" | "upload" | "warn" | "all" | "hb" | "ret";
 const DOC: Record<string, string> = { iptal: "Portalda iptal edildi", gider_pusulasi: "Gider pusulası kesildi", gerekmiyor: "Belge gerekmiyor" };
 // Portal iptal süresi: kaynaklar 7-8 gün diyor, güvenli taraf 7 (K, 06.11). Kesin karar portalın kendisi: süre dolmuşsa kabul etmez.
 const CANCEL_DAYS = 7;
-const isDone = (st: string) => /accepted|kabul/i.test(st);
+const isDone = (st: string) => /accepted|refunded|kabul|iade edildi/i.test(st);
 const isDropped = (st: string) => /cancelled|iptal edildi|reject/i.test(st);
 const dup = (r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "");
 const inTab: Record<Tab, (r: Row) => boolean> = {
@@ -44,7 +44,14 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const all: Row[] = d?.rows ?? [];
   const ret = d?.returns;
   const retAll: Row[] = [...(ret?.cancelled ?? []), ...(ret?.rows ?? [])];
-  const retOpen = retAll.filter((r) => !ret?.marks?.[r.id] && !isDropped(String(r.status)));
+  // Açık iş: iade (kabul edilmiş, imzalı iade faturası yok, işaret yok) ya da iptal edilmiş siparişin faturası (portalda iptal edilmedi)
+  const retDone = (r: Row) => !!ret?.marks?.[r.id] || isDropped(String(r.status)) || r.return_invoice?.status === "signed";
+  const retOpen = retAll.filter((r) => !retDone(r));
+  // İade faturası taslağı açılabilir mi (sunucu aynı kuralları yeniden denetler)
+  const retWhyNot = (r: Row): string | null => String(r.id).startsWith("iptal:") ? "iptal" : isDropped(String(r.status)) ? "Talep iptal" : !isDone(String(r.status)) ? "İade kabul edilince"
+    : !r.invoice || !["signed", "uploaded"].includes(r.invoice.status) ? "Önce satış faturası" : r.buyer_type === "kurumsal_efatura" ? "e-Fatura mükellefi: iade faturasını müşteri keser"
+    : r.return_invoice && !["error", "deleted"].includes(r.return_invoice.status) ? "var" : ret?.marks?.[r.id] ? "işaretli" : null;
+  const [rsel, setRsel] = useState<Set<string>>(new Set());
   const n = (t: Tab) => (t === "ret" ? retOpen.length : all.filter(inTab[t]).length);
   // e-Fatura mükellefi kurumsal alıcıya e-Arşiv kesilmez (Trendyol kurumsal fatura rehberi): seçilemez, GİB e-Fatura portalından elle
   const selectable = (r: Row) => r.has_customer && r.buyer_type !== "kurumsal_efatura" && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
@@ -96,7 +103,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     setBusy("Portal okunuyor...");
     try {
       const r = await post({ action: "sync" }, 120000);
-      notify(r.duplicate ? "err" : "good", `${r.duplicate ? `⚠️ ${r.duplicate} taslak MÜKERRER (o siparişler için portalda elle kesilmiş/oluşturulmuş belge var): ikisini birden imzalama. ` : ""}İmzalanan: ${r.signed}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş: ${r.deleted}` : ""}${r.missing ? `, portal listesinde görünmeyen (dokunulmadı): ${r.missing}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`);
+      notify(r.duplicate ? "err" : "good", `${r.duplicate ? `⚠️ ${r.duplicate} taslak MÜKERRER (o siparişler için portalda elle kesilmiş/oluşturulmuş belge var): ikisini birden imzalama. ` : ""}İmzalanan: ${r.signed}${r.returnSigned ? ` (+${r.returnSigned} iade faturası)` : ""}, bekleyen taslak: ${r.waiting}${r.deleted ? `, portalda silinmiş: ${r.deleted}` : ""}${r.missing ? `, portal listesinde görünmeyen (dokunulmadı): ${r.missing}` : ""}. Portalda elle kesilip siparişe bağlanan: ${r.manual ?? 0}${r.manualAmbiguous ? `, aynı adla birden fazla sipariş olduğu için bağlanamayan: ${r.manualAmbiguous}` : ""}${r.manualUnmatched ? `, eşleşen sipariş bulunamayan: ${r.manualUnmatched}` : ""}`);
       await load();
     } catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
@@ -178,6 +185,27 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   async function clearReport(report: "audit" | "upload") {
     if (!(await confirmDialog("Bu rapor ekrandan kaldırılacak. Faturalara, GİB portalına ve Trendyol'a dokunulmaz. Devam?", { danger: true }))) return;
     try { await post({ action: "clear_report", report }); await load(); } catch (e: any) { notify("err", e.message); }
+  }
+  async function returnDraft() {
+    const ids = [...rsel];
+    if (!ids.length) return;
+    if (!(await confirmDialog(`${ids.length} iade için GİB e-Arşiv portalında İADE FATURASI TASLAĞI oluşturulacak (orijinal satış faturasına bağlı, yalnızca iade edilen ürün ve adet). İmzayı portalda sen atarsın. Devam?`))) return;
+    let ok = 0; const errs: string[] = [];
+    for (const id of ids) { const r = retAll.find((x) => x.id === id); if (r?.return_invoice && ["error", "deleted"].includes(r.return_invoice.status)) { try { await post({ action: "return_reset", id }); } catch (e: any) { errs.push(e.message); } } }
+    for (let i = 0; i < ids.length; i += 5) {
+      setBusy(`İade faturası taslakları oluşturuluyor (${Math.min(i + 5, ids.length)}/${ids.length})...`);
+      try { const r = await post({ action: "return_draft", ids: ids.slice(i, i + 5) }, 120000); ok += r.created; for (const x of r.results ?? []) if (!x.ok) errs.push(`${retAll.find((y) => y.id === x.id)?.order_no ?? ""}: ${x.error}`); }
+      catch (e: any) { errs.push(e.message); break; }
+    }
+    setBusy(""); setRsel(new Set()); await load();
+    notify(errs.length ? "err" : "good", `${ok} iade faturası taslağı oluşturuldu.${ok ? " Portalda imzala, sonra İmzalananları kontrol et." : ""}${errs.length ? ` Hata (${errs.length}): ${errs.slice(0, 3).join(" · ")}` : ""}`);
+  }
+  async function openReturnPdf(id: string) {
+    const w = window.open("", "_blank");
+    if (!w) return notify("err", "Tarayıcı yeni pencereyi engelledi: bu site için açılır pencereye izin ver");
+    w.document.write("<p style='font-family:sans-serif'>İade faturası GİB'den alınıyor...</p>");
+    try { const r = await post({ action: "return_html", id }, 60000); w.document.open(); w.document.write(`<title>${String(r.name).replace(/[<>&]/g, "")}</title>` + r.html); w.document.close(); }
+    catch (e: any) { w.close(); notify("err", e.message); }
   }
   async function markReturn(id: string, doc: string | null) {
     if (doc && !(await confirmDialog(`"${DOC[doc]}" olarak işaretlenecek. Bu yalnızca panel kaydıdır; GİB'de ve Trendyol'da işlem yapmaz. Devam?`))) return;
@@ -261,44 +289,57 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
         </div>}
         {cur === "hb" && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Hepsiburada faturaları buradan yüklenmez: PDF'i açıp Hepsiburada paneline elle yükle.</p>}
 
-        {cur === "ret" && <>
+        {cur === "ret" && (() => {
+          const list = retAll.filter((r) => !qn || [r.order_no, r.title, r.barcode, r.reason, r.invoice?.belge_no, r.return_invoice?.belge_no].some((x) => String(x ?? "").toLocaleLowerCase("tr").includes(qn)));
+          const eligible = list.filter((r) => !retWhyNot(r));
+          const RI: Record<string, [string, string]> = { creating: ["Oluşturuluyor", "partial"], draft: ["Taslak: portalda imzala", "partial"], signed: ["İade faturası kesildi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "error"] };
+          return <>
           <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-            Trendyol iade talepleri ve iptal edilmiş ama faturası kesilmiş siparişler{ret?.at ? ` (son okuma ${when(ret.at)})` : ""}. Hepsiburada iadeleri burada yok. Fatura {CANCEL_DAYS} günden yeniyse portaldan iptal edilebilir görünür; kesin karar portalındır. Süre geçtiyse belgeyi mali müşavirinle netleştir. Yaptığın işlemi buradan işaretle: işaret yalnızca panel kaydıdır, GİB'de ve Trendyol'da bir şey yapmaz.
+            Trendyol ve Hepsiburada iadeleri{ret?.at ? ` (son okuma ${when(ret.at)})` : ""}. Kabul edilen her iade için <b>iade faturası</b> kesilir (bireysel ve kurumsal; e-Fatura mükellefi kurumsalda iade faturasını müşteri keser). Sistem taslağı oluşturur, imzayı portalda sen atarsın, sonra &quot;İmzalananları kontrol et&quot;. Sipariş müşteriye ulaşmadan iptal edildiyse satış faturası portalda iptal edilir.
           </p>
-          <div className="row" style={{ gap: 8, marginBottom: 10 }}><a className="btn" href={PORTAL_URL} target="_blank" rel="noreferrer">e-Arşiv portalını aç</a></div>
-          {retAll.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{ret?.at ? EMPTY.ret : "İade listesi henüz gelmedi: bir sonraki Trendyol senkronundan sonra görünür."}</p> : <div className="scroll"><table className="cards">
-            <thead><tr><th>Sipariş</th><th>Talep</th><th>Ürün</th><th className="n">Tutar</th><th>Fatura</th><th>Belge</th></tr></thead>
-            <tbody>{retAll.map((r) => {
-              const inv = r.invoice, mark = ret?.marks?.[r.id];
+          <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <button className="btn primary" disabled={!!busy || !rsel.size || !canGib} onClick={returnDraft}>{rsel.size ? `${rsel.size} iade için iade faturası taslağı` : "İade faturası için iade seç"}</button>
+            {eligible.length > 0 && <button className="btn ghost" onClick={() => setRsel(eligible.every((r) => rsel.has(r.id)) ? new Set() : new Set(eligible.map((r) => r.id)))}>{eligible.every((r) => rsel.has(r.id)) ? "Seçimi kaldır" : `Kesilecekleri seç (${eligible.length})`}</button>}
+            <button className="btn" disabled={!!busy || !canGib} onClick={sync}>İmzalananları kontrol et</button>
+            <a className="btn" href={PORTAL_URL} target="_blank" rel="noreferrer">e-Arşiv portalını aç</a>
+          </div>
+          {list.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{qn ? "Aramayla eşleşen iade yok." : ret?.at ? EMPTY.ret : "İade listesi henüz gelmedi: bir sonraki senkrondan sonra görünür."}</p> : <div className="scroll"><table className="cards">
+            <thead><tr><th aria-label="Seç"></th><th>Sipariş</th><th>Talep</th><th>Ürün</th><th className="n">Tutar</th><th>Satış faturası</th><th>İade faturası / işlem</th></tr></thead>
+            <tbody>{list.map((r) => {
+              const inv = r.invoice, ri = r.return_invoice, mark = ret?.marks?.[r.id];
+              const cancelled = String(r.id).startsWith("iptal:");
+              const dropped = isDropped(String(r.status)), done = isDone(String(r.status));
+              const why = retWhyNot(r);
               const days = inv ? daysAgo(inv.signed_at ?? inv.created_at) : null;
-              const dropped = isDropped(String(r.status)), done = isDone(String(r.status)) || r.status === "İptal";
-              const live = inv && ["signed", "uploaded"].includes(inv.status);
               return (
                 <tr key={r.id} style={dropped ? { opacity: 0.55 } : undefined}>
-                  <td data-label="Sipariş">{r.order_no}<br /><span className="muted" style={{ fontSize: 12 }}>{r.barcode ?? r.marketplace}</span></td>
+                  <td>{!cancelled && <input type="checkbox" aria-label={`${r.order_no} iade seç`} disabled={!!why} title={why ?? ""} checked={rsel.has(r.id)} onChange={(e) => { const x = new Set(rsel); if (e.target.checked) x.add(r.id); else x.delete(r.id); setRsel(x); }} />}</td>
+                  <td data-label="Sipariş">{r.order_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{r.marketplace}{r.barcode ? ` · ${r.barcode}` : ""}</span></td>
                   <td data-label="Talep">{when(r.at)}<br /><span className="muted" style={{ fontSize: 12 }}>{r.reason}</span>
-                    {r.buyer_type && r.buyer_type !== "bireysel" && <div style={{ color: "var(--warn)", fontSize: 12 }}>Kurumsal iade: müşteriden iade faturası gelmeden iade işlemine başlama</div>}</td>
-                  <td data-label="Ürün" style={{ fontSize: 13 }}>{r.title}{r.qty > 1 ? ` (${r.qty} adet)` : ""}<div><span className={`pill ${dropped ? "" : done ? "ok" : "partial"}`}>{dropped ? "Talep iptal" : done ? (r.status === "İptal" ? "Sipariş iptal" : "İade kabul") : "İşlem bekliyor"}</span></div></td>
+                    {r.buyer_type && r.buyer_type !== "bireysel" && <div style={{ color: "var(--warn)", fontSize: 12 }}>Kurumsal müşteri</div>}</td>
+                  <td data-label="Ürün" style={{ fontSize: 13 }}>{r.title || "-"}{r.qty > 1 ? ` (${r.qty} adet)` : ""}<div><span className={`pill ${dropped ? "" : done || cancelled ? "ok" : "partial"}`}>{dropped ? "Talep iptal" : cancelled ? "Sipariş iptal" : done ? "İade kabul" : "Pazaryeri kararı bekleniyor"}</span></div></td>
                   <td data-label="Tutar" className="n" style={{ whiteSpace: "nowrap" }}>{tl(Number(r.price))}</td>
-                  <td data-label="Fatura">{inv ? <>{inv.belge_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{tl(Number(inv.amount))} · {days} gün önce</span></> : <span className="muted">Fatura kaydı yok</span>}</td>
-                  <td data-label="Belge">
-                    {mark ? <><span className="pill ok">{DOC[mark.doc] ?? mark.doc}</span><div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, null)}>Geri al</button></div></>
-                      : dropped ? <span className="muted" style={{ fontSize: 12 }}>Gerekmiyor</span>
-                      : <>
-                        {live && <div style={{ fontSize: 12, color: days! <= CANCEL_DAYS ? "var(--ok)" : "var(--warn)" }}>{days! <= CANCEL_DAYS ? `Portaldan iptal edilebilir (${CANCEL_DAYS - days!} gün kaldı)` : "İptal süresi geçmiş görünüyor"}</div>}
-                        {!done && <div className="muted" style={{ fontSize: 12 }}>Trendyol kararı bekleniyor</div>}
+                  <td data-label="Satış faturası">{inv ? <>{inv.belge_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{IST[inv.status]?.[0] ?? inv.status}{days != null ? ` · ${days} gün önce` : ""}</span></> : <span className="muted">Satış faturası yok</span>}</td>
+                  <td data-label="İade faturası / işlem">
+                    {cancelled ? (mark ? <><span className="pill ok">Fatura iptal edildi</span><div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, null)}>Geri al</button></div></>
+                        : <><div style={{ fontSize: 12, color: "var(--warn)" }}>Müşteriye ulaşmadan iptal: satış faturasını portalda iptal et{days != null ? ` (${days} gün önce kesildi)` : ""}</div>
+                          <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "iptal")}>İptal ettim</button></div></>)
+                    : ri ? <><span className={`pill ${RI[ri.status]?.[1] ?? ""}`}>{RI[ri.status]?.[0] ?? ri.status}</span>
+                        {ri.belge_no && <div className="muted" style={{ fontSize: 12 }}>{ri.belge_no}{ri.amount != null ? ` · ${tl(Number(ri.amount))}` : ""}</div>}
+                        {ri.error && <div style={{ color: "var(--bad)", fontSize: 12 }}>{ri.error}</div>}
                         <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                          {live && days! <= CANCEL_DAYS && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "iptal")}>İptal ettim</button>}
-                          {done && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "gider_pusulasi")}>Gider pusulası kestim</button>}
-                          {done && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "gerekmiyor")}>Belge gerekmiyor</button>}
-                        </div>
-                      </>}
+                          {["draft", "signed"].includes(ri.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openReturnPdf(r.id)}>İade faturasını aç / PDF</button>}
+                          {["error", "deleted", "creating"].includes(ri.status) && <button className="btn ghost" style={{ fontSize: 12 }} onClick={async () => { try { await post({ action: "return_reset", id: r.id }); await load(); } catch (e: any) { notify("err", e.message); } }}>Sıfırla, yeniden kes</button>}
+                        </div></>
+                    : mark ? <><span className="pill ok">{DOC[mark.doc] ?? mark.doc}</span><div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, null)}>Geri al</button></div></>
+                    : <><span className="muted" style={{ fontSize: 12 }}>{dropped ? "Gerekmiyor" : why === null ? "İade faturası kesilecek" : why}</span>
+                        {done && !dropped && <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "gerekmiyor")}>Belge gerekmiyor</button></div>}</>}
                   </td>
                 </tr>
               );
             })}</tbody>
           </table></div>}
-        </>}
+        </>; })()}
 
         {cur === "ret" ? null : rows.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{qn ? "Aramayla eşleşen fatura yok." : EMPTY[cur]}</p> : <div className="scroll"><table className="cards">
           <thead><tr>
