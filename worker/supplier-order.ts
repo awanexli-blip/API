@@ -37,6 +37,9 @@ const { data: orders, error } = await q;
 if (error) throw new Error(error.message);
 const isBezos = (l: any) => /^BZ/i.test(l.supplier_sku ?? "") || /^BZ/i.test(l.listing_key ?? "");
 const me = await bezosGet("/me");
+// Bezos'ta zaten verilmiş siparişler (elle ya da önceki gönderim): aynı pazaryeri kargo barkodu = aynı sipariş, ikinci kez gönderilmez
+const existing = new Map<string, { id: string; status: string }>();
+{ const r = await bezosGet("/orders?page=1&limit=100"); for (const x of r.body?.orders ?? []) if (x.barcode && !/iptal/i.test(String(x.status))) existing.set(String(x.barcode), { id: String(x.id), status: String(x.status) }); }
 let balance = Number(me.body?.balance ?? me.body?.data?.balance ?? NaN);
 const drafts: any[] = [];
 for (const o of (orders ?? []) as any[]) {
@@ -48,6 +51,8 @@ for (const o of (orders ?? []) as any[]) {
   const plan = planBezosOrder(res, o.cargo_provider, o.marketplace);
   const problems = [...plan.problems];
   if (!o.tracking_no) problems.push("pazaryeri kargo barkodu (takip no) henüz yok: Bezos barkodsuz sipariş almaz");
+  const already = o.tracking_no ? existing.get(String(o.tracking_no)) : undefined;
+  if (already) problems.unshift(`ZATEN BEZOS'TA SİPARİŞ VAR (${already.status}): ikinci kez gönderilmez`);
   if (!o.customer_name) problems.push("alıcı adı yok (silinmiş)");
   const amount = plan.items.reduce((t, i) => t + i.quantity * i.expectedUnitPrice, 0);
   if (Number.isFinite(balance) && amount > balance) problems.push(`bakiye yetersiz (${balance.toFixed(2)} TL < ${amount.toFixed(2)} TL)`);
@@ -55,14 +60,14 @@ for (const o of (orders ?? []) as any[]) {
     carrier: plan.carrier, barcode: o.tracking_no ?? null, customer: "‹alıcı adı›", items: plan.items.map(({ name, ...i }) => i) };
   const ready = plan.ok && !problems.length;
   if (ready && Number.isFinite(balance)) balance -= amount; // aynı turda sıradaki siparişler için kalan bakiye
-  drafts.push({ order_id: o.id, marketplace: o.marketplace, order_no: o.order_no, status: o.status, ordered_at: o.ordered_at, ready, problems, cargoChange: plan.cargoChange ?? null,
+  drafts.push({ alreadyOrdered: already ?? null, order_id: o.id, marketplace: o.marketplace, order_no: o.order_no, status: o.status, ordered_at: o.ordered_at, ready, problems, cargoChange: plan.cargoChange ?? null,
     otherSupplierLines: others, amount: Math.round(amount * 100) / 100, saleTotal: Number(o.total), estNet: o.est_net,
     lines: res.map((x, i) => ({ title: String(lines[i].title ?? "").slice(0, 80), qty: x.qty, ok: x.res.ok, code: x.res.ok ? x.res.code : null, by: x.res.ok ? x.res.by : null, reason: x.res.ok ? null : x.res.reason, stock: x.res.ok ? x.res.product.stock : null, unitPrice: x.res.ok ? x.res.product.unitPrice : null })),
     request: body });
 }
 const report = { at: new Date().toISOString(), mode: "dry", balance: Number(me.body?.balance ?? NaN), orders: drafts.length, ready: drafts.filter((d) => d.ready).length, drafts };
 await db.from("app_state").upsert({ key: "supplier_order_dry", value: JSON.stringify(report), updated_at: report.at }, { onConflict: "key" });
-console.log(JSON.stringify({ bakiye: report.balance, siparis: report.orders, hazir: report.ready, sorunlu: report.orders - report.ready }));
+console.log(JSON.stringify({ bakiye: report.balance, siparis: report.orders, hazir: report.ready, zatenVerilmis: drafts.filter((d) => d.alreadyOrdered).length, sorunlu: report.orders - report.ready }));
 for (const d of drafts) {
   console.log(`\n${d.ready ? "✅ HAZIR" : "⛔ GÖNDERİLMEZ"} ${d.marketplace} ${d.order_no} (${d.status}) · Bezos tutarı ${d.amount} TL · satış ${d.saleTotal} TL${d.otherSupplierLines ? ` · ${d.otherSupplierLines} satır başka tedarikçide` : ""}`);
   for (const l of d.lines) console.log(`   - ${l.title} x${l.qty} -> ${l.ok ? `${l.code} (${l.by}) stok ${l.stock} · ${l.unitPrice} TL` : `ÇÖZÜLEMEDİ: ${l.reason}`}`);
