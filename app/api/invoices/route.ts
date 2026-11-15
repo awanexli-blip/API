@@ -168,6 +168,7 @@ export async function POST(req: NextRequest) {
       await login();
       for (const r of want) {
         const fail = async (why: string, mark = true) => { results.push({ id: r.id, ok: false, error: why }); if (mark) await db.from("order_return_invoices").update({ status: "error", error: why.slice(0, 300), updated_at: new Date().toISOString() }).eq("return_key", r.id); };
+        if (r.undelivered) { results.push({ id: r.id, ok: false, error: "Müşteriye ulaşmadı (teslim edilemeyen gönderi): iade faturası değil, satış faturasını portalda iptal et" }); continue; }
         if (!DONE.test(r.status)) { results.push({ id: r.id, ok: false, error: "İade henüz kabul edilmedi (pazaryeri kararı bekleniyor)" }); continue; }
         const { data: o } = await db.from("orders").select("id, marketplace, order_no, ordered_at, customer_name, address, city, buyer_type, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, vat_rate), order_invoices(status, belge_no, signed_at, created_at)").eq("marketplace", r.marketplace).eq("order_no", r.order_no ?? "").maybeSingle();
         if (!o) { results.push({ id: r.id, ok: false, error: "Sipariş kaydı bulunamadı" }); continue; }
@@ -403,7 +404,9 @@ async function loadReturns(db: any): Promise<{ rows: any[]; at: string | null; m
     for (const c of rep?.rows ?? []) {
       const lines: any[] = Array.isArray(c.lines) && c.lines.length ? c.lines : [{ key: "", title: "", qty: 1, price: c.amount, status: c.status, reason: c.reason }];
       lines.forEach((l, i) => rows.push({ id: `${mp}:${c.id}:${i}`, marketplace: mp, order_no: c.orderNo ? String(c.orderNo) : null, at: c.claimedAt ? new Date(Number(c.claimedAt)).toISOString() : null,
-        title: String(l.title ?? ""), qty: Math.max(1, Number(l.qty) || 1), price: Number(l.price) || 0, barcode: String(l.key ?? ""), status: String(l.status || c.status || ""), reason: String(l.reason ?? c.reason ?? "") }));
+        title: String(l.title ?? ""), qty: Math.max(1, Number(l.qty) || 1), price: Number(l.price) || 0, barcode: String(l.key ?? ""), status: String(l.status || c.status || ""), reason: String(l.reason ?? c.reason ?? ""),
+        // Müşteriye hiç ulaşmadı (teslim edilemeyen gönderi): iade faturası değil, satış faturası iptal edilir (K 15.11)
+        undelivered: /UNDELIVERED|teslim edilemey|ulaşmad/i.test(`${c.reasonCode ?? ""} ${l.reason ?? c.reason ?? ""}`) }));
     }
   }
   rows.sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")));

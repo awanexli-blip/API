@@ -48,7 +48,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const retDone = (r: Row) => !!ret?.marks?.[r.id] || isDropped(String(r.status)) || r.return_invoice?.status === "signed";
   const retOpen = retAll.filter((r) => !retDone(r));
   // İade faturası taslağı açılabilir mi (sunucu aynı kuralları yeniden denetler)
-  const retWhyNot = (r: Row): string | null => String(r.id).startsWith("iptal:") ? "iptal" : isDropped(String(r.status)) ? "Talep iptal" : !isDone(String(r.status)) ? "İade kabul edilince"
+  const retWhyNot = (r: Row): string | null => String(r.id).startsWith("iptal:") || r.undelivered ? "iptal" : isDropped(String(r.status)) ? "Talep iptal" : !isDone(String(r.status)) ? "İade kabul edilince"
     : !r.invoice || !["signed", "uploaded"].includes(r.invoice.status) ? "Önce satış faturası" : r.buyer_type && r.buyer_type !== "bireysel" ? "Kurumsal: iade faturasını müşteri keser"
     : r.return_invoice && !["error", "deleted"].includes(r.return_invoice.status) ? "var" : ret?.marks?.[r.id] ? "işaretli" : null;
   const [rsel, setRsel] = useState<Set<string>>(new Set());
@@ -307,7 +307,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
             <thead><tr><th aria-label="Seç"></th><th>Sipariş</th><th>Talep</th><th>Ürün</th><th className="n">Tutar</th><th>Satış faturası</th><th>İade faturası / işlem</th></tr></thead>
             <tbody>{list.map((r) => {
               const inv = r.invoice, ri = r.return_invoice, mark = ret?.marks?.[r.id];
-              const cancelled = String(r.id).startsWith("iptal:");
+              const cancelled = String(r.id).startsWith("iptal:") || !!r.undelivered; // iptal ya da teslim edilemedi: faturası portalda iptal edilir
               const dropped = isDropped(String(r.status)), done = isDone(String(r.status));
               const why = retWhyNot(r);
               const days = inv ? daysAgo(inv.signed_at ?? inv.created_at) : null;
@@ -317,12 +317,12 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                   <td data-label="Sipariş">{r.order_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{r.marketplace}{r.barcode ? ` · ${r.barcode}` : ""}</span></td>
                   <td data-label="Talep">{when(r.at)}<br /><span className="muted" style={{ fontSize: 12 }}>{r.reason}</span>
                     {r.buyer_type && r.buyer_type !== "bireysel" && <div style={{ color: "var(--warn)", fontSize: 12 }}>Kurumsal: iade faturasını müşteri keser; gelmeden iade işlemine başlama</div>}</td>
-                  <td data-label="Ürün" style={{ fontSize: 13 }}>{r.title || "-"}{r.qty > 1 ? ` (${r.qty} adet)` : ""}<div><span className={`pill ${dropped ? "" : done || cancelled ? "ok" : "partial"}`}>{dropped ? "Talep iptal" : cancelled ? "Sipariş iptal" : done ? "İade kabul" : "Pazaryeri kararı bekleniyor"}</span></div></td>
+                  <td data-label="Ürün" style={{ fontSize: 13 }}>{r.title || "-"}{r.qty > 1 ? ` (${r.qty} adet)` : ""}<div><span className={`pill ${dropped ? "" : done || cancelled ? "ok" : "partial"}`}>{dropped ? "Talep iptal" : r.undelivered ? "Teslim edilemedi" : cancelled ? "Sipariş iptal" : done ? "İade kabul" : "Pazaryeri kararı bekleniyor"}</span></div></td>
                   <td data-label="Tutar" className="n" style={{ whiteSpace: "nowrap" }}>{tl(Number(r.price))}</td>
                   <td data-label="Satış faturası">{inv ? <>{inv.belge_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{IST[inv.status]?.[0] ?? inv.status}{days != null ? ` · ${days} gün önce` : ""}</span></> : <span className="muted">Satış faturası yok</span>}</td>
                   <td data-label="İade faturası / işlem">
                     {cancelled ? (mark ? <><span className="pill ok">Fatura iptal edildi</span><div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, null)}>Geri al</button></div></>
-                        : <><div style={{ fontSize: 12, color: "var(--warn)" }}>Müşteriye ulaşmadan iptal: satış faturasını portalda iptal et{days != null ? ` (${days} gün önce kesildi)` : ""}</div>
+                        : <><div style={{ fontSize: 12, color: "var(--warn)" }}>{r.undelivered ? "Müşteriye ulaşmadı" : "Müşteriye ulaşmadan iptal"}: satış faturasını portalda iptal et{days != null ? ` (${days} gün önce kesildi)` : ""}</div>
                           <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "iptal")}>İptal ettim</button></div></>)
                     : ri ? <><span className={`pill ${RI[ri.status]?.[1] ?? ""}`}>{RI[ri.status]?.[0] ?? ri.status}</span>
                         {ri.belge_no && <div className="muted" style={{ fontSize: 12 }}>{ri.belge_no}{ri.amount != null ? ` · ${tl(Number(ri.amount))}` : ""}</div>}
