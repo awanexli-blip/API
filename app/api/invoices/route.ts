@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     let m: Record<string, any> = {};
     try { m = st?.value ? JSON.parse(st.value) : {}; } catch { return bad("İşaret kaydı okunamadı"); }
     if (b.doc == null) delete m[b.id];
-    else if (["iptal", "gider_pusulasi", "gerekmiyor"].includes(b.doc)) m[b.id] = { doc: b.doc, at: now };
+    else if (["iptal", "gider_pusulasi", "gerekmiyor", "musteri_iade"].includes(b.doc)) m[b.id] = { doc: b.doc, at: now };
     else return bad("Geçersiz işlem");
     const { error } = await db.from("app_state").upsert({ key: "returns_marks", value: JSON.stringify(m), updated_at: now });
     return error ? bad(error.message) : NextResponse.json({ ok: true });
@@ -174,7 +174,8 @@ export async function POST(req: NextRequest) {
         const orig: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices;
         if (!orig || !["signed", "uploaded"].includes(orig.status) || !orig.belge_no) { results.push({ id: r.id, ok: false, error: "Siparişin imzalı satış faturası yok: önce satış faturası" }); continue; }
         if (!o.customer_name) { results.push({ id: r.id, ok: false, error: "Alıcı bilgisi silinmiş (30 gün): iade faturasını portalda elle kes" }); continue; }
-        if (o.buyer_type === "kurumsal_efatura") { results.push({ id: r.id, ok: false, error: "Alıcı e-Fatura mükellefi: e-Arşiv iade faturası geçersiz; iade faturasını müşteri keser" }); continue; }
+        // K 15.11: kurumsal müşteri iade faturasını kendisi keser; sistem dokunmaz
+        if (o.buyer_type && o.buyer_type !== "bireysel") { results.push({ id: r.id, ok: false, error: "Kurumsal müşteri: iade faturasını müşteri keser, sistem kesmez" }); continue; }
         const ls: any[] = o.order_lines ?? [];
         const line = ls.find((l) => l.listing_key && l.listing_key === r.barcode) ?? (ls.length === 1 ? ls[0] : ls.find((l) => r.title && String(r.title).startsWith(String(l.title ?? "").slice(0, 25))));
         if (!line) { results.push({ id: r.id, ok: false, error: "İade edilen ürün siparişte bulunamadı" }); continue; }

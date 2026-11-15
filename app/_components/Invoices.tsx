@@ -10,7 +10,7 @@ import { confirmDialog } from "./confirm-dialog";
 const PORTAL_URL = "https://earsivportal.efatura.gov.tr/intragiris.html";
 const IST: Record<string, [string, string]> = { none: ["Kesilmedi", ""], creating: ["Oluşturuluyor", "info"], draft: ["İmza bekliyor", "info"], signed: ["Kesildi", "ok"], uploaded: ["Trendyol'a yüklendi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "partial"] };
 type Tab = "todo" | "sign" | "upload" | "warn" | "all" | "hb" | "ret";
-const DOC: Record<string, string> = { iptal: "Portalda iptal edildi", gider_pusulasi: "Gider pusulası kesildi", gerekmiyor: "Belge gerekmiyor" };
+const DOC: Record<string, string> = { iptal: "Portalda iptal edildi", gider_pusulasi: "Gider pusulası kesildi", gerekmiyor: "Belge gerekmiyor", musteri_iade: "Müşterinin iade faturası alındı" };
 // Portal iptal süresi: kaynaklar 7-8 gün diyor, güvenli taraf 7 (K, 06.11). Kesin karar portalın kendisi: süre dolmuşsa kabul etmez.
 const CANCEL_DAYS = 7;
 const isDone = (st: string) => /accepted|refunded|kabul|iade edildi/i.test(st);
@@ -49,7 +49,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const retOpen = retAll.filter((r) => !retDone(r));
   // İade faturası taslağı açılabilir mi (sunucu aynı kuralları yeniden denetler)
   const retWhyNot = (r: Row): string | null => String(r.id).startsWith("iptal:") ? "iptal" : isDropped(String(r.status)) ? "Talep iptal" : !isDone(String(r.status)) ? "İade kabul edilince"
-    : !r.invoice || !["signed", "uploaded"].includes(r.invoice.status) ? "Önce satış faturası" : r.buyer_type === "kurumsal_efatura" ? "e-Fatura mükellefi: iade faturasını müşteri keser"
+    : !r.invoice || !["signed", "uploaded"].includes(r.invoice.status) ? "Önce satış faturası" : r.buyer_type && r.buyer_type !== "bireysel" ? "Kurumsal: iade faturasını müşteri keser"
     : r.return_invoice && !["error", "deleted"].includes(r.return_invoice.status) ? "var" : ret?.marks?.[r.id] ? "işaretli" : null;
   const [rsel, setRsel] = useState<Set<string>>(new Set());
   const n = (t: Tab) => (t === "ret" ? retOpen.length : all.filter(inTab[t]).length);
@@ -295,7 +295,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
           const RI: Record<string, [string, string]> = { creating: ["Oluşturuluyor", "partial"], draft: ["Taslak: portalda imzala", "partial"], signed: ["İade faturası kesildi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "error"] };
           return <>
           <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-            Trendyol ve Hepsiburada iadeleri{ret?.at ? ` (son okuma ${when(ret.at)})` : ""}. Kabul edilen her iade için <b>iade faturası</b> kesilir (bireysel ve kurumsal; e-Fatura mükellefi kurumsalda iade faturasını müşteri keser). Sistem taslağı oluşturur, imzayı portalda sen atarsın, sonra &quot;İmzalananları kontrol et&quot;. Sipariş müşteriye ulaşmadan iptal edildiyse satış faturası portalda iptal edilir.
+            Trendyol ve Hepsiburada iadeleri{ret?.at ? ` (son okuma ${when(ret.at)})` : ""}. Kabul edilen her bireysel iade için <b>iade faturası</b> kesilir. Kurumsal müşteride iade faturasını müşteri keser, sistem dokunmaz; gelince &quot;Müşterinin iade faturası geldi&quot; ile işaretle. Sistem taslağı oluşturur, imzayı portalda sen atarsın, sonra &quot;İmzalananları kontrol et&quot;. Sipariş müşteriye ulaşmadan iptal edildiyse satış faturası portalda iptal edilir.
           </p>
           <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             <button className="btn primary" disabled={!!busy || !rsel.size || !canGib} onClick={returnDraft}>{rsel.size ? `${rsel.size} iade için iade faturası taslağı` : "İade faturası için iade seç"}</button>
@@ -316,7 +316,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                   <td>{!cancelled && <input type="checkbox" aria-label={`${r.order_no} iade seç`} disabled={!!why} title={why ?? ""} checked={rsel.has(r.id)} onChange={(e) => { const x = new Set(rsel); if (e.target.checked) x.add(r.id); else x.delete(r.id); setRsel(x); }} />}</td>
                   <td data-label="Sipariş">{r.order_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{r.marketplace}{r.barcode ? ` · ${r.barcode}` : ""}</span></td>
                   <td data-label="Talep">{when(r.at)}<br /><span className="muted" style={{ fontSize: 12 }}>{r.reason}</span>
-                    {r.buyer_type && r.buyer_type !== "bireysel" && <div style={{ color: "var(--warn)", fontSize: 12 }}>Kurumsal müşteri</div>}</td>
+                    {r.buyer_type && r.buyer_type !== "bireysel" && <div style={{ color: "var(--warn)", fontSize: 12 }}>Kurumsal: iade faturasını müşteri keser; gelmeden iade işlemine başlama</div>}</td>
                   <td data-label="Ürün" style={{ fontSize: 13 }}>{r.title || "-"}{r.qty > 1 ? ` (${r.qty} adet)` : ""}<div><span className={`pill ${dropped ? "" : done || cancelled ? "ok" : "partial"}`}>{dropped ? "Talep iptal" : cancelled ? "Sipariş iptal" : done ? "İade kabul" : "Pazaryeri kararı bekleniyor"}</span></div></td>
                   <td data-label="Tutar" className="n" style={{ whiteSpace: "nowrap" }}>{tl(Number(r.price))}</td>
                   <td data-label="Satış faturası">{inv ? <>{inv.belge_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{IST[inv.status]?.[0] ?? inv.status}{days != null ? ` · ${days} gün önce` : ""}</span></> : <span className="muted">Satış faturası yok</span>}</td>
@@ -333,7 +333,9 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                         </div></>
                     : mark ? <><span className="pill ok">{DOC[mark.doc] ?? mark.doc}</span><div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, null)}>Geri al</button></div></>
                     : <><span className="muted" style={{ fontSize: 12 }}>{dropped ? "Gerekmiyor" : why === null ? "İade faturası kesilecek" : why}</span>
-                        {done && !dropped && <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "gerekmiyor")}>Belge gerekmiyor</button></div>}</>}
+                        {done && !dropped && <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                          {r.buyer_type && r.buyer_type !== "bireysel" && <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "musteri_iade")}>Müşterinin iade faturası geldi</button>}
+                          <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "gerekmiyor")}>Belge gerekmiyor</button></div>}</>}
                   </td>
                 </tr>
               );
