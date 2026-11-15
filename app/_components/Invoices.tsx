@@ -36,6 +36,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const [busy, setBusy] = useState("");
   const [tab, setTab] = useState<Tab | null>(null);
   const [waiting, setWaiting] = useState("");
+  const [q, setQ] = useState(""); // arama: sipariş no, ürün, belge no, uyarı metni
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const load = useCallback(() => api("/api/invoices").then((x: Row) => { setD(x); setFailed(""); }).catch((e: any) => { setFailed(e.message); notify("err", e.message); }), [api, notify]);
   useEffect(() => { load(); return () => { if (timer.current) clearInterval(timer.current); }; }, [load]);
@@ -49,7 +50,11 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const selectable = (r: Row) => r.has_customer && r.buyer_type !== "kurumsal_efatura" && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
   // Kullanıcı sekme seçmediyse yapılacak iş olan ilk sekme
   const cur: Tab = tab ?? (n("todo") ? "todo" : n("sign") ? "sign" : n("upload") ? "upload" : "todo");
-  const rows = all.filter(inTab[cur]);
+  const qn = q.trim().toLocaleLowerCase("tr");
+  const hit = (r: Row) => !qn || [r.order_no, r.items, r.invoice?.belge_no, r.invoice?.error, r.marketplace].some((x) => String(x ?? "").toLocaleLowerCase("tr").includes(qn));
+  const rows = all.filter(inTab[cur]).filter(hit);
+  // Kaldırılabilir uyarı: hata durumundaki (yeniden denenecek) kayıt hariç, notu olan fatura
+  const canDismiss = (r: Row) => !!r.invoice?.error && !["error", "creating"].includes(r.invoice.status);
   const c = d?.counts ?? {};
   const dupSigned = all.filter((r) => dup(r) && ["signed", "uploaded"].includes(r.invoice?.status));
   const selectedRows = all.filter((r) => sel.has(r.id));
@@ -100,6 +105,15 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     if (!m || !(await confirmDialog(`${m} mükerrer TASLAK portaldan silinecek (yalnızca imzalanmamış taslaklar; kestiğin faturalara dokunulmaz). Devam?`, { danger: true }))) return;
     setBusy("Mükerrer taslaklar siliniyor...");
     try { const r = await post({ action: "delete_duplicates" }, 120000); notify("good", `${r.deleted} mükerrer taslak silindi. Şimdi "İmzalananları kontrol et" ile elle kestiklerin siparişlere bağlanır.`); await load(); }
+    catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+  }
+  async function dismiss(list: Row[]) {
+    const ids = list.filter(canDismiss).map((r) => r.id);
+    if (!ids.length) return;
+    const dupN = list.filter((r) => canDismiss(r) && dup(r)).length;
+    if (!(await confirmDialog(`${ids.length} faturanın uyarısı kaldırılacak${dupN ? ` (${dupN} mükerrer işareti; portalda fazlalığı iptal ettiysen onayla, bu faturalar yeniden Trendyol'a yüklenebilir olur)` : ""}. Fatura kaydı, GİB portalı ve Trendyol değişmez. Devam?`))) return;
+    setBusy("Uyarılar kaldırılıyor...");
+    try { const r = await post({ action: "dismiss_warning", order_ids: ids }); notify("good", `${r.cleared} uyarı kaldırıldı.`); await load(); }
     catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
   }
   async function logoutGib() {
@@ -163,7 +177,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   );
   // Sıradaki adım: duruma göre tek öneri
   const next: { text: string; tone?: string; act: ReactNode } = !canGib ? { text: "Önce bu panele GİB kullanıcı kodu ve şifresi tanımlanmalı (GIB_PORTAL_USER, GIB_PORTAL_PASS). O zamana kadar taslak ve kontrol kapalı.", tone: "var(--bad)", act: null }
-    : dupSigned.length ? { text: `${dupSigned.length} siparişte çift fatura uyarısı var${d.audit ? ` (son kontrol ${daysAgo(d.audit.at)} gün önce)` : ""}. Portalda iptal ettiysen kontrol et: artık çift olmayanların uyarısı kendiliğinden kalkar. Gerçekten çift olan kalır ve Trendyol'a yüklenmez.`, tone: "var(--bad)", act: <button className="btn primary" disabled={!!busy || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button> }
+    : dupSigned.length ? { text: `${dupSigned.length} siparişte çift fatura uyarısı var${d.audit ? ` (son kontrol ${daysAgo(d.audit.at)} gün önce)` : ""}. Portalda fazlalığı iptal ettiysen "Düzelttim" ile uyarıyı kaldır ya da kontrol başlat (çift olmayanların uyarısı kendiliğinden kalkar). Uyarısı duran fatura Trendyol'a yüklenmez.`, tone: "var(--bad)", act: <><button className="btn" disabled={!!busy} onClick={() => dismiss(dupSigned)}>Düzelttim, uyarıları kaldır ({dupSigned.length})</button><button className="btn primary" disabled={!!busy || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button></> }
     : n("sign") ? { text: `${n("sign")} taslak imzanı bekliyor. Portalda Düzenlenen Belgeler'den seçip imzala (tek SMS), sonra buraya dönüp kontrol et.`, act: <><a className="btn" href={PORTAL_URL} target="_blank" rel="noreferrer">e-Arşiv portalını aç</a><button className="btn primary" disabled={!!busy} onClick={sync}>İmzalananları kontrol et</button></> }
     : n("upload") ? { text: dryFresh && d.upload?.ok ? `Son denemede ${d.upload.ok} fatura uygun çıktı, yükleyebilirsin.` : `${n("upload")} kesilmiş fatura Trendyol'a yüklenmeyi bekliyor. Önce deneme: hiçbir şey yüklenmez, her fatura tek tek karşılaştırılır.`,
         act: dryFresh && d.upload?.ok ? <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload.ok})</button> : <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("dry")}>Deneme başlat</button> }
@@ -194,6 +208,10 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
       </div>
 
       <div className="card">
+        <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara: sipariş no, ürün, belge no, uyarı" aria-label="Faturalarda ara" style={{ flex: "1 1 260px", maxWidth: 420 }} />
+          {q && <span className="muted" style={{ fontSize: 12 }}>{rows.length} sonuç</span>}
+        </div>
         <div className="tabs" role="tablist">
           {([["todo", "Kesilecek"], ["sign", "İmza bekliyor"], ["upload", "Yüklenecek"], ["warn", "Uyarı"], ["ret", "İadeler"], ["hb", "Hepsiburada"], ["all", "Tümü (60 gün)"]] as [Tab, string][]).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={cur === t} className="tab" onClick={() => setTab(t)}>{label} ({n(t)})</button>
@@ -215,8 +233,9 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
           <button className={dryFresh && d.upload?.ok ? "btn primary" : "btn"} disabled={!!busy || !canGh || !(dryFresh && d.upload?.ok)} onClick={() => upload("apply")}>Uygun olanları yükle ({dryFresh ? d.upload?.ok ?? 0 : 0})</button>
           {!dryFresh && <span className="muted" style={{ fontSize: 12 }}>Yükleme için son 24 saatte deneme gerekir.</span>}
         </div>}
-        {cur === "warn" && dupSigned.length > 0 && <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <button className="btn primary" disabled={!!busy || !canGib || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button>
+        {cur === "warn" && rows.some(canDismiss) && <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <button className="btn" disabled={!!busy} onClick={() => dismiss(rows)}>Hepsini düzelttim ({rows.filter(canDismiss).length})</button>
+          {dupSigned.length > 0 && <button className="btn primary" disabled={!!busy || !canGib || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button>}
           <span className="muted" style={{ fontSize: 12 }}>GİB'de ve Trendyol'da hiçbir şey değiştirmez; yalnızca buradaki rapor ve uyarıları günceller.</span>
         </div>}
         {cur === "hb" && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Hepsiburada faturaları buradan yüklenmez: PDF'i açıp Hepsiburada paneline elle yükle.</p>}
@@ -260,7 +279,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
           </table></div>}
         </>}
 
-        {cur === "ret" ? null : rows.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{EMPTY[cur]}</p> : <div className="scroll"><table className="cards">
+        {cur === "ret" ? null : rows.length === 0 ? <p className="muted" style={{ padding: "16px 0" }}>{qn ? "Aramayla eşleşen fatura yok." : EMPTY[cur]}</p> : <div className="scroll"><table className="cards">
           <thead><tr>
             {cur === "todo" && <th aria-label="Seç"></th>}
             <th>Sipariş</th><th>Tarih</th><th>Ürünler</th><th className="n">Tutar</th><th>Fatura</th>
@@ -279,7 +298,8 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                 <td data-label="Fatura"><span className={`pill ${st[1]}`}>{st[0]}</span>
                   {r.invoice?.belge_no && <div className="muted" style={{ fontSize: 12 }}>{r.invoice.belge_no}</div>}
                   {!r.has_customer && !r.invoice && <div className="muted" style={{ fontSize: 12 }}>Alıcı bilgisi silinmiş: portalda elle kes</div>}
-                  {r.invoice?.error && <div style={{ color: "var(--bad)", fontSize: 12 }}>{r.invoice.error}</div>}
+                  {r.invoice?.error && <div style={{ color: "var(--bad)", fontSize: 12, display: "flex", gap: 6, alignItems: "flex-start" }}><span style={{ flex: 1 }}>{r.invoice.error}</span>
+                    {canDismiss(r) && <button className="btn ghost" style={{ fontSize: 12, padding: "2px 8px", color: "var(--ink)" }} disabled={!!busy} onClick={() => dismiss([r])} title="Uyarıyı kaldır (fatura kaydı, portal ve Trendyol değişmez)" aria-label={`${r.order_no} uyarısını kaldır`}>✓ Düzelttim</button>}</div>}
                   {["signed", "uploaded"].includes(r.invoice?.status) && <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openPdf(r.id)} title="Yazdır penceresinde 'PDF olarak kaydet' seç">Faturayı aç / PDF</button></div>}
                   {r.invoice?.status === "creating" && <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => reset(r.id)}>Takıldı, yeniden dene</button></div>}
                 </td>

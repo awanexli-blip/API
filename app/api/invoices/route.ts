@@ -81,6 +81,21 @@ export async function POST(req: NextRequest) {
     return error ? bad(error.message) : NextResponse.json({ ok: true });
   }
 
+  // Uyarıyı kaldır (K 15.11: "düzelttim" düğmesi). Mükerrer/çift fatura vb. uyarı notu silinir; fatura kaydı, portal ve Trendyol değişmez.
+  // Mükerrer işareti yüklemeyi engellediği için kaldırılınca fatura yeniden "Yüklenecek"e düşer. Hata durumundaki (yeniden denenecek) kayıtlar hariç.
+  if (b.action === "dismiss_warning") {
+    const ids: string[] = [...new Set<string>((Array.isArray(b.order_ids) ? b.order_ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 500);
+    if (!ids.length) return bad("Sipariş seç");
+    const { data: rows, error } = await db.from("order_invoices").select("order_id, status, error").in("order_id", ids).not("error", "is", null).not("status", "in", "(error,creating)");
+    if (error) return bad(error.message);
+    const keys = (rows ?? []).map((r: any) => r.order_id);
+    if (!keys.length) return NextResponse.json({ cleared: 0 });
+    const { error: ue } = await db.from("order_invoices").update({ error: null, updated_at: now }).in("order_id", keys);
+    if (ue) return bad(ue.message);
+    await db.from("audit_log").insert({ actor: "panel", action: "dismiss_warning", entity: "order_invoices", entity_id: String(keys.length), before: { rows: (rows ?? []).map((r: any) => ({ order_id: r.order_id, error: String(r.error).slice(0, 200) })) }, after: { error: null } }).then(() => {}, () => {});
+    return NextResponse.json({ cleared: keys.length });
+  }
+
   if (b.action === "reset") {
     if (typeof b.order_id !== "string") return bad("order_id gerekli");
     const { error } = await db.from("order_invoices").delete().eq("order_id", b.order_id).in("status", ["error", "deleted", "creating"]);
