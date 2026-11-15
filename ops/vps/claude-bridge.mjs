@@ -9,7 +9,7 @@ import { existsSync, writeFileSync } from "node:fs";
 const URL_ = process.env.VPS_SUPABASE_URL, KEY = process.env.VPS_SERVICE_ROLE_KEY;
 const TG = process.env.TELEGRAM_BOT_TOKEN, CHAT = process.env.TELEGRAM_CHAT_ID;
 const CLAUDE = process.env.CLAUDE_BIN || "claude";
-const STARTED = "/var/lib/trentakip/claude-bridge.started"; // ilk mesajdan sonra --continue ile aynı sohbet sürer
+const STARTED = `${process.env.HOME || "/var/lib/trentakip/claude-home"}/bridge.started`; // ilk mesajdan sonra --continue ile aynı sohbet sürer
 const TIMEOUT_MS = Number(process.env.CLAUDE_TIMEOUT_MS ?? 20 * 60_000);
 if (!URL_ || !KEY || !TG || !CHAT) { console.error("eksik ortam değişkeni (VPS_SUPABASE_URL / VPS_SERVICE_ROLE_KEY / TELEGRAM_*)"); process.exit(1); }
 
@@ -60,7 +60,7 @@ for (;;) {
       tg("sendChatAction", { chat_id: CHAT, action: "typing" });
       const res = await runClaude(m.text);
       clearInterval(typing);
-      if (res.code === 0 && res.out.trim()) { writeFileSync(STARTED, new Date().toISOString()); await say(res.out); }
+      if (res.code === 0 && res.out.trim()) { await say(res.out); try { writeFileSync(STARTED, new Date().toISOString()); } catch (e) { console.error("işaret dosyası:", String(e?.message ?? e).slice(0, 120)); } }
       else {
         const why = /login|auth|api key|credential|401/i.test(res.err) ? "Claude'a giriş yapılmamış (sunucuda `sudo -u trentakip claude` ile giriş ya da claude.env'de ANTHROPIC_API_KEY)." : `Claude hata verdi (kod ${res.code}).`;
         console.error(`mesaj #${m.id}: kod ${res.code}: ${res.err.slice(-300)}`);
