@@ -1,0 +1,22 @@
+[Unit]
+Description=Trentakip: Telegram -> sunucudaki Claude Code köprüsü (claude_inbox)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trentakip
+Group=trentakip
+WorkingDirectory=/opt/trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+EnvironmentFile=-/etc/trentakip/claude.env
+Environment=HOME=/var/lib/trentakip/claude-home
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+ExecStart=/usr/bin/node ops/vps/claude-bridge.mjs
+Restart=always
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
