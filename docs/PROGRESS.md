@@ -2,6 +2,11 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-15 (77) — Panel hızı, fatura uyarısı kapatma, tam özellik kuralı
+- **Panel yavaşlığı (K):** test hesabıyla ölçüm turu (`/root/pw/pw-perf.mjs`): hata yok, yavaşlar Rekabet 13,6 sn, Ürün seçimi 5,8, Satış 4,8, Durum 4,2. `buybox_report` her ilan için satış alt sorgusu -> tek seferde (migration 084): 9,8 -> 1,6 sn, sonuç birebir. `opportunity_list` (085) sonuç aynı, 4,8 -> 4,5 sn (darboğaz birleştirme/özet; ileride önbellek). Açık: HB `listing_status_summary` 3,5 sn.
+- **Faturalar (K "mükerrer uyarısı sürekli duruyor"):** `dismiss_warning` API (tek/toplu, hata durumundakiler hariç, audit_log), satırda "✓ Düzelttim", Uyarı sekmesinde "Hepsini düzelttim", sıradaki adım kutusunda "Düzelttim, uyarıları kaldır"; arama kutusu (sipariş no/ürün/belge no/uyarı). 390 px'te doğrulandı (7 uyarı, düğmeler görünüyor, taşma yok); uyarılar K kararıyla kaldırılacak, test tıklamadı.
+- **Kural (K):** `docs/CALISMA_KURALLARI.md` §2a + `.claude/skills/tam-ozellik/SKILL.md`: her bölüm önce araştırma + kapsam listesi + tek teslim.
+
 ## 2026-11-15 (76) — Toptancım Trendyol'dan kaldırıldı, revize geri çekildi, Çerçici karşılaştırması
 - **Engel listesi:** `app_state exclude_sources:<mp>` / `exclude_products:<mp>` (`loadExclusions`): gönderim, yıldız kuyruğu, yaşam döngüsü bu ürünlere ilan açmaz. `exclude_sources:trendyol = ["xml:toptancim"]`, `exclude_products:trendyol` = geri çekilen 1.242 ürün.
 - **Toptancım (K):** `ty-clean retire-source xml:toptancim --apply`: 6.400 arşiv, 531 onaysız silindi; kalıcı silme 16.11 02:30 (`trentakip-job-tydeltcx`), ardından 03:30 yıldız dolumu. HB'de Toptancım kalır; yeni 29 ürün Bezos/Hepsibayi ile barkod/başlıkça aynı değil.
