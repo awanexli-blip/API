@@ -659,6 +659,15 @@ export function createTrendyol(): Marketplace {
         .map((o: any) => ({ packageId: String(o.shipmentPackageId ?? o.id ?? ""), status: String(o.shipmentPackageStatus ?? o.status ?? ""), total: num(o.packageTotalPrice ?? o.totalPrice) }));
     },
 
+    // Paketin kargo firmasını değiştir (K 15.11: tedarikçinin ürünü gönderebildiği kargo farklıysa). developers.trendyol.com v2 changeCargoProvider:
+    // PUT .../shipment-packages/{packageId}/cargo-providers {cargoProvider}; paket başına 5 dakikada bir. Sonra paket yeniden okunur (yeni takip no).
+    // CANLI YAZAR: yalnızca onaylı tedarikçi siparişi akışından çağrılır.
+    async changeCargoProvider(packageId: string, code: string) {
+      if (!/^\d{1,20}$/.test(packageId)) throw new Error("Geçersiz paket numarası");
+      if (!/^[A-Z]{2,15}MP$/.test(code)) throw new Error("Geçersiz kargo kodu");
+      await tg(`/order/sellers/${SELLER_ID}/shipment-packages/${packageId}/cargo-providers`, { method: "PUT", body: JSON.stringify({ cargoProvider: code }) });
+    },
+
     // Fatura dosyası (seller-invoice-file, multipart: shipmentPackageId + file [+ invoiceNumber]). Tekrarlanmaz (çift yükleme yerine 409 döner).
     async uploadInvoice(packageId: string, pdf: Uint8Array, invoiceNumber: string) {
       if (!/^\d{1,20}$/.test(packageId)) throw new Error("Geçersiz paket numarası");
