@@ -32,5 +32,34 @@ check("HB'de değişiklik önerisi yok, uyarı", (() => { const p = planCarrier(
 check("Kolay Gelsin / Sendeo aynı anahtar", carrierKey("Kolay Gelsin") === "kolaygelsin" && carrierKey("Sendeo Marketplace") === "kolaygelsin");
 check("Hepsijet", carrierKey("HepsiJET") === "hepsijet");
 
+
+// Bezos satır çözümü (sahte bağımlılıklar)
+import { resolveBezosLine, planBezosOrder } from "../core/supplier-bezos.ts";
+{
+  const bezosDb: Record<string, any> = {
+    "RSLV000050301": { id: 194449, code: "RSLV000050301", barcode: "", stock: 75, unitPrice: 300, carriers: ["Aras Kargo", "Sürat Kargo"], variantParentId: 165453 },
+    "BZ200700046527": { id: 9, code: "3DP-0053-Kırmızı", barcode: "BZ200700046527", stock: 5, unitPrice: 100, carriers: ["DHL", "PTT Kargo"] },
+    "BZ2DCACB93D8A1315472": { id: 7, code: "8683140700577", barcode: "BZ2DCACB93D8A1315472", stock: 3, unitPrice: 90, carriers: ["Aras Kargo"] },
+  };
+  const deps = {
+    variantsOfProduct: async (pid: string) => (pid === "fantezi" ? fantezi : pid === "vazo" ? [{ barcode: "BZ200700046527", sku: "BZS3DP-0053-Krmz" }] : [{ barcode: "BZ2DCACB93D8A1315472", sku: "BZS8683140700577" }]),
+    productOfBarcode: async (bc: string) => (bc === "BZ2DCACB93D8A1315472" ? { productId: "kilif", sourceRef: "8683140700577" } : null),
+    sourceRefOf: async () => null,
+    bezos: async (q: string) => bezosDb[q] ?? null,
+  };
+  const a = await resolveBezosLine({ listing_key: "BZRSL0000503", title: "Fantezi Kostüm, S/M", product_id: "fantezi", qty: 1 }, deps);
+  check("Bezos: ana barkod + S/M -> RSLV000050301 (varyant kodu)", a.ok && a.code === "RSLV000050301", a);
+  const b = await resolveBezosLine({ listing_key: "BZ200700046527", title: "Vazo", product_id: "vazo", qty: 1 }, deps);
+  check("Bezos: barkod sorgusu Türkçe karakterli orijinal kodu verir", b.ok && b.code === "3DP-0053-Kırmızı", b);
+  const c = await resolveBezosLine({ listing_key: "BZ2DCACB93D8A1315472", title: "Kılıf", product_id: null, qty: 1 }, deps);
+  check("Bezos: ürüne bağlı olmayan HB satırı barkoddan bulunur", c.ok && c.code === "8683140700577", c);
+  const plan = planBezosOrder([{ qty: 1, res: a }, { qty: 2, res: a }], "Sürat Kargo Marketplace", "trendyol");
+  check("Sepet: aynı ürün iki satır -> tek kalem 3 adet, kargo Sürat", plan.ok && plan.items.length === 1 && plan.items[0].quantity === 3 && plan.carrier === "Sürat Kargo", plan);
+  const mix = planBezosOrder([{ qty: 1, res: a }, { qty: 1, res: b }], "Aras Kargo", "trendyol");
+  check("Sepet: ortak kargo yok -> sorun + gönderilmez", !mix.ok && mix.problems.some((p) => /kargo/.test(p)), mix);
+  const stok = planBezosOrder([{ qty: 9, res: b }], "PTT Kargo", "trendyol");
+  check("Sepet: stok yetersiz -> gönderilmez", !stok.ok && stok.problems.some((p) => /stoğu/.test(p)), stok);
+}
+
 if (fails) { console.log(`\n${fails} tedarikçi çözümleyici testi başarısız`); process.exit(1); }
 console.log("\nTedarikçi çözümleyici testleri geçti");
