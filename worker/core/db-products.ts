@@ -206,7 +206,7 @@ export function pickBrand(spec: string, sku: string): string {
   return list[h % list.length];
 }
 
-export type SendResult = { jobs: number; sent: number; errors: number; noStock: number; excluded?: number; batchIds: string[]; keys: Map<string, number> };
+export type SendResult = { jobs: number; sent: number; errors: number; noStock: number; excluded?: number; cheaperElsewhere?: number; batchIds: string[]; keys: Map<string, number> };
 
 export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendResult> {
   const out: SendResult = { jobs: 0, sent: 0, errors: 0, noStock: 0, batchIds: [], keys: new Map() };
@@ -256,7 +256,18 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
       const ids: string[] = (job.payload?.product_ids ?? []).slice(0, 200);
       const { data: products0, error: pe } = await ctx.db.from("products").select("*, product_variants(*), product_images(url, position)").in("id", ids);
       if (pe) throw new Error(pe.message);
-      const products = (products0 ?? []).filter((p: any) => { const x = excl.sources.has(p.source) || excl.products.has(p.id); if (x) out.excluded = (out.excluded ?? 0) + 1; return !x; });
+      let products = (products0 ?? []).filter((p: any) => { const x = excl.sources.has(p.source) || excl.products.has(p.id); if (x) out.excluded = (out.excluded ?? 0) + 1; return !x; });
+      // K 16.11: birebir aynı ürün başka tedarikçide daha ucuz ve stokluysa pahalısı yeni ilan olarak açılmaz (product_dupes, worker/supplier-dupes.ts)
+      {
+        const { data: dup } = await ctx.db.from("product_dupes").select("product_id, group_id, cheapest").in("product_id", products.map((p: any) => p.id)).eq("cheapest", false);
+        if (dup?.length) {
+          const groups = [...new Set(dup.map((d: any) => d.group_id))];
+          const { data: best } = await ctx.db.from("product_dupes").select("group_id, product_id, stock, source").in("group_id", groups).eq("cheapest", true);
+          const ok = new Map((best ?? []).filter((b: any) => Number(b.stock) > 0 && !excl.sources.has(b.source) && !excl.products.has(b.product_id)).map((b: any) => [b.group_id, b.product_id]));
+          const skip = new Set(dup.filter((d: any) => ok.has(d.group_id)).map((d: any) => d.product_id));
+          if (skip.size) { products = products.filter((p: any) => !skip.has(p.id)); out.cheaperElsewhere = (out.cheaperElsewhere ?? 0) + skip.size; }
+        }
+      }
       // Panelde onaylanan yapay zekâ açıklaması (migration 067) tedarikçi metninin yerine gönderilir; tablo yoksa tedarikçi metni
       {
         const ad = await ctx.db.from("product_descriptions").select("product_id, draft").eq("status", "approved").in("product_id", ids);
