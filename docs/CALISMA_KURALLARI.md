@@ -25,6 +25,17 @@ Bir madde şu parçaların **hepsi** hazır olunca bitmiş sayılır. Biri eksik
 - [ ] `docs/PROGRESS.md` en üste girdi: ne yapıldı / ne doğrulandı / ne açık / sıradaki adım
 - [ ] Commit (anlamlı mesaj) — canlıyı etkileyen şeyse kullanıcıya haber ver
 
+## 2a. Tam özellik teslimi (K, 15.11)
+
+> "Fatura bölümü yap dediğimde bana tam kurulu, düzgün bitmiş bir faturalandırma bölümü aç. Başta bir kısmını, sonra mükerreri, sonra kurumsalı diye tek tek uğraşmayalım. Bu sadece fatura için değil, her şey için."
+
+Bir bölüm/özellik istendiğinde parça parça değil, **o konunun gerçek hayatta gerektirdiği her şeyle** tek seferde teslim edilir. Ayrıntılı adımlar: `.claude/skills/tam-ozellik/SKILL.md` (Claude Code becerisi `tam-ozellik`).
+
+1. **Önce araştırma:** konunun kuralları (mevzuat, pazaryeri rehberi, tedarikçi rehberi), istisnaları (kurumsal/bireysel, iade, iptal, mükerrer, kısmi), mevcut koddaki ilgili parçalar ve veride gerçekte görülen durumlar. Bulgular kısa bir "kapsam listesi" olarak yazılır.
+2. **Kapsam listesi zorunlu kalemleri:** listeleme + arama + filtre + sıralama; ekleme, düzenleme, silme/arşivleme (geri alma ya da onay ile); toplu işlem; her durum/uyarı için "çözüldü / kaldır" yolu; yükleniyor/boş/hata/başarı; rol ve yetki; audit_log; mobil; dışa aktarma (gerekiyorsa); canlıya yazan adımda deneme + onay.
+3. **Teslimde rapor:** "Neler var / bilerek dışarıda bırakılanlar ve nedeni / K kararı gerekenler". Eksik bırakılan kalem sessizce atlanmaz.
+4. Bölüm 2'deki "bitmiş iş" listesi (test, gerçek tıklama, PROGRESS) aynen geçerli.
+
 ## 3. "Çalışmayan buton" önleme kuralları
 
 Sık yapılan hatalar: istek hiç gitmiyor, hata yutuluyor, düğme nedensiz pasif, sonuç ekranda yenilenmiyor, mobilde tıklanamıyor.
