@@ -96,6 +96,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ cleared: keys.length });
   }
 
+  // Mükerrer çözümü (K 15.11): iki imzalı faturadan hangisi iptal edildi?
+  //   keep=manual: sistemin faturası iptal, elle kesilen geçerli ve Trendyol'da -> "yüklendi (portal, elle)", belge no mükerrer raporundan, ETTN temizlenir
+  //   keep=system: elle kesilen iptal -> uyarı kalkar, sistemin faturası "Yüklenecek"e düşer
+  if (b.action === "resolve_duplicate") {
+    const ids: string[] = [...new Set<string>((Array.isArray(b.order_ids) ? b.order_ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 200);
+    if (!ids.length || !["manual", "system"].includes(b.keep)) return bad("Sipariş ve seçim gerekli");
+    const { data: rows, error } = await db.from("order_invoices").select("order_id, status, belge_no, ettn, error, orders(order_no)").in("order_id", ids).like("error", "MÜKERRER%");
+    if (error) return bad(error.message);
+    if (!rows?.length) return NextResponse.json({ resolved: 0 });
+    let manualOf = new Map<string, string>();
+    if (b.keep === "manual") {
+      const { data: st } = await db.from("app_state").select("value").eq("key", "invoice_audit_report").maybeSingle();
+      let rep: any = null; try { rep = st?.value ? JSON.parse(st.value) : null; } catch { rep = null; }
+      const by = new Map<string, Set<string>>();
+      for (const x of rep?.rows ?? []) if (x?.order_no && x?.belge_no && /^MÜKERRER/.test(String(x.kind ?? ""))) (by.get(x.order_no) ?? by.set(x.order_no, new Set()).get(x.order_no)!).add(String(x.belge_no));
+      manualOf = new Map([...by].map(([k, v]) => [k, [...v].sort().join(" / ")]));
+    }
+    let resolved = 0;
+    for (const r of rows as any[]) {
+      const orderNo = r.orders?.order_no ?? "";
+      const upd = b.keep === "manual"
+        ? { status: "uploaded", belge_no: manualOf.get(orderNo) ?? "elle (portal)", ettn: null, error: null, created_by: "portal (elle)", updated_at: now }
+        : { error: null, updated_at: now };
+      const { error: ue } = await db.from("order_invoices").update(upd).eq("order_id", r.order_id);
+      if (ue) return bad(ue.message);
+      await db.from("audit_log").insert({ actor: "panel", action: `resolve_duplicate:${b.keep}`, entity: "order_invoices", entity_id: orderNo, before: { status: r.status, belge_no: r.belge_no, ettn: r.ettn, error: String(r.error).slice(0, 200) }, after: upd }).then(() => {}, () => {});
+      resolved++;
+    }
+    return NextResponse.json({ resolved });
+  }
+
   if (b.action === "reset") {
     if (typeof b.order_id !== "string") return bad("order_id gerekli");
     const { error } = await db.from("order_invoices").delete().eq("order_id", b.order_id).in("status", ["error", "deleted", "creating"]);

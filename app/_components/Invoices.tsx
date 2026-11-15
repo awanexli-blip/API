@@ -110,11 +110,32 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   async function dismiss(list: Row[]) {
     const ids = list.filter(canDismiss).map((r) => r.id);
     if (!ids.length) return;
-    const dupN = list.filter((r) => canDismiss(r) && dup(r)).length;
-    if (!(await confirmDialog(`${ids.length} faturanın uyarısı kaldırılacak${dupN ? ` (${dupN} mükerrer işareti; portalda fazlalığı iptal ettiysen onayla, bu faturalar yeniden Trendyol'a yüklenebilir olur)` : ""}. Fatura kaydı, GİB portalı ve Trendyol değişmez. Devam?`))) return;
-    setBusy("Uyarılar kaldırılıyor...");
-    try { const r = await post({ action: "dismiss_warning", order_ids: ids }); notify("good", `${r.cleared} uyarı kaldırıldı.`); await load(); }
-    catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+    // Mükerrer: hangisi iptal edildi? (K 15.11) Yanlış seçim iptal edilmiş belgeyi Trendyol'a yükletirdi.
+    const dups = list.filter((r) => canDismiss(r) && dup(r));
+    if (dups.length) {
+      const manual = await confirmDialog(`${dups.length} siparişte iki imzalı fatura var. Hangisini portalda iptal ettin?
+
+• Sistemin faturasını iptal ettiysen (elle kestiğin geçerli ve Trendyol'da): sipariş "elle kesildi, yüklendi" olarak işaretlenir.
+• Elle kestiğini iptal ettiysen: sistemin faturası Trendyol'a yüklenecekler listesine geçer.`, { ok: "Sistemin faturasını iptal ettim", cancel: "Elle kestiğimi iptal ettim" });
+      const keep = manual ? "manual" : "system";
+      if (!manual && !(await confirmDialog(`Elle kestiğin ${dups.length} fatura iptal, sistemin faturaları Trendyol'a yüklenecekler listesine geçecek. Emin misin?`, { ok: "Evet, sistemin faturası geçerli", cancel: "Vazgeç" }))) return;
+      setBusy("Mükerrer faturalar düzeltiliyor...");
+      try { const r = await post({ action: "resolve_duplicate", order_ids: dups.map((x) => x.id), keep }); notify("good", keep === "manual" ? `${r.resolved} sipariş "elle kesildi, Trendyol'a yüklendi" olarak işaretlendi.` : `${r.resolved} faturanın uyarısı kalktı; Yüklenecek listesinde.`); }
+      catch (e: any) { notify("err", e.message); setBusy(""); return; }
+      setBusy("");
+      const rest = list.filter((r) => canDismiss(r) && !dup(r));
+      if (!rest.length) { await load(); return; }
+      list = rest;
+    }
+    {
+      const ids2 = list.filter(canDismiss).map((r) => r.id);
+      if (!ids2.length) { await load(); return; }
+      if (!(await confirmDialog(`${ids2.length} faturanın uyarısı kaldırılacak. Fatura kaydı, GİB portalı ve Trendyol değişmez. Devam?`))) { await load(); return; }
+      setBusy("Uyarılar kaldırılıyor...");
+      try { const r = await post({ action: "dismiss_warning", order_ids: ids2 }); notify("good", `${r.cleared} uyarı kaldırıldı.`); await load(); }
+      catch (e: any) { notify("err", e.message); } finally { setBusy(""); }
+      return;
+    }
   }
   async function logoutGib() {
     setBusy("e-Arşiv oturumu kapatılıyor...");
@@ -300,7 +321,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                   {!r.has_customer && !r.invoice && <div className="muted" style={{ fontSize: 12 }}>Alıcı bilgisi silinmiş: portalda elle kes</div>}
                   {r.invoice?.error && <div style={{ color: "var(--bad)", fontSize: 12, display: "flex", gap: 6, alignItems: "flex-start" }}><span style={{ flex: 1 }}>{r.invoice.error}</span>
                     {canDismiss(r) && <button className="btn ghost" style={{ fontSize: 12, padding: "2px 8px", color: "var(--ink)" }} disabled={!!busy} onClick={() => dismiss([r])} title="Uyarıyı kaldır (fatura kaydı, portal ve Trendyol değişmez)" aria-label={`${r.order_no} uyarısını kaldır`}>✓ Düzelttim</button>}</div>}
-                  {["signed", "uploaded"].includes(r.invoice?.status) && <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openPdf(r.id)} title="Yazdır penceresinde 'PDF olarak kaydet' seç">Faturayı aç / PDF</button></div>}
+                  {["signed", "uploaded"].includes(r.invoice?.status) && (r.invoice?.ettn ? <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openPdf(r.id)} title="Yazdır penceresinde 'PDF olarak kaydet' seç">Faturayı aç / PDF</button></div> : <div className="muted" style={{ fontSize: 12 }}>Portalda elle kesildi (PDF portalda)</div>)}
                   {r.invoice?.status === "creating" && <div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => reset(r.id)}>Takıldı, yeniden dene</button></div>}
                 </td>
               </tr>
