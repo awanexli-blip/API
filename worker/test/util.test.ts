@@ -34,5 +34,15 @@ check("negatif sayı da korunur", csvCell("-5") === "'-5");
   check("tedarikçi kodu kendi ürünü değil", !isOwnListing("BZS123", "Racıng Cilt"));
   check("Bracing kendi ürünü değil", !isOwnListing("1400089482", "Bracing Destek Bandı"));
 }
+{
+  const { loadExclusions } = await import("../core/util.ts");
+  const rows = [{ key: "exclude_sources:trendyol", value: JSON.stringify(["xml:toptancim"]) }, { key: "exclude_products:trendyol", value: JSON.stringify(["p9"]) }, { key: "allow_products:trendyol", value: JSON.stringify(["p1"]) }];
+  const fake = { from: () => ({ select: () => ({ in: async () => ({ data: rows }) }) }) };
+  const e = await loadExclusions(fake, "trendyol");
+  check("engel: kapalı tedarikçi ürünü kapalı", e.excluded("xml:toptancim", "p2"));
+  check("engel: izin listesindeki ürün açık", !e.excluded("xml:toptancim", "p1"));
+  check("engel: ürün engeli izinden önce", e.excluded("xml:bezos", "p9"));
+  check("engel: başka tedarikçi açık", !e.excluded("xml:bezos", "p3"));
+}
 if (fails) { console.log(`\n${fails} yardımcı testi başarısız`); process.exit(1); }
 console.log("\nYardımcı testleri geçti");

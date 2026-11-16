@@ -64,8 +64,11 @@ export const isOwnListing = (key: string | null | undefined, title?: string | nu
 
 // Pazaryeri engel listesi (K 15.11): app_state "exclude_sources:<mp>" (tedarikçi kaynakları, ör. ["xml:toptancim"]) ve
 // "exclude_products:<mp>" (ürün kimlikleri; geri çekilen revize ilanlar). Gönderim, yıldızla kuyruğa alma ve yaşam döngüsü bunlara ilan açmaz.
-export async function loadExclusions(db: any, marketplace: string): Promise<{ sources: Set<string>; products: Set<string> }> {
-  const { data } = await db.from("app_state").select("key, value").in("key", [`exclude_sources:${marketplace}`, `exclude_products:${marketplace}`]);
+// "allow_products:<mp>" (K 17.11): kapalı tedarikçinin yine de açık kalacak ürünleri (Trendyol'da buybox'ı kazanan / satan Toptancım ilanları).
+export type Exclusions = { sources: Set<string>; products: Set<string>; allow: Set<string>; excluded: (source: string | null | undefined, productId: string | null | undefined) => boolean };
+export async function loadExclusions(db: any, marketplace: string): Promise<Exclusions> {
+  const { data } = await db.from("app_state").select("key, value").in("key", [`exclude_sources:${marketplace}`, `exclude_products:${marketplace}`, `allow_products:${marketplace}`]);
   const get = (k: string) => { try { const v = JSON.parse((data ?? []).find((x: any) => x.key === k)?.value ?? "[]"); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
-  return { sources: new Set(get(`exclude_sources:${marketplace}`)), products: new Set(get(`exclude_products:${marketplace}`)) };
+  const sources = new Set(get(`exclude_sources:${marketplace}`)), products = new Set(get(`exclude_products:${marketplace}`)), allow = new Set(get(`allow_products:${marketplace}`));
+  return { sources, products, allow, excluded: (src, pid) => (pid != null && products.has(pid)) || (src != null && sources.has(src) && !(pid != null && allow.has(pid))) };
 }

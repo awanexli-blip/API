@@ -168,7 +168,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       const dup = dupLosers.has(key);
       if (dup) stats.duplicateClosed = (stats.duplicateClosed ?? 0) + 1;
       let qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
-      if (excl.sources.has(p.source) || excl.products.has(r.product_id)) { if (qty > 0) stats.excludedZeroed = (stats.excludedZeroed ?? 0) + 1; qty = 0; }
+      if (excl.excluded(p.source, r.product_id)) { if (qty > 0) stats.excludedZeroed = (stats.excludedZeroed ?? 0) + 1; qty = 0; }
       // Faaliyet kapsamı (lib/scope.ts): "değişmedi" denetiminden ÖNCE (Hepsiburada yalnızca değişeni gönderir; yoksa kapsam dışı stok hiç sıfırlanmazdı)
       if (ctx.scopeText) {
         const vs = vatSuspect(p.vat_rate) ?? toyMismatch(p.category, ls.categoryName) ?? adultMismatch(p.category, ls.categoryName);
@@ -259,14 +259,14 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
       const ids: string[] = (job.payload?.product_ids ?? []).slice(0, 200);
       const { data: products0, error: pe } = await ctx.db.from("products").select("*, product_variants(*), product_images(url, position)").in("id", ids);
       if (pe) throw new Error(pe.message);
-      let products = (products0 ?? []).filter((p: any) => { const x = excl.sources.has(p.source) || excl.products.has(p.id); if (x) out.excluded = (out.excluded ?? 0) + 1; return !x; });
+      let products = (products0 ?? []).filter((p: any) => { const x = excl.excluded(p.source, p.id); if (x) out.excluded = (out.excluded ?? 0) + 1; return !x; });
       // K 16.11: birebir aynı ürün başka tedarikçide daha ucuz ve stokluysa pahalısı yeni ilan olarak açılmaz (product_dupes, worker/supplier-dupes.ts)
       {
         const { data: dup } = await ctx.db.from("product_dupes").select("product_id, group_id, cheapest").in("product_id", products.map((p: any) => p.id)).eq("cheapest", false);
         if (dup?.length) {
           const groups = [...new Set(dup.map((d: any) => d.group_id))];
           const { data: best } = await ctx.db.from("product_dupes").select("group_id, product_id, stock, source").in("group_id", groups).eq("cheapest", true);
-          const ok = new Map((best ?? []).filter((b: any) => Number(b.stock) > 0 && !excl.sources.has(b.source) && !excl.products.has(b.product_id)).map((b: any) => [b.group_id, b.product_id]));
+          const ok = new Map((best ?? []).filter((b: any) => Number(b.stock) > 0 && !excl.excluded(b.source, b.product_id)).map((b: any) => [b.group_id, b.product_id]));
           const skip = new Set(dup.filter((d: any) => ok.has(d.group_id)).map((d: any) => d.product_id));
           if (skip.size) { products = products.filter((p: any) => !skip.has(p.id)); out.cheaperElsewhere = (out.cheaperElsewhere ?? 0) + skip.size; }
         }

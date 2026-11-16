@@ -61,7 +61,7 @@ async function send(star: number, mp: string) {
   // K 16.11: başka tedarikçide daha ucuz birebir aynısı olan ürün (product_dupes cheapest=false) kuyruğa alınmaz
   const notCheapest = new Set<string>();
   { const d = await readAll<any>((a, b) => db.from("product_dupes").select("product_id").eq("cheapest", false).order("product_id").range(a, b)); for (const x of d.data ?? []) notCheapest.add(x.product_id); }
-  let ids = o.data.filter((x: any) => !excl.sources.has(x.source) && !excl.products.has(x.product_id) && !notCheapest.has(x.product_id)).map((x: any) => x.product_id).filter((id: string) => !has.has(id));
+  let ids = o.data.filter((x: any) => !excl.excluded(x.source, x.product_id) && !notCheapest.has(x.product_id)).map((x: any) => x.product_id).filter((id: string) => !has.has(id));
   // Trendyol ürün sınırı: mevcut ilan + kuyruk + yeni <= LISTING_CAP
   const cap = Number(process.env.LISTING_CAP ?? (mp === "trendyol" ? 48000 : 0));
   if (cap) {

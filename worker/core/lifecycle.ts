@@ -63,7 +63,7 @@ export async function runLifecycle(db: any, mp: Marketplace, marketplace: string
     last = data[data.length - 1].listing_key;
     for (const r of data as any[]) {
       if (r.products?.source === "manual") continue; // K'nın panelden eklediği ürün: fiyat/stok/arşiv tamamen K'da (14.11)
-      if (excl.sources.has(r.products?.source) || excl.products.has(r.product_id)) continue; // K 15.11: bu pazaryerinde kapalı tedarikçi/ürün (arşivden çıkarılmaz, yeniden açılmaz)
+      if (excl.excluded(r.products?.source, r.product_id)) continue; // K 15.11: bu pazaryerinde kapalı tedarikçi/ürün (arşivden çıkarılmaz, yeniden açılmaz)
       const v = r.product_variants, active = r.products?.status === "active";
       const avail = Math.max(0, Number(v?.stock ?? 0) - Number(v?.reserved ?? 0));
       rows.push({ own: isOwnListing(r.listing_key, null), key: r.listing_key, productId: r.product_id, status: r.status, outSince: r.out_since, productActive: active, inStock: active && avail >= Math.max(1, minStock) && !hidden.has(r.listing_key) });
