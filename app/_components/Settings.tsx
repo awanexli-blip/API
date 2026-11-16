@@ -29,6 +29,7 @@ const FIELDS: Field[] = [
   { key: "return_rate", label: "İade oranı (%)", kind: "pct", hint: "Siparişlerin yüzde kaçı iade geliyor (ör. 5)" },
   { key: "return_cost", label: "İade başına maliyet (TL)", kind: "num", hint: "İade kargosu + gidiş kargosu + hasar payı, KDV dahil (ör. 180)" },
   { key: "coupon_rate", label: "Kupon / indirim payı (%)", kind: "pct", optional: true, hint: "Satıcının karşıladığı kupon ve indirimler için fiyata eklenen pay (ör. 2 = satışın %2'si). Kasım 2026 siparişlerinde tedarikçi ürünlerinde ~%1,5. Boş = 0" },
+  { key: "payment_fee_rate", label: "Tahsilat / ödeme bedeli (%)", kind: "pct", optional: true, hint: "Pazaryerinin satış tutarından kestiği tahsilat bedeli, KDV dahil (Hepsiburada \"Tahsilat Yönetim Bedeli\" ~0,87). Boş = 0" },
   { key: "net_profit_min", label: "Net kâr aralığı: en az (TL)", kind: "num", optional: true, hint: "Doluysa fiyat yüzde hedefine göre değil, en az bu kadar net kâr bırakan en ucuz fiyata göre hesaplanır (kâr kuralları ve 1,3x taban kullanılmaz). Boş = yüzde hedefi" },
   { key: "net_margin_min", label: "Net kâr aralığı: en az marj (%)", kind: "pct", optional: true, hint: "Net kâr TL modunda fiyat hem en az TL tutarını hem satış fiyatının (KDV hariç) en az bu yüzdesini bırakır (ör. 10 = %10, en az 40 TL). Boş = yalnızca TL" },
   { key: "net_profit_max", label: "Net kâr aralığı: en çok (TL)", kind: "num", optional: true, hint: "Bilgi amaçlı üst sınır: yuvarlama veya kargo basamağı yüzünden bunu geçen ürünler not alır" },
@@ -78,6 +79,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     netProfitMax: String(f.net_profit_max ?? "").trim() === "" ? null : num("net_profit_max"),
     netMarginMin: String(f.net_margin_min ?? "").trim() === "" ? null : num("net_margin_min") / 100,
     couponRate: String(f.coupon_rate ?? "").trim() === "" ? null : num("coupon_rate") / 100,
+    paymentFeeRate: String(f.payment_fee_rate ?? "").trim() === "" ? null : num("payment_fee_rate") / 100,
     vatRate: simVat / 100,
     commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false, shippingBands: bandsFrom(parseBands(String(f.shipping_bands_text ?? "")) || null),
   };

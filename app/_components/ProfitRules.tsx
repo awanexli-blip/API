@@ -71,6 +71,7 @@ export default function ProfitRules({ api, notify, marketplace }: Props) {
       minAcceptableProfitRate: Number(settings.min_acceptable_profit_rate), maxPrice: Number(settings.max_price), commissionPlusVat: settings.commission_plus_vat === true,
       shippingVatIncluded: settings.shipping_vat_included !== false, shippingBands: bandsFrom(settings.shipping_bands),
       couponRate: settings.coupon_rate != null ? Number(settings.coupon_rate) : null,
+      paymentFeeRate: settings.payment_fee_rate != null ? Number(settings.payment_fee_rate) : null,
     };
     const fx: Record<string, number> = { TRY: 1, USD: Number(settings.fx_usd) || 0, EUR: Number(settings.fx_eur) || 0 };
     const active = rulesFor(rules as PricingRule[], marketplace);

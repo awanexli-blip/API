@@ -131,4 +131,13 @@ console.log(fails ? `\n${fails} birim testi başarısız` : "\nBirim testleri ge
   check("kupon payı 0: eski hesapla aynı", breakdown(1000, 500, { ...withC, couponRate: 0 }, 0.18).net === breakdown(1000, 500, live, 0.18).net);
 }
 
+// Tahsilat bedeli (Hepsiburada, K 17.11): satışın %0,87'si gider; fiyat formülü yine en az net tabanı bırakır
+{
+  const hb = { ...cfg, fixedCost: 17.19, shippingCost: 107.9, netProfitMin: 60, netMarginMin: 0.1, commissionPlusVat: true };
+  const pf = { ...hb, paymentFeeRate: 0.0087 };
+  const b0 = breakdown(1000, 500, hb, 0.12), b1 = breakdown(1000, 500, pf, 0.12);
+  check("tahsilat bedeli: komisyon kalemine 8,70 TL eklenir", Math.abs(b1.commission - b0.commission - 8.7) < 0.01, { b0, b1 });
+  const r = calcPrice(500, pf, 0.12);
+  check("tahsilat bedeli: fiyat sonrası net >= 60", r.ok && breakdown(r.price, 500, pf, 0.12).net >= 59.99, r);
+}
 process.exit(fails ? 1 : 0);

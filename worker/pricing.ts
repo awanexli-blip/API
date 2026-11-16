@@ -35,6 +35,8 @@ export interface PricingConfig {
   // Satıcının karşıladığı kupon/indirim payı (K 17.11): müşteri fiyatın bu oranı kadar az öder; komisyon, KDV ve kargo baremi ödenen tutardan.
   // Kasım siparişleri: tedarikçi ürünlerinde satıcı kuponu satışın ~%1,5'i (kuponlu siparişte ~%4). Gerçek siparişin hesabında (orders.fin) 0: gelir zaten kuponlu.
   couponRate?: number | null;
+  // Ödeme/tahsilat bedeli (K 17.11 Hepsiburada hakediş: "Tahsilat Yönetim Bedeli" satışın ~%0,87'si, KDV dahil, faturalı -> KDV'si indirilir)
+  paymentFeeRate?: number | null;
   multiUnitMinNet?: number | null; // çoklu adet koruması: 300 TL altı üründen eşiği geçecek kadar (2-3 adet) alınınca kargo sonrası en az net kâr (TL). Boş = kapalı
 }
 
@@ -75,6 +77,7 @@ export const returnsOf = (cfg: PricingConfig) => r2((cfg.returnRate ?? 0) * (cfg
 const fixedOf = (cfg: PricingConfig) => cfg.fixedCost + returnsOf(cfg);
 // Kupon payı sonrası müşterinin ödediği oran (0..1)
 const paidOf = (cfg: PricingConfig) => 1 - Math.min(0.5, Math.max(0, Number(cfg.couponRate) || 0));
+const payFeeOf = (cfg: PricingConfig) => Math.min(0.2, Math.max(0, Number(cfg.paymentFeeRate) || 0));
 // Ayar satırındaki shipping_bands (jsonb) -> geçerli basamaklar ya da null
 export const bandsFrom = (v: unknown): PricingConfig["shippingBands"] =>
   Array.isArray(v) ? v.map((b: any) => ({ below: Number(b?.below), cost: Number(b?.cost) })).filter((b) => b.below > 0 && b.cost >= 0).sort((a, b) => a.below - b.below) : null;
@@ -102,7 +105,7 @@ export function breakdown(price: number, cost: number, cfg: PricingConfig, commi
   const paid = price * paidOf(cfg); // kupon sonrası müşterinin ödediği (komisyon, KDV ve kargo baremi bunun üzerinden)
   // Tüm hizmet kalemleri KDV dahil tutara çevrilir (cebinden çıkan para)
   const shipping = r2(shipIncl(shippingAt(paid, cfg), cfg));
-  const comm = paid * commission * (cfg.commissionPlusVat ? 1 + sv : 1);
+  const comm = paid * commission * (cfg.commissionPlusVat ? 1 + sv : 1) + paid * payFeeOf(cfg); // tahsilat bedeli komisyon kalemine eklenir
   const services = comm + shipping + fixedOf(cfg);
   const vatDue = (paid - cost) * v / (1 + v) - services * sv / (1 + sv);
   const net = paid - cost - services - vatDue;
@@ -119,7 +122,7 @@ export function profitOf(price: number, cost: number, cfg: PricingConfig, commis
 function targetPrice(cost: number, cfg: PricingConfig, commission: number, ship: number): number {
   const sv = svatOf(cfg);
   const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + sv);
-  const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);                                   // KDV dahil komisyon oranı
+  const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1) + payFeeOf(cfg);                   // KDV dahil komisyon + tahsilat oranı
   const shipV = shipIncl(ship, cfg); // KDV dahil kargo
   // net = a(P - cost) - b(cP + kargo + sabit) = t·a·P  =>  P = (a·cost + b(kargo + sabit)) / (a(1 - t) - b·c)
   const den = a * (1 - cfg.targetProfitRate) - b * c;
@@ -131,7 +134,7 @@ function priceForNet(cost: number, cfg: PricingConfig, commission: number, ship:
   if (!(n > 0)) return 0;
   const sv = svatOf(cfg);
   const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + sv);
-  const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);
+  const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1) + payFeeOf(cfg);
   const den = a - b * c;
   return den > 0 ? (n + a * cost + b * (shipIncl(ship, cfg) + fixedOf(cfg))) / den / paidOf(cfg) : Infinity;
 }
@@ -287,5 +290,6 @@ export function cfgFromSettings(s: Record<string, any>, vatPct = 20): PricingCon
     minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price), commissionPlusVat: s.commission_plus_vat === true,
     shippingVatIncluded: s.shipping_vat_included !== false, vatRate: vatPct / 100, shippingBands: bandsFrom(s.shipping_bands),
     couponRate: s.coupon_rate != null ? Number(s.coupon_rate) : null,
+    paymentFeeRate: s.payment_fee_rate != null ? Number(s.payment_fee_rate) : null,
   };
 }
