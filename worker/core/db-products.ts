@@ -113,10 +113,12 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
     if (!r.error) for (const x of r.data) dupLosers.add(x.listing_key);
     else { console.error("kopya ilanlar okunamadı:", r.error.message); (stats as any).duplicateError = r.error.message.slice(0, 200); }
   }
+  // K 15.11 engel listesi (Trendyol'da Toptancım kapalı): ilan arşivden geri çıkmış olsa da stok 0 gider (17.11: 2.956 ilan "stok geldi" ile açılmış, 2.420'si stoklu satıştaydı)
+  const excl = await loadExclusions(ctx.db, ctx.marketplaceId);
   // Anahtar sıralı sayfalama (OFFSET sırasız ve derin sayfada yavaştı: ilan atlanabilir/çift gelebilirdi)
   for (let last = ""; ; ) {
     const { data, error } = await ctx.db.from("marketplace_listings")
-      .select("listing_key, price_day, price_day_base, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
+      .select("listing_key, product_id, price_day, price_day_base, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
       .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
     if (error || !data?.length) break; // tablo yoksa (migration 013 öncesi) sessizce geç
     last = (data as any[])[data.length - 1].listing_key;
@@ -166,6 +168,7 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
       const dup = dupLosers.has(key);
       if (dup) stats.duplicateClosed = (stats.duplicateClosed ?? 0) + 1;
       let qty = dup || p.status !== "active" || avail < ctx.minStock ? 0 : Math.min(avail, 20000);
+      if (excl.sources.has(p.source) || excl.products.has(r.product_id)) { if (qty > 0) stats.excludedZeroed = (stats.excludedZeroed ?? 0) + 1; qty = 0; }
       // Faaliyet kapsamı (lib/scope.ts): "değişmedi" denetiminden ÖNCE (Hepsiburada yalnızca değişeni gönderir; yoksa kapsam dışı stok hiç sıfırlanmazdı)
       if (ctx.scopeText) {
         const vs = vatSuspect(p.vat_rate) ?? toyMismatch(p.category, ls.categoryName) ?? adultMismatch(p.category, ls.categoryName);
