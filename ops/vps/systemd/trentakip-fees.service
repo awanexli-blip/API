@@ -1,0 +1,12 @@
+[Unit]
+Description=Trentakip gider takibi (Trendyol kesintileri, gerçek kargo, taban altı siparişler)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+WorkingDirectory=/opt/trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+ExecStart=/bin/bash -c 'export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; exec node --experimental-strip-types worker/fees.ts --days 30'
+TimeoutStartSec=1800

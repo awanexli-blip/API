@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip gider takibi (günde iki kez)
+
+[Timer]
+OnCalendar=*-*-* 06,18:20:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
