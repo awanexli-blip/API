@@ -207,6 +207,16 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     try { const r = await post({ action: "return_html", id }, 60000); w.document.open(); w.document.write(`<title>${String(r.name).replace(/[<>&]/g, "")}</title>` + r.html); w.document.close(); }
     catch (e: any) { w.close(); notify("err", e.message); }
   }
+  async function cancelReturnDraft(r: Row) {
+    if (!(await confirmDialog(`${r.order_no}: satış faturası 8 günü geçtiği için portalda iptal edilemiyor. Siparişin tamamı için GİB'de İADE FATURASI TASLAĞI oluşturulacak (orijinal faturaya bağlı, aynı tutar ve KDV). İmzayı portalda sen atarsın. Devam?`))) return;
+    setBusy("İade faturası taslağı oluşturuluyor...");
+    try {
+      if (r.return_invoice && ["error", "deleted", "creating"].includes(r.return_invoice.status)) await post({ action: "return_reset", id: r.id });
+      const x = await post({ action: "cancel_return_draft", id: r.id }, 120000);
+      notify("good", `İade faturası taslağı oluşturuldu (${tl(Number(x.amount))}). Portalda imzala, sonra İmzalananları kontrol et.`);
+    } catch (e: any) { notify("err", e.message); }
+    setBusy(""); await load();
+  }
   async function markReturn(id: string, doc: string | null) {
     if (doc && !(await confirmDialog(`"${DOC[doc]}" olarak işaretlenecek. Bu yalnızca panel kaydıdır; GİB'de ve Trendyol'da işlem yapmaz. Devam?`))) return;
     try { await post({ action: "mark_return", id, doc }); await load(); } catch (e: any) { notify("err", e.message); }
@@ -322,8 +332,14 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
                   <td data-label="Satış faturası">{inv ? <>{inv.belge_no ?? "-"}<br /><span className="muted" style={{ fontSize: 12 }}>{IST[inv.status]?.[0] ?? inv.status}{days != null ? ` · ${days} gün önce` : ""}</span></> : <span className="muted">Satış faturası yok</span>}</td>
                   <td data-label="İade faturası / işlem">
                     {cancelled ? (mark ? <><span className="pill ok">Fatura iptal edildi</span><div><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, null)}>Geri al</button></div></>
-                        : <><div style={{ fontSize: 12, color: "var(--warn)" }}>{r.undelivered ? "Müşteriye ulaşmadı" : "Müşteriye ulaşmadan iptal"}: satış faturasını portalda iptal et{days != null ? ` (${days} gün önce kesildi)` : ""}</div>
-                          <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "iptal")}>İptal ettim</button></div></>)
+                        : ri && !["error", "deleted", "creating"].includes(ri.status) ? <><span className={`pill ${RI[ri.status]?.[1] ?? ""}`}>{RI[ri.status]?.[0] ?? ri.status}</span>
+                          {ri.belge_no && <div className="muted" style={{ fontSize: 12 }}>{ri.belge_no}{ri.amount != null ? ` · ${tl(Number(ri.amount))}` : ""}</div>}
+                          <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}><button className="btn ghost" style={{ fontSize: 12 }} onClick={() => openReturnPdf(r.id)}>İade faturasını aç / PDF</button></div></>
+                        : <><div style={{ fontSize: 12, color: "var(--warn)" }}>{r.undelivered ? "Müşteriye ulaşmadı" : "Müşteriye ulaşmadan iptal"}: {days != null && days >= 8 ? `satış faturası ${days} gün önce kesildi, portalda iptal süresi (8 gün) doldu: iade faturası kes` : `satış faturasını portalda iptal et${days != null ? ` (${days} gün önce kesildi, ${8 - days} gün kaldı)` : ""}`}</div>
+                          {ri?.error && <div style={{ color: "var(--bad)", fontSize: 12 }}>{ri.error}</div>}
+                          <div className="row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                            {days != null && days >= 8 && inv?.belge_no && <button className="btn ghost" style={{ fontSize: 12 }} disabled={!!busy || !canGib} onClick={() => cancelReturnDraft(r)}>İade faturası taslağı oluştur</button>}
+                            <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => markReturn(r.id, "iptal")}>İptal ettim</button></div></>)
                     : ri ? <><span className={`pill ${RI[ri.status]?.[1] ?? ""}`}>{RI[ri.status]?.[0] ?? ri.status}</span>
                         {ri.belge_no && <div className="muted" style={{ fontSize: 12 }}>{ri.belge_no}{ri.amount != null ? ` · ${tl(Number(ri.amount))}` : ""}</div>}
                         {ri.error && <div style={{ color: "var(--bad)", fontSize: 12 }}>{ri.error}</div>}

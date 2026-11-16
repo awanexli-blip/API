@@ -46,11 +46,12 @@ export async function GET(req: NextRequest) {
   const invByNo = new Map<string, any>(), buyerByNo = new Map<string, string>();
   if (nos.length) { const { data } = await db.from("orders").select("order_no, marketplace, buyer_type, order_invoices(status, belge_no, amount, signed_at, created_at)").in("order_no", nos); for (const o of data ?? []) { const k = `${o.marketplace}|${o.order_no}`; if (o.buyer_type) buyerByNo.set(k, o.buyer_type); const i: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices; if (i) invByNo.set(k, i); } }
   const retInv = new Map<string, any>();
-  if (flat.length) { const { data } = await db.from("order_return_invoices").select("return_key, status, belge_no, ettn, amount, error, created_at, signed_at").in("return_key", flat.map((r) => r.id)); for (const x of data ?? []) retInv.set(x.return_key, x); }
   const { data: cancelledRows } = await db.from("orders").select("id, order_no, marketplace, total, ordered_at, order_invoices!inner(status, belge_no, amount, signed_at, created_at)").eq("status", "cancelled").in("order_invoices.status", ["signed", "uploaded"]);
+  const retKeys = [...flat.map((r) => r.id), ...(cancelledRows ?? []).map((o: any) => `iptal:${o.order_no}`)];
+  if (retKeys.length) { const { data } = await db.from("order_return_invoices").select("return_key, status, belge_no, ettn, amount, error, created_at, signed_at").in("return_key", retKeys); for (const x of data ?? []) retInv.set(x.return_key, x); }
   const returns = { at: retAt, marks,
     rows: flat.map((c) => ({ ...c, buyer_type: buyerByNo.get(`${c.marketplace}|${c.order_no}`) ?? "bireysel", invoice: invByNo.get(`${c.marketplace}|${c.order_no}`) ?? null, return_invoice: retInv.get(c.id) ?? null })),
-    cancelled: (cancelledRows ?? []).map((o: any) => ({ id: `iptal:${o.order_no}`, order_no: o.order_no, marketplace: o.marketplace, at: o.ordered_at, title: "Sipariş iptal, fatura kesilmiş", price: Number(o.total), status: "İptal", reason: "", invoice: Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices })) };
+    cancelled: (cancelledRows ?? []).map((o: any) => ({ id: `iptal:${o.order_no}`, order_no: o.order_no, marketplace: o.marketplace, at: o.ordered_at, title: "Sipariş iptal, fatura kesilmiş", price: Number(o.total), status: "İptal", reason: "", invoice: Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices, return_invoice: retInv.get(`iptal:${o.order_no}`) ?? null })) };
   return NextResponse.json({ rows, counts, upload, audit, returns, configured: !!(process.env.GIB_PORTAL_USER && process.env.GIB_PORTAL_PASS), uploadReady: !!(process.env.GH_TOKEN && process.env.GH_REPO) });
 }
 
@@ -197,6 +198,48 @@ export async function POST(req: NextRequest) {
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
     finally { await logout(); }
     return NextResponse.json({ created: results.filter((x) => x.ok).length, results });
+  }
+  // İptal edilen / teslim edilemeyen siparişin imzalı satış faturası portalda 8 günden sonra iptal edilemiyor ("İptal talebi, sadece belge
+  // onaylandıktan sonraki ilk sekiz gün içerisinde oluşturulabilir"). Muhasebeci (K 16.11): tüm sipariş için iade faturası kesilir.
+  // id: "iptal:<sipariş no>" ya da teslim edilemedi işaretli iade satırı. Tüm satırlar, satış faturasıyla aynı tutar ve KDV.
+  if (b.action === "cancel_return_draft") {
+    const id = typeof b.id === "string" ? b.id : "";
+    if (!id) return bad("id gerekli");
+    let o: any = null;
+    const sel = "id, marketplace, order_no, ordered_at, customer_name, address, city, buyer_type, status, order_lines(title, qty, unit_price, ty_discount, product_id, listing_key, vat_rate), order_invoices(status, belge_no, signed_at, created_at)";
+    if (id.startsWith("iptal:")) { const { data } = await db.from("orders").select(sel).eq("order_no", id.slice(6)).eq("status", "cancelled").maybeSingle(); o = data; }
+    else {
+      const { rows: flat } = await loadReturns(db);
+      const r = flat.find((x) => x.id === id);
+      if (!r?.undelivered) return bad("Bu satır teslim edilemeyen gönderi değil: normal iade faturası kullan");
+      const { data } = await db.from("orders").select(sel).eq("marketplace", r.marketplace).eq("order_no", r.order_no ?? "").maybeSingle(); o = data;
+    }
+    if (!o) return bad("Sipariş kaydı bulunamadı");
+    const orig: any = Array.isArray(o.order_invoices) ? o.order_invoices[0] : o.order_invoices;
+    if (!orig || !["signed", "uploaded"].includes(orig.status) || !orig.belge_no) return bad("Siparişin imzalı satış faturası yok");
+    const signedAt = new Date(orig.signed_at ?? orig.created_at ?? o.ordered_at ?? Date.now());
+    if (Date.now() - signedAt.getTime() < 8 * 86400000) return bad("Fatura 8 günden yeni: iade faturası yerine portalda satış faturasını iptal et");
+    if (!o.customer_name) return bad("Alıcı bilgisi silinmiş (30 gün): iade faturasını portalda elle kes");
+    if (o.buyer_type && o.buyer_type !== "bireysel") return bad("Kurumsal müşteri: iade faturasını müşteri keser, sistem kesmez");
+    const ls: any[] = o.order_lines ?? [];
+    if (!ls.length) return bad("Sipariş satırı yok");
+    const pids = ls.filter((l) => l.vat_rate == null && l.product_id).map((l) => l.product_id);
+    const pv = new Map<string, number>();
+    if (pids.length) { const { data } = await db.from("products").select("id, vat_rate").in("id", pids); for (const x of data ?? []) if (x.vat_rate != null) pv.set(x.id, Number(x.vat_rate)); }
+    const claim = await db.from("order_return_invoices").insert({ return_key: id, order_id: o.id, order_no: o.order_no, marketplace: o.marketplace, status: "creating", original_belge_no: orig.belge_no, created_by: "panel", updated_at: now });
+    if (claim.error) return bad(claim.error.code === "23505" ? "Bu sipariş için zaten iade faturası var" : claim.error.message);
+    try {
+      await login();
+      const inv = buildReturnInvoice({ ...o, lines: ls.map((l) => ({ ...l, vat_rate: l.vat_rate != null ? Number(l.vat_rate) : pv.get(l.product_id) ?? 20 })) } as any, { belge_no: orig.belge_no, date: signedAt });
+      const { _ozet, _iade, ...payload } = inv as any;
+      const doc = await gib.createDraft(payload);
+      await db.from("order_return_invoices").update({ status: "draft", ettn: doc.ettn, belge_no: doc.belgeNumarasi ?? null, amount: _ozet.total, vat: _ozet.kdv, lines: ls.map((l) => ({ title: l.title, qty: l.qty })), error: null, updated_at: new Date().toISOString() }).eq("return_key", id);
+      return NextResponse.json({ ok: true, amount: _ozet.total });
+    } catch (e: any) {
+      const why = String(e?.message ?? e).slice(0, 300);
+      await db.from("order_return_invoices").update({ status: "error", error: why, updated_at: new Date().toISOString() }).eq("return_key", id);
+      return bad(why);
+    } finally { await logout(); }
   }
   if (b.action === "return_reset") {
     if (typeof b.id !== "string") return bad("id gerekli");
