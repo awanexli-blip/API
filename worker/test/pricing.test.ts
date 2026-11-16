@@ -117,4 +117,18 @@ const netOf = (p: number, cost: number, k: number) => breakdown(p, cost, cfg, k)
 }
 
 console.log(fails ? `\n${fails} birim testi başarısız` : "\nBirim testleri geçti");
+// Kupon payı (K 17.11): satıcı kuponu sonrası bile en az net kâr tabanı kalır; gerçek sipariş hesabında (couponRate 0) etkisiz
+{
+  const live = { ...cfg, fixedCost: 14.19, shippingCost: 115, shippingBands: bandsFrom([{ below: 200, cost: 105 }, { below: 350, cost: 113 }]), netProfitMin: 50, netMarginMin: 0.1 };
+  const withC = { ...live, couponRate: 0.02 };
+  for (const cost of [55, 240, 900, 2500]) {
+    const r0 = calcPrice(cost, live, 0.18), r1 = calcPrice(cost, withC, 0.18);
+    check(`kupon payı: maliyet ${cost} fiyat artar`, r1.ok && r1.price >= r0.price, { r0: r0.price, r1: r1.price });
+    check(`kupon payı: maliyet ${cost} kupon sonrası net >= 50`, r1.ok && breakdown(r1.price, cost, withC, 0.18).net >= 50 - 0.01, breakdown(r1.price, cost, withC, 0.18));
+  }
+  const b = breakdown(1000, 500, withC, 0.18);
+  check("kupon payı: kalem 20 TL", b.coupon === 20, b);
+  check("kupon payı 0: eski hesapla aynı", breakdown(1000, 500, { ...withC, couponRate: 0 }, 0.18).net === breakdown(1000, 500, live, 0.18).net);
+}
+
 process.exit(fails ? 1 : 0);

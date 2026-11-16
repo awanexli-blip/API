@@ -34,7 +34,7 @@ export function orderRow(marketplace: string, o: OrderIn, refs: Map<string, Ref>
     net = -loss;
     fin = { revenue, commission: 0, shipping: 0, service: 0, vat_due: 0, stopaj: 0, cost, return_loss: loss, net, commission_rate: r2(comm * 10000) / 10000 };
   } else if (st.status !== "cancelled" && revenue > 0) {
-    const b = breakdown(revenue, cost ?? 0, { ...cfg, returnRate: 0 }, comm);
+    const b = breakdown(revenue, cost ?? 0, { ...cfg, returnRate: 0, couponRate: 0 }, comm); // gelir zaten kupon düşülmüş
     net = cost != null ? b.net : null;
     fin = { revenue, commission: b.commission, shipping: b.shipping, service: r2(cfg.fixedCost), vat_due: cost != null ? b.vatDue : null, stopaj: r2(revenue / (1 + v) * STOPAJ),
       cost, return_loss: 0, net, commission_rate: r2(comm * 10000) / 10000 };

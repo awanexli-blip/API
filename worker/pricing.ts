@@ -32,6 +32,9 @@ export interface PricingConfig {
   // Kargo basamakları (Hepsiburada barem, 21.09.2026): kargoyu HER siparişte satıcı öder; fiyat < below ise o basamağın sabit ücreti,
   // son basamağın üstünde desi tarifesi (shippingCost). Doluysa ücretsiz kargo eşiği ve çoklu adet koruması kullanılmaz. Tutarlar shippingVatIncluded'a göre.
   shippingBands?: { below: number; cost: number }[] | null;
+  // Satıcının karşıladığı kupon/indirim payı (K 17.11): müşteri fiyatın bu oranı kadar az öder; komisyon, KDV ve kargo baremi ödenen tutardan.
+  // Kasım siparişleri: tedarikçi ürünlerinde satıcı kuponu satışın ~%1,5'i (kuponlu siparişte ~%4). Gerçek siparişin hesabında (orders.fin) 0: gelir zaten kuponlu.
+  couponRate?: number | null;
   multiUnitMinNet?: number | null; // çoklu adet koruması: 300 TL altı üründen eşiği geçecek kadar (2-3 adet) alınınca kargo sonrası en az net kâr (TL). Boş = kapalı
 }
 
@@ -70,6 +73,8 @@ const vatOf = (cfg: PricingConfig) => cfg.vatRate ?? 0.2;
 // Sipariş başı beklenen iade gideri: iade oranı × iade başına maliyet (kargo faturası gibi KDV'li hizmet sayılır)
 export const returnsOf = (cfg: PricingConfig) => r2((cfg.returnRate ?? 0) * (cfg.returnCost ?? 0));
 const fixedOf = (cfg: PricingConfig) => cfg.fixedCost + returnsOf(cfg);
+// Kupon payı sonrası müşterinin ödediği oran (0..1)
+const paidOf = (cfg: PricingConfig) => 1 - Math.min(0.5, Math.max(0, Number(cfg.couponRate) || 0));
 // Ayar satırındaki shipping_bands (jsonb) -> geçerli basamaklar ya da null
 export const bandsFrom = (v: unknown): PricingConfig["shippingBands"] =>
   Array.isArray(v) ? v.map((b: any) => ({ below: Number(b?.below), cost: Number(b?.cost) })).filter((b) => b.below > 0 && b.cost >= 0).sort((a, b) => a.below - b.below) : null;
@@ -85,6 +90,7 @@ const svatOf = (cfg: PricingConfig) => cfg.serviceVatRate ?? 0.2;
 
 export interface Breakdown {
   price: number; commission: number; shipping: number; fixed: number;
+  coupon: number;   // beklenen satıcı kuponu/indirimi (fiyat × kupon payı)
   returns: number;  // beklenen iade gideri (oran × iade maliyeti)
   vatDue: number;   // devlete ödenecek KDV farkı (satış KDV'si - indirilecek KDV)
   net: number; rate: number;
@@ -93,14 +99,15 @@ export interface Breakdown {
 // Bir satıştaki tüm kalemler (TL)
 export function breakdown(price: number, cost: number, cfg: PricingConfig, commission: number = cfg.commissionRate): Breakdown {
   const v = vatOf(cfg), sv = svatOf(cfg);
+  const paid = price * paidOf(cfg); // kupon sonrası müşterinin ödediği (komisyon, KDV ve kargo baremi bunun üzerinden)
   // Tüm hizmet kalemleri KDV dahil tutara çevrilir (cebinden çıkan para)
-  const shipping = r2(shipIncl(shippingAt(price, cfg), cfg));
-  const comm = price * commission * (cfg.commissionPlusVat ? 1 + sv : 1);
+  const shipping = r2(shipIncl(shippingAt(paid, cfg), cfg));
+  const comm = paid * commission * (cfg.commissionPlusVat ? 1 + sv : 1);
   const services = comm + shipping + fixedOf(cfg);
-  const vatDue = (price - cost) * v / (1 + v) - services * sv / (1 + sv);
-  const net = price - cost - services - vatDue;
-  const exVat = price / (1 + v);
-  return { price, commission: r2(comm), shipping, fixed: cfg.fixedCost, returns: returnsOf(cfg), vatDue: r2(vatDue), net: r2(net), rate: exVat > 0 ? net / exVat : 0 };
+  const vatDue = (paid - cost) * v / (1 + v) - services * sv / (1 + sv);
+  const net = paid - cost - services - vatDue;
+  const exVat = paid / (1 + v);
+  return { price, commission: r2(comm), shipping, fixed: cfg.fixedCost, coupon: r2(price - paid), returns: returnsOf(cfg), vatDue: r2(vatDue), net: r2(net), rate: exVat > 0 ? net / exVat : 0 };
 }
 
 export function profitOf(price: number, cost: number, cfg: PricingConfig, commission: number) {
@@ -116,7 +123,7 @@ function targetPrice(cost: number, cfg: PricingConfig, commission: number, ship:
   const shipV = shipIncl(ship, cfg); // KDV dahil kargo
   // net = a(P - cost) - b(cP + kargo + sabit) = t·a·P  =>  P = (a·cost + b(kargo + sabit)) / (a(1 - t) - b·c)
   const den = a * (1 - cfg.targetProfitRate) - b * c;
-  return den > 0 ? (a * cost + b * (shipV + fixedOf(cfg))) / den : Infinity;
+  return den > 0 ? (a * cost + b * (shipV + fixedOf(cfg))) / den / paidOf(cfg) : Infinity; // kupon: ödenen = P × paid
 }
 
 // Net kârı tam N TL yapan fiyat: net = a(P - maliyet) - b(cP + kargo + sabit)  =>  P = (N + a·maliyet + b(kargo + sabit)) / (a - b·c)
@@ -126,7 +133,7 @@ function priceForNet(cost: number, cfg: PricingConfig, commission: number, ship:
   const a = 1 / (1 + vatOf(cfg)), b = 1 / (1 + sv);
   const c = commission * (cfg.commissionPlusVat ? 1 + sv : 1);
   const den = a - b * c;
-  return den > 0 ? (n + a * cost + b * (shipIncl(ship, cfg) + fixedOf(cfg))) / den : Infinity;
+  return den > 0 ? (n + a * cost + b * (shipIncl(ship, cfg) + fixedOf(cfg))) / den / paidOf(cfg) : Infinity;
 }
 
 // Çoklu adet koruması. Eşik sepet toplamına bakar: 300 TL altı üründen n adet (n·fiyat >= eşik) alınınca kargo satıcıya geçer.
@@ -279,5 +286,6 @@ export function cfgFromSettings(s: Record<string, any>, vatPct = 20): PricingCon
     returnRate: Number(s.return_rate ?? 0), returnCost: Number(s.return_cost ?? 0), squeezeMinNet: s.squeeze_min_net != null ? Number(s.squeeze_min_net) : null, multiUnitMinNet: s.multi_unit_min_net != null ? Number(s.multi_unit_min_net) : null, netProfitMin: s.net_profit_min != null ? Number(s.net_profit_min) : null, netProfitMax: s.net_profit_max != null ? Number(s.net_profit_max) : null, netMarginMin: s.net_margin_min != null ? Number(s.net_margin_min) : null,
     minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price), commissionPlusVat: s.commission_plus_vat === true,
     shippingVatIncluded: s.shipping_vat_included !== false, vatRate: vatPct / 100, shippingBands: bandsFrom(s.shipping_bands),
+    couponRate: s.coupon_rate != null ? Number(s.coupon_rate) : null,
   };
 }

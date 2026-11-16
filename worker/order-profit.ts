@@ -10,7 +10,7 @@ const mp = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2
 const days = Number(process.argv[process.argv.indexOf("--days") + 1]) || 90;
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 const { data: s } = await db.from("settings").select("*").eq("id", 1).single();
-const cfg = { ...cfgFromSettings(s), returnRate: 0 };
+const cfg = { ...cfgFromSettings(s), returnRate: 0, couponRate: 0 }; // gerçek tutarlar: kupon ayrıca eklenir
 const since = new Date(Date.now() - days * 864e5).toISOString();
 const r = await readAll<any>((a, b) => db.from("orders").select("id, order_no, status, ordered_at, total, fin, order_lines(listing_key, title, qty, unit_price, discount, ty_discount, cost_snapshot, commission_rate)")
   .eq("marketplace", mp).gte("ordered_at", since).order("id").range(a, b));
