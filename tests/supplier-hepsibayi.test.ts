@@ -112,3 +112,20 @@ test("Çerçici: ürün başına ek maliyet (cost_add +9,90) alış fiyatına ek
   assert.equal(p.cost_price, 806.57);
   assert.equal(p.variants[0].barcode, "3879608952649");
 });
+
+test("Colezium: VariantName/VariantValue çiftleri sıradan bağımsız renk/beden; varyant kodu barkod, KDV dahil fiyat", () => {
+  const x = `<products><product><ProductCode>14142</ProductCode><Barcode>CTM1114</Barcode><ProductName>Tül Tanga</ProductName><Quantity>71</Quantity><Price>41.14</Price><TaxRate>10</TaxRate><Image>https://colezium.com/a.png</Image><Categories>Kadın Giyim &gt; Fantazi Giyim</Categories>
+    <Variants><Variant><VariantCode>CTM1114-S</VariantCode><VariantName1>Renk</VariantName1><VariantValue1>Renkli</VariantValue1><VariantName2>Beden</VariantName2><VariantValue2>S</VariantValue2><VariantQuantity>17</VariantQuantity><VariantPrice>41.14</VariantPrice></Variant>
+    <Variant><VariantCode>CTM1114-M</VariantCode><VariantName1>Beden</VariantName1><VariantValue1>M</VariantValue1><VariantName2>Renk</VariantName2><VariantValue2>Siyah</VariantValue2><VariantQuantity>10</VariantQuantity><VariantPrice>41.14</VariantPrice></Variant></Variants></product>
+    <product><ProductCode>2</ProductCode><Barcode>X2</Barcode><ProductName>Tek Ürün</ProductName><Quantity>5</Quantity><Price>10</Price><TaxRate>20</TaxRate></product></products>`;
+  const { items } = findItems(new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false }).parse(x));
+  const m = { ProductCode: "model", Barcode: "barcode", ProductName: "title", Quantity: "stock", Price: "cost_price", TaxRate: "vat_rate", Image: "images", Categories: "category",
+    "Variants.Variant.VariantCode": "barcode", "Variants.Variant.VariantQuantity": "stock", "Variants.Variant.VariantPrice": "cost_price" } as any;
+  const r = itemsToGroups(items, m).map((g) => supplierPayload(g, { code: "colezium", name: "Colezium", sku_prefix: "CLZ", price_includes_vat: true } as any, new Set()));
+  const p = r[0]?.payload; assert.ok(p, JSON.stringify(r));
+  assert.equal(p.variants.length, 2);
+  const s = p.variants.find((v: any) => v.barcode === "CTM1114-S"), md = p.variants.find((v: any) => v.barcode === "CTM1114-M");
+  assert.equal(s.attributes?.Renk, "Renkli"); assert.equal(s.attributes?.Beden, "S");
+  assert.equal(md.attributes?.Renk, "Siyah"); assert.equal(md.attributes?.Beden, "M");
+  assert.equal(s.stock, 17); assert.equal(p.cost_price, 41.14);
+});

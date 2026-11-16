@@ -122,9 +122,10 @@ export function flattenVarDeger(xml: string): string {
 function pairValues(el: any): { color?: string; size?: string } {
   const out: { color?: string; size?: string } = {};
   for (const k of Object.keys(el ?? {})) {
-    const m = /^(name|ad|isim)(\d*)$/i.exec(k);
+    // Colezium (16.11): VariantName1/VariantValue1 (sıra ürüne göre değişir: 1. özellik Renk de Beden de olabilir)
+    const m = /^(?:variant)?(name|ad|isim)(\d*)$/i.exec(k);
     if (!m) continue;
-    const name = String(el[k] ?? "").trim(), val = String(el[`value${m[2]}`] ?? el[`deger${m[2]}`] ?? "").trim();
+    const name = String(el[k] ?? "").trim(), val = String(el[`value${m[2]}`] ?? el[`VariantValue${m[2]}`] ?? el[`deger${m[2]}`] ?? "").trim();
     if (!name || !val) continue;
     if (/renk|colou?r/i.test(name)) out.color ??= val;
     // SEÇENEK / EBAT değeri tek başına anlamlı ("Krem", "80X80"); "SEÇENEK Krem" yazılmaz
