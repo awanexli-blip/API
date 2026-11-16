@@ -131,6 +131,8 @@ function buildCfg(s: any) {
     minAcceptableProfitRate: Number(s.min_acceptable_profit_rate), maxPrice: Number(s.max_price),
     commissionPlusVat: s.commission_plus_vat === true, shippingVatIncluded: s.shipping_vat_included !== false,
     shippingBands: bandsFrom(s.shipping_bands),
+    // K 17.11: kupon payı ve tahsilat bedeli (worker/pricing.ts); sipariş kâr hesabında (orders.ts) kupon 0
+    couponRate: s.coupon_rate != null ? Number(s.coupon_rate) : null, paymentFeeRate: s.payment_fee_rate != null ? Number(s.payment_fee_rate) : null,
   };
 }
 
