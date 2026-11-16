@@ -57,6 +57,7 @@ h1, h2, h3 { line-height: 1.25; margin: 0; letter-spacing: -.01em; }
 .cats a { white-space: nowrap; padding: 7px 12px; border-radius: 999px; font-size: 14px; color: var(--muted); }
 .cats a:hover, .cats a[aria-current="page"] { background: var(--brand-soft); color: var(--brand); }
 @media (max-width: 640px) {
+  .top { position: static; } /* telefonda başlık + arama + kategoriler ekranın dörtte birini kaplıyordu */
   .top .bar { flex-wrap: wrap; gap: 8px; padding: 8px 0; }
   .search { order: 3; flex-basis: 100%; max-width: none; }
 }
