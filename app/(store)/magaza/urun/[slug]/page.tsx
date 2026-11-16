@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { basePath, descriptionBlocks, imgUrl, slugify, tl } from "@/lib/store";
 import { product, similar } from "@/lib/store-data";
-import { Grid } from "../../_ui";
+import { Rail } from "../../_ui";
+import Icon from "../../Icon";
 import Gallery from "./Gallery";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -18,12 +19,12 @@ export default async function ProductPage({ params }: Props) {
   const base = basePath(h.get("host"));
   const p = await product(slug);
   if (!p) notFound();
-  const more = await similar(p);
+  const more = await similar(p, 12);
   const desc = descriptionBlocks(p.description);
   const images = (p.images.length ? p.images : [p.image]).map(imgUrl).filter((u): u is string => !!u);
   const prices = p.variants.map((v) => v.price);
-  const from = prices.length && Math.min(...prices) !== Math.max(...prices);
-  // Açıklama blokları: ardışık maddeler tek liste
+  const ranged = prices.length > 0 && Math.min(...prices) !== Math.max(...prices);
+  // Açıklama: ardışık maddeler tek liste
   const blocks: React.ReactNode[] = [];
   for (let i = 0; i < desc.length; i++) {
     if (desc[i].kind === "li") {
@@ -33,43 +34,44 @@ export default async function ProductPage({ params }: Props) {
       blocks.push(<ul key={`u${i}`}>{lis.map((t, n) => <li key={n}>{t}</li>)}</ul>);
     } else blocks.push(<p key={i}>{desc[i].text}</p>);
   }
+  const topSlug = slugify(p.top);
   return (
     <>
       <nav className="crumbs" aria-label="Konum">
-        <a href={base || "/"}>Ana sayfa</a><span>›</span><a href={`${base}/kategori/${slugify(p.top)}`}>{p.top}</a>
-        {p.sub && <><span>›</span><a href={`${base}/kategori/${slugify(p.top)}?alt=${slugify(p.sub)}`}>{p.sub}</a></>}
+        <a href={base || "/"}>Ana sayfa</a><span aria-hidden="true">/</span><a href={`${base}/kategori/${topSlug}`}>{p.top}</a>
+        {p.sub && <><span aria-hidden="true">/</span><a href={`${base}/kategori/${topSlug}?alt=${slugify(p.sub)}`}>{p.sub}</a></>}
       </nav>
       <div className="pd">
         <Gallery images={images} title={p.title} />
-        <div>
-          <h1>{p.title}</h1>
-          <div className="price">{from ? `${tl(Math.min(...prices))}'den başlayan` : tl(p.price)}</div>
-          <div className="stock">Stokta</div>
+        <div className="info">
+          {p.leaf && <div className="cat">{p.leaf}</div>}
+          <h1 className="serif">{p.title}</h1>
+          <div className="price">{ranged ? <>{tl(Math.min(...prices))}<small>başlayan fiyatlarla</small></> : tl(p.price)}</div>
+          <div className="badge">Stokta</div>
           {p.variants.length > 0 && (
-            <>
-              <h2 className="sr">Seçenekler</h2>
-              <ul className="opts">
-                {p.variants.map((v) => <li key={v.id} className={v.inStock ? undefined : "out"}>{v.label}{from ? ` · ${tl(v.price)}` : ""}{v.inStock ? "" : " (tükendi)"}</li>)}
-              </ul>
-            </>
+            <div className="opts">
+              <h2>Seçenekler</h2>
+              <ul>{p.variants.map((v) => <li key={v.id} className={v.inStock ? undefined : "out"}>{v.label}{ranged ? ` · ${tl(v.price)}` : ""}<span className="sr">{v.inStock ? "" : " (tükendi)"}</span></li>)}</ul>
+            </div>
           )}
           <div className="buy">
             <button className="btn" type="button" disabled aria-describedby="buy-note">Sepete ekle</button>
-            <small id="buy-note">Online sipariş çok yakında. Ödeme ve kargo seçenekleri hazırlanıyor.</small>
+            <div className="note" id="buy-note"><Icon name="info" /><span>Online siparişe çok yakında başlıyoruz. Ödeme ve kargo seçenekleri hazırlanıyor.</span></div>
           </div>
-          {p.attrs.length > 0 && (
-            <section className="box" aria-labelledby="h-specs">
-              <h2 id="h-specs">Ürün özellikleri</h2>
-              <dl className="specs">{p.attrs.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-            </section>
-          )}
+          <div className="acc">
+            {blocks.length > 0 && <details open><summary>Ürün açıklaması <Icon name="plus" /></summary><div className="body">{blocks}</div></details>}
+            {p.attrs.length > 0 && (
+              <details open={!blocks.length}><summary>Ürün özellikleri <Icon name="plus" /></summary>
+                <div className="body"><dl className="specs">{p.attrs.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}</dl></div>
+              </details>
+            )}
+          </div>
         </div>
       </div>
-      {blocks.length > 0 && <section className="box" aria-labelledby="h-desc"><h2 id="h-desc">Ürün açıklaması</h2>{blocks}</section>}
       {more.length > 0 && (
-        <section className="section" aria-labelledby="h-sim">
-          <div className="section-head"><h2 id="h-sim">Benzer ürünler</h2></div>
-          <Grid items={more} base={base} />
+        <section className="sec" style={{ marginTop: 64 }} aria-labelledby="h-sim">
+          <div className="sec-head"><div><h2 id="h-sim" className="serif">Benzer ürünler</h2></div><a className="link-arrow" href={`${base}/kategori/${topSlug}`}>Tümü <Icon name="arrow" size={16} /></a></div>
+          <Rail items={more} base={base} />
         </section>
       )}
     </>

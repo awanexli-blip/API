@@ -5,25 +5,29 @@ import { PAGE_SIZE, likeEscape, slugify, type Sort } from "@/lib/store";
 export type Card = { product_id: string; slug: string; title: string; price: number; image: string | null; top: string; sub: string | null; leaf: string | null };
 const CARD = "product_id, slug, title, price, image, top, sub, leaf";
 
-export type TopCat = { top: string; slug: string; n: number; subs: { sub: string; slug: string; n: number }[] };
+export type SubCat = { sub: string; slug: string; n: number; image: string | null };
+export type TopCat = { top: string; slug: string; n: number; image: string | null; subs: SubCat[] };
 export async function categories(): Promise<TopCat[]> {
-  const { data, error } = await admin().from("store_category_counts").select("top, sub, n").limit(5000);
+  const { data, error } = await admin().from("store_category_counts").select("top, sub, n, image").limit(5000);
   if (error) throw new Error(`kategoriler okunamadı: ${error.message}`);
   const by = new Map<string, TopCat>();
   for (const r of data ?? []) {
-    const t = by.get(r.top) ?? by.set(r.top, { top: r.top, slug: slugify(r.top), n: 0, subs: [] }).get(r.top)!;
+    const t = by.get(r.top) ?? by.set(r.top, { top: r.top, slug: slugify(r.top), n: 0, image: null, subs: [] }).get(r.top)!;
     t.n += r.n;
-    if (r.sub) t.subs.push({ sub: r.sub, slug: slugify(r.sub), n: r.n });
+    if (r.sub) t.subs.push({ sub: r.sub, slug: slugify(r.sub), n: r.n, image: r.image ?? null });
+    else t.image ??= r.image ?? null;
   }
-  for (const t of by.values()) t.subs.sort((a, b) => b.n - a.n);
+  for (const t of by.values()) { t.subs.sort((a, b) => b.n - a.n); t.image = t.subs.find((x) => x.image)?.image ?? t.image; }
   return [...by.values()].sort((a, b) => b.n - a.n);
 }
 
-export async function list(o: { top?: string; sub?: string; q?: string; sort: Sort; page: number; size?: number }) {
+export async function list(o: { top?: string; sub?: string; q?: string; min?: number; max?: number; sort: Sort; page: number; size?: number }) {
   const size = o.size ?? PAGE_SIZE;
   let qb = admin().from("store_catalog").select(CARD, { count: "exact" });
   if (o.top) qb = qb.eq("top", o.top);
   if (o.sub) qb = qb.eq("sub", o.sub);
+  if (o.min != null) qb = qb.gte("price", o.min);
+  if (o.max != null) qb = qb.lte("price", o.max);
   if (o.q) qb = qb.ilike("title", `%${likeEscape(o.q)}%`);
   qb = o.sort === "fiyat-artan" ? qb.order("price", { ascending: true }) : o.sort === "fiyat-azalan" ? qb.order("price", { ascending: false })
     : o.sort === "yeni" ? qb.order("created_at", { ascending: false }) : qb.order("stock", { ascending: false });
