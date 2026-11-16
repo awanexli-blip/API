@@ -88,7 +88,7 @@ async function main() {
       const price = cost > 0 ? calcPrice(cost, pcfg, comm) : null;
       const risky = brandRisk?.(neutralizeCompat(p.title), neutralizeCompat(p.description ?? "")); // gönderimdeki gibi: "Android ve iOS" -> "Akıllı Telefon"
       const vs = vatSuspect(p.vat_rate); // KDV %1/%0: gıda olabilir / oran şüpheli
-      const scope = vs ? { ok: false, reason: vs } : inScope({ cat: p.category, title: p.title }); // satış kısıtı: gıda, iç giyim (lib/scope.ts)
+      const scope = vs ? { ok: false, reason: vs } : inScope({ cat: p.category, title: p.title }); // satış kısıtı: gıda (lib/scope.ts)
       const brandOk = ownBrand(String(p.brand ?? ""));
       const excluded = !scope.ok ? `satılamaz (${scope.reason})` : p.status !== "active" ? "pasif ürün" : !(cost > 0) ? "maliyet yok" : stock < minStockOpp ? `stok az (${minStockOpp}'dan az)` : !images ? "görsel yok"
         : titles.has(normFull(p.title)) ? "mağazada aynı başlık var" : risky ? `marka riski (${risky})` : !price?.ok ? `fiyat: ${price?.reason ?? "hesaplanamadı"}` : null;

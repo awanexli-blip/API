@@ -1,11 +1,11 @@
-// Satış kısıtı (lib/scope.ts): yalnızca gıda ve iç giyim yasak (K, 01.11). npm test
+// Satış kısıtı (lib/scope.ts): yalnızca gıda yasak (K, 16.11). npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inScope, inScopeAny, inScopeForSend } from "../lib/scope.ts";
 
 const ok = (cat: string, title = "") => inScope({ cat, title }).ok;
 
-test("satılabilir: gıda ve iç giyim dışı her şey", () => {
+test("satılabilir: gıda dışı her şey", () => {
   for (const c of ["Eğitici Oyuncak", "Bijuteri Kolye", "Akıllı Saat", "Tıraş Makinesi", "Bluetooth Hoparlör", "Parti Kostümü", "Sneaker", "Mont", "Medikal Korse",
     "Kahve & Baharat Öğütücü", "Çay Makinesi", "Türk Kahvesi Makinesi", "Kedi ve Köpek Mama Su Kabı", "Kahve Fincanı", "Çay Süzgeci", "Akü Takviye Kablosu", "Saklama Kabı",
     "Mutfak > Gıda Saklama Kabı", "Suluk & Matara", "Termos", "Kargaburun", "Ev & Yaşam > Mutfak > Su Sebili",
@@ -23,15 +23,13 @@ test("yasak: gıda", () => {
     assert.ok(!ok(c), c);
 });
 
-test("yasak: iç giyim", () => {
-  for (const c of ["Külot", "Boxer", "Sütyen", "Atlet", "Çorap", "Emzirme Sütyeni", "Emzirme Atleti", "Bebek Body & Zıbın", "Pijama Takımı", "Giyim > İç Giyim > Fanila"])
-    assert.ok(!ok(c), c);
-  assert.ok(!ok("", "Erkek Pamuklu Boxer 3'lü"), "kategori yoksa başlık");
-  assert.ok(!ok("", "Kadın Dantelli Sütyen"));
+test("iç giyim artık satılabilir (K, 16.11)", () => {
+  for (const c of ["Külot", "Boxer", "Sütyen", "Çorap", "Pijama Takımı", "Giyim > İç Giyim > Fanila", "Fantazi İç Giyim >>> Fantazi Külot"]) assert.ok(ok(c), c);
+  assert.ok(ok("", "Erkek Pamuklu Boxer 3'lü"));
 });
 
 test("birden çok kategori: biri yasaksa yasak; gönderim aynı kural", () => {
-  assert.ok(!inScopeAny(["Ev & Yaşam", "Çorap"], "Kışlık Çorap").ok);
+  assert.ok(!inScopeAny(["Ev & Yaşam", "Kahve"], "Türk Kahvesi 250 g").ok);
   assert.ok(inScopeAny(["Ayakkabı > Bot", "Fermuar"], "Erkek Kışlık Bot").ok);
   assert.ok(inScopeAny([null, ""], "Saç Kurutma Makinesi").ok);
   assert.ok(!inScopeForSend("Süpermarket > İçecekler", "Kola", "Kola 1 L").ok);
@@ -56,11 +54,6 @@ test("oyuncak uyumsuzluğu: tedarikçide oyuncak, pazaryerinde gerçek ürün ka
   assert.ok(!toyMismatch("Oyuncak", null), "kategori yok");
 });
 
-test("fantezi / +18 iç giyim sayılmaz (K, 06.11); adında iç giyim yazan kapalı kalır", () => {
-  for (const c of ["Fantezi Kostüm", "Ev & Yaşam Ürünleri > +18 Ürünler > Fantezi Giyim (+18)", "Ev & Yaşam Ürünleri > Giyim Ürünleri > Fantezi Giyim > Fantezi Kostüm", "Ev & Yaşam Ürünleri > +18 Ürünler > Fantezi Aksesuar"]) assert.ok(ok(c), c);
-  for (const c of ["Fantazi İç Giyim >>> Fantazi Külot", "Fantezi İç Çamaşır Takımları"]) assert.ok(!ok(c), c);
-});
-
 import { trendyolRuleBlock } from "../lib/scope.ts";
 test("Trendyol satış kuralı: çakmak, küllük, nargile, silah", () => {
   for (const t of ["Elektrikli Çakmak El Feneri", "Tek Kullanımlık Jel Küllük", "RGB LED Nargile Altı Işık", "ER-109 Oyuncak Tüfek", "Sünger Mermi Atan"]) assert.ok(trendyolRuleBlock(t), t);
@@ -74,16 +67,4 @@ test("+18 ürün bebek/çocuk/oyuncak kategorisinde satılmaz", () => {
   assert.ok(!adultMismatch("+18 Ürünler > Masaj Yağı", "Masaj Yağı"));
   assert.ok(!adultMismatch("Anne Bebek > Bebek Bakım", "Diğer Bebek Sağlık Ürünleri"), "gerçek bebek ürünü");
   assert.ok(!adultMismatch("+18 Ürünler", null), "kategori yok");
-});
-
-
-test("kitap: yeni gönderim durur, hobi/parti ve kitaplık (mobilya) kitap sayılmaz", async () => {
-  const { bookBlock } = await import("../lib/scope.ts");
-  assert.ok(bookBlock("Kitap, Müzik, Film, Hobi >>> Kitap >>> Çocuk Kitapları", null));
-  assert.ok(bookBlock("Kitap > Roman", null));
-  assert.ok(bookBlock("Hobi > Boyama Kitabı", null));
-  assert.ok(bookBlock(null, "Kitap > Edebiyat > Roman"));
-  assert.equal(bookBlock("Kitap, Müzik, Film, Hobi >>> Parti Malzemeleri >>> Balon", null), null);
-  assert.equal(bookBlock("Ev & Yaşam > Mobilya > Kitaplık", null), null);
-  assert.equal(bookBlock("Elektronik > Tablet > Kitap Okuyucu Kılıfı", "Tablet Kılıfı"), null);
 });

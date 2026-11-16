@@ -1,6 +1,6 @@
 // Tüm ürünleri gönder (K, 04.11: "Hepsiburada için puanlama yapma, hepsini gönder"): sunucu tedarikçilerinin (runner=vps) aktif ürünlerinden
 // pazaryerinde HİÇ ilanı olmayanlar gönderim kuyruğuna alınır. Reddedilen (error) ürün yeniden alınmaz (düzeltilince ai-attrs kuyruğa alır);
-// kaldırılmış (gone) ve deneme (DENEME) işaretli olan alınır. Gıda / iç giyim / görselsiz / zararına ürünü gönderim adımı (db-products.ts) eler.
+// kaldırılmış (gone) ve deneme (DENEME) işaretli olan alınır. Gıda / görselsiz / zararına ürünü gönderim adımı (db-products.ts) eler.
 // K 12.11: yalnızca STOKLU ürünler (en az bir varyantı stok - rezerv >= 1); stoksuz ürün ilan olarak açılmaz, stok gelince sonraki çalıştırma alır.
 // node --experimental-strip-types worker/send-all.ts <pazaryeri> [--apply]   (--apply yoksa yalnızca sayar)
 import { createClient } from "@supabase/supabase-js";
