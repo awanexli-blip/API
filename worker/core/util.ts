@@ -59,7 +59,7 @@ export const isSupplierKey = (key: string | null | undefined) => /^(ÖS13-|OS13-
 // K'nın kendi ilanı (K 14.11: "benim eklediğim ürünler Gezer terlik, Voga terlik, Rasing ayakkabı, Hermes ayakkabı; fiyat ve stok tamamen bana kalsın").
 // Bağsız (hiçbir XML ürününe bağlı olmayan) ilanda: başlıkta bu markalar ya da OZ kodu. Bağlı ilanda panelden eklenen (source=manual) ürün ayrıca korunur.
 // Eski tedarikçi ilanları (ör. Bezos'tan kalkmış SRS…) K'nın değildir: stoğu kalırsa karşılıksız satılır, sıfırlanır.
-export const OWN_BRANDS = /(^|[^a-zçğıöşü])(gezer|voga|rasing|racing|hermes)($|[^a-zçğıöşü])/i;
+export const OWN_BRANDS = /(^|[^a-zçğıöşü])(gezer|voga|ra[cs][iı]ng|hermes)($|[^a-zçğıöşü])/i;
 export const isOwnListing = (key: string | null | undefined, title?: string | null) => /^OZ/i.test(String(key ?? "")) || (!isSupplierKey(key) && OWN_BRANDS.test(String(title ?? "")));
 
 // Pazaryeri engel listesi (K 15.11): app_state "exclude_sources:<mp>" (tedarikçi kaynakları, ör. ["xml:toptancim"]) ve

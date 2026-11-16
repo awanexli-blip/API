@@ -27,5 +27,12 @@ check("negatif sayı da korunur", csvCell("-5") === "'-5");
   const exact = await readAll(async (from: number) => ({ data: from === 0 ? rows.slice(0, 1000) : [], error: null }));
   check("readAll: tam 1000 satırda durur", exact.data.length === 1000);
 }
+{
+  const { isOwnListing } = await import("../core/util.ts");
+  check("kendi ürünü: Racıng (noktasız ı)", isOwnListing("1400089482", "Racıng Cilt - Siyah/Beyaz"));
+  check("kendi ürünü: Racing", isOwnListing("1400089482", "Racing Erkek Günlük Spor Ayakkabı"));
+  check("tedarikçi kodu kendi ürünü değil", !isOwnListing("BZS123", "Racıng Cilt"));
+  check("Bracing kendi ürünü değil", !isOwnListing("1400089482", "Bracing Destek Bandı"));
+}
 if (fails) { console.log(`\n${fails} yardımcı testi başarısız`); process.exit(1); }
 console.log("\nYardımcı testleri geçti");
