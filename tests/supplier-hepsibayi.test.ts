@@ -129,3 +129,9 @@ test("Colezium: VariantName/VariantValue çiftleri sıradan bağımsız renk/bed
   assert.equal(md.attributes?.Renk, "Siyah"); assert.equal(md.attributes?.Beden, "M");
   assert.equal(s.stock, 17); assert.equal(p.cost_price, 41.14);
 });
+
+import { brokenTitle } from "../lib/supplier-xml.ts";
+test("Colezium: sözcüğü kesilmiş başlık bozuk sayılır, düzgün başlık sayılmaz", () => {
+  for (const t of ["Kız Çuk Giyim Mont", "Renal Beef Biftekli Yaş Kedi sı 85 Gr", "Lüks Kırmızı lü Taşlı B si"]) assert.ok(brokenTitle(t), t);
+  for (const t of ["Transparan Tül String Tanga", "Pembe Renk Kulaklı Tavşan Şapkası", "Ahşap Kutu Klipsi - Büyük, 1 Adet"]) assert.ok(!brokenTitle(t), t);
+});

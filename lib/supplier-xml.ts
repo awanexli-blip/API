@@ -169,6 +169,9 @@ export function itemsToGroups(items: any[], mapping: Record<string, Field>): Gro
   return groupRows(rows.filter((r) => Object.keys(r.values).length));
 }
 
+// Tek başına anlamsız ek/parça sözcük: "Çuk" (Çocuk), "sı/si" (Şapkası, Maması), "lı/lü", "Bı" (Bandı)
+export const brokenTitle = (t: string) => /(^|\s)(sı|si|su|sü|Bı|lü|lı|lu|li|Çuk|ı|i)(\s|$)/u.test(String(t ?? ""));
+
 export const BEZOS_MOBILYA_NOTE = "Mobilya ürünü: Mobilya ürünleri siparişin verildiği gün atölyeye aktarılır ve ertesi iş günü kargoya verilir.";
 const SKU_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{2,64}$/;
 const CODE_RE = /^[A-Za-z0-9ÇĞİÖŞÜçğıöşü._-]{1,40}$/;
@@ -200,6 +203,8 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
   p.cost_price = cost > 0 ? addCost(sup, sup.price_includes_vat === false ? cost * (1 + p.vat_rate / 100) : cost) : null;
   const desi = Number(p.desi); p.desi = desi > 0 ? desi : null;
   p.status = p.status === "draft" ? "draft" : "active"; // XML pasif işaretliyse taslak (ör. active=0)
+  // Colezium (16.11): ~1.700 başlıkta sözcük parçaları silinmiş ("Kız Çuk Giyim", "Kedi sı"); bozuk başlık satışa çıkmasın diye taslak
+  if (sup.code === "colezium" && brokenTitle(p.title)) p.status = "draft";
   p.source_ref = String(g.model).slice(0, 200);
   const used = new Set<string>();
   p.variants = p.variants.map((v: any, i: number) => {
