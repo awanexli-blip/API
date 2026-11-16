@@ -189,6 +189,10 @@ export function supplierPayload(g: Group, sup: Supplier, seenBarcodes: Set<strin
   p.sku = cleanSku(p.sku, sup);
   if (!SKU_RE.test(p.sku)) return { error: `geçersiz ürün kodu: ${g.model}` };
   if (!p.title || String(p.title).trim().length < 2) return { error: "ürün adı yok" };
+  // XML'de çift kaçışlı kalan HTML karakterleri (Colezium 17.11: "Oyun &amp; Oyuncak")
+  const unent = (x: unknown) => String(x ?? "").replace(/&(amp|lt|gt|quot|#39|apos);/g, (_m, e) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'" } as Record<string, string>)[e]);
+  p.title = unent(p.title);
+  if (p.category) p.category = unent(p.category);
   // Sondaki depo/tedarikçi kodu atılır: "... HDMI KABLO (4767)", "... Kalemlik-(5775)" (yalnızca parantez içinde 3-6 rakam, başlık sonunda)
   p.title = String(p.title).replace(/\s+/g, " ").trim().replace(/\s*-?\s*\(\d{3,6}\)$/, "").trim().slice(0, 300);
   if (p.description) p.description = String(p.description).slice(0, 30000);

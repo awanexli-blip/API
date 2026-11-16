@@ -12,7 +12,10 @@ const FOOD_EXACT = new Set(["su", "kola", "makarna", "pirinç", "bakliyat", "zey
   "kavanoz maması", "bebek maması", "devam sütü", "şeker hamuru", "kahve", "türk kahvesi", "filtre kahve", "çay", "bitki çayı", "bal", "reçel", "baharat", "kuruyemiş", "cips", "bisküvi",
   "gofret", "kek", "şeker", "şekerleme", "sakız", "lokum", "un", "süt", "peynir", "yoğurt", "tereyağı", "et", "tavuk", "konserve", "salça", "sos", "ketçap", "mayonez", "tuz", "sirke",
   "mercimek", "nohut", "bulgur", "yulaf", "kahvaltılık gevrek", "granola", "protein tozu", "gıda takviyesi", "vitamin", "enerji içeceği", "maden suyu", "meyve suyu", "gazlı içecek",
-  "soğuk çay", "hazır çorba", "pekmez", "tahin", "helva", "zeytin", "turşu", "dondurma", "sporcu besini"]);
+  "soğuk çay", "hazır çorba", "pekmez", "tahin", "helva", "zeytin", "turşu", "dondurma", "sporcu besini",
+  // Colezium (17.11) "Gıda Market" alt başlıkları (aynı başlık altında parfüm/kozmetik/temizlik de var: yalnızca gıda adımları)
+  "pekmez ekşi sos sirke", "tuz çeşitleri", "tuz, kaya tuzu ürünleri", "gıda boyası", "şifalı bitkiler", "şifalı bitki a'dan z'ye", "mutfak baharatları",
+  "baharat çeşitleri", "harçlar ve baharat karışımları", "bitkisel kapsül tablet", "bitkisel karışımlı kapsül", "kuruyemiş çeşitleri", "bitki çayları"]);
 // Yol parçasının TAMAMI gıda başlığıysa yasak (02.11: "Süpermarket, Pet Shop > Sağlık > Masaj Aleti" ve "Yiyecek & İçecek Hazırlama > Su Isıtıcı"
 // gıda DEĞİL; parça içinde arama bunları eliyordu).
 const FOOD_PART = /^(temel gıda|gıda|gıda ürünleri|kuru gıda|dondurulmuş gıda|organik gıda|yiyecek|yiyecekler|içecek|içecekler|atıştırmalık|atıştırmalıklar|takviye edici gıda|takviye edici gıdalar|gıda takviyeleri|kahvaltılık|kahvaltılıklar|şarküteri|et & tavuk|et, tavuk & balık|meyve & sebze|bebek maması|mama ve beslenme ürünleri)$/u;

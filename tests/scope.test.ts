@@ -68,3 +68,10 @@ test("+18 ürün bebek/çocuk/oyuncak kategorisinde satılmaz", () => {
   assert.ok(!adultMismatch("Anne Bebek > Bebek Bakım", "Diğer Bebek Sağlık Ürünleri"), "gerçek bebek ürünü");
   assert.ok(!adultMismatch("+18 Ürünler", null), "kategori yok");
 });
+
+test("Colezium Gıda Market: gıda adımları yasak, aynı başlıktaki parfüm/temizlik ve pet ürünleri serbest", () => {
+  for (const c of ["Gıda Market > Bitkisel Doğal Ürünler > Mutfak Baharatları > Baharat Çeşitleri", "Gıda Market > Bitkisel Doğal Ürünler > Pekmez Ekşi Sos Sirke", "Gıda Market > Tuz, Kaya Tuzu Ürünleri > Tuz Çeşitleri", "Gıda Market > Aktariye Ürünleri > Gıda Boyası"])
+    assert.ok(!ok(c), c);
+  for (const c of ["Gıda Market > Esans Kolonya Parfüm > Parfümler > Erkek Parfüm", "Gıda Market > Süpermarket > Deterjan ve Temizlik Ürünleri > Fırça Çeşitleri", "Pet Shop > Kedi Mamaları & Aksesuar > Konserve Yaş Mamalar", "Gıda Market > Kozmetik Kişisel Bakım > Sabun Şampuan Jel"])
+    assert.ok(ok(c), c);
+});
