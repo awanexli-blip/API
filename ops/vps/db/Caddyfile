@@ -57,3 +57,20 @@
 		reverse_proxy host.docker.internal:3100
 	}
 }
+
+# Vitrin (K 16.11): ozsaraytr.com -> aynı Next uygulaması; proxy.ts alan adına göre /magaza altına yönlendirir, panel ve /api bu alan adında açılmaz.
+# Sertifika, alan adının A kaydı bu sunucuyu (89.252.153.187) gösterdiğinde otomatik alınır.
+ozsaraytr.com {
+	encode gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+	}
+	handle {
+		reverse_proxy host.docker.internal:3100
+	}
+}
+www.ozsaraytr.com {
+	redir https://ozsaraytr.com{uri} permanent
+}

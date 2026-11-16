@@ -32,6 +32,8 @@ const nextConfig = {
   // Üst klasördeki başka bir package-lock.json kök sanılmasın
   turbopack: { root: fileURLToPath(new URL(".", import.meta.url)) },
   poweredByHeader: false,
+  // Panel ve vitrin (ozsaraytr.com) ayrı kök yerleşimler: eşleşmeyen adres için app/global-not-found.tsx
+  experimental: { globalNotFound: true },
   // Sunucuda (docs/SUNUCU_PLAN.md) yeni sürüm ayrı klasöre derlenir, hazır olunca devreye alınır (yarıda kalan derleme çalışan paneli bozmasın).
   // Vercel'de tanımsız: varsayılan .next
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),

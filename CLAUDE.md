@@ -79,7 +79,8 @@ BayilikXML (XML)  ->  GitHub Actions (worker/sync.ts)  ->  Trendyol API
 | `worker/pricing.ts` | `calcPrice()` fiyat formülü. Panel de simülasyon için aynı dosyayı import eder (`@/worker/pricing`) |
 | `worker/commissions_by_barcode.json` | Trendyol'daki 18.027 ürünün kendi komisyon oranı (barkod -> oran) |
 | `worker/commissions_by_category.json` | XML kategorisi -> kategorideki en yüksek komisyon (yeni ürünler için güvenli taraf) |
-| `app/page.tsx` | Panel kabuğu (v2): giriş, menü, hash yönlendirme (`#/urunler`, `#/pazaryeri/<pazaryeri>/<alt>`), bildirimler, tema |
+| `app/(panel)/page.tsx`, `app/(panel)/layout.tsx` | Panel kabuğu (v2): giriş, menü, hash yönlendirme (`#/urunler`, `#/pazaryeri/<pazaryeri>/<alt>`), bildirimler, tema |
+| `app/(store)/magaza/`, `lib/store.ts`, `lib/store-data.ts`, `proxy.ts`, migration 088 | ozsaraytr.com vitrini (ayrı kök yerleşim; `proxy.ts` alan adına göre `/magaza`'ya yönlendirir, panelde `/magaza` önizleme). Katalog `store_catalog` (Trendyol'da yayında + stoklu, saatlik `trentakip-store-refresh.timer`). Sepet/ödeme/kargo yok (Yakında) |
 | `app/_components/Dashboard.tsx`, `AppSettings.tsx`, `PricePreview.tsx`, `ProfitRules.tsx`, `Icon.tsx`, `theme.ts` | Gösterge paneli (`/api/dashboard`), ayarlar (kullanıcılar `/api/users`), ürün fiyat önizlemesi, akıllı kâr (`/api/pricing-rules`, `worker/pricing-rules.ts`) |
 | `app/_components/` | `Overview`, `Settings`, `Categories`, `Overrides` (Trendyol alt sekmeleri), `Upcoming` (bağlanmamış pazaryerleri), `shared` (api, zaman aşımı) |
 | `app/api/{settings,categories,overrides,runs,run,health}/route.ts` | Panel API'leri, hepsi `guard()` ile korumalı |

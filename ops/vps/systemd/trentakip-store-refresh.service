@@ -1,0 +1,7 @@
+[Unit]
+Description=Trentakip vitrin kataloğu yenileme (ozsaraytr.com, store_catalog)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec trentakip-db-1 psql -U postgres -v ON_ERROR_STOP=1 -q -c "select public.store_catalog_refresh()"
+TimeoutStartSec=600

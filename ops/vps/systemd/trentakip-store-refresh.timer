@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip vitrin kataloğu yenileme (saatte bir)
+
+[Timer]
+OnCalendar=*-*-* *:48:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target
