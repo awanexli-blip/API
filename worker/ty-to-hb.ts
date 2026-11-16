@@ -28,6 +28,8 @@ for (const c of picked) {
   for (const v of c.variants) {
     if (v.closed || (only.size && !only.has(String(v.barcode)))) continue;
     const size = val(v.attributes, /beden|numara/i) ?? v.attributes[0]?.value;
+    // Trendyol'da hatalı girilmiş beden ("1"): HB numara kabul etmez, ürünün tüm bedenleri düşerdi -> bu beden atlanır, bildirilir
+    if (size != null && /^\d+$/.test(String(size)) && (Number(size) < 30 || Number(size) > 50)) { console.log(`ATLANDI ${v.barcode}: Trendyol'da beden "${size}" (hatalı numara)`); continue; }
     items.push({ id: String(v.barcode), name, detail: c.description || name, brand: c.brand, productCode: String(v.barcode), desi: 2, images: c.images,
       cat: { category_id: cat, vat_rate: Number(v.vatRate ?? 20) }, defaults: { ...defaults, ...(size ? { Beden: String(size), Numara: String(size) } : {}) },
       catName: "Sneakers", xmlCategory: `Ayakkabı > ${c.category ?? ""}`, groupId: `RCG${c.contentId}`.slice(0, 40), price, qty: stock });
