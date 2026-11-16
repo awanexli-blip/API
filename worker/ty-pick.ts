@@ -1,5 +1,5 @@
 // Trendyol'daki onaylı ilanlardan seçim (K 16.11: "trendyoldan seçtiğim ürünleri hepsiburadaya ekle", ör. Racing ayakkabılar). SALT OKUNUR.
-//   node --experimental-strip-types worker/ty-pick.ts [--brand REGEX] [--title REGEX] [--barcodes A,B,...] [--out dosya.json]
+//   node --experimental-strip-types worker/ty-pick.ts [--brand REGEX] [--title REGEX] [--barcodes A,B,...] [--unapproved] [--out dosya.json]
 // Çıktı: içerik başına tam kayıt (başlık, marka, kategori, açıklama, görseller, özellikler, varyantlar: barkod, stok kodu, fiyat, stok, özellik).
 import { writeFileSync } from "node:fs";
 import { env, sleep } from "./core/util.ts";
@@ -46,6 +46,31 @@ for (;;) {
   if (page * 100 >= 10000) { token = r.nextPageToken ?? ""; if (!token) break; }
   if (page % 50 === 0) console.error(`${seen} içerik tarandı, seçilen ${picked.length}`);
 }
+// --unapproved: onay bekleyen / reddedilen ürünler de (ret nedenleriyle)
+if (process.argv.includes("--unapproved")) {
+  let pg = 0, tok = "";
+  for (;;) {
+    const q = tok ? `size=100&nextPageToken=${encodeURIComponent(tok)}` : `page=${pg}&size=100`;
+    const r = await get(`/product/sellers/${SELLER_ID}/products/unapproved?${q}`);
+    const content: any[] = r.content ?? [];
+    for (const c of content) {
+      seen++;
+      const vs = c.variants ?? [c];
+      const hit = (brandRe && brandRe.test(String(c.brand?.name ?? c.brand ?? ""))) || (titleRe && titleRe.test(String(c.title ?? ""))) || vs.some((v: any) => barcodes.has(String(v.barcode)));
+      if (!hit) continue;
+      picked.push({ unapproved: true, status: c.status, contentId: c.contentId, productMainId: c.productMainId, title: c.title, brand: c.brand?.name ?? c.brand, category: c.category?.name ?? c.categoryName, categoryId: c.category?.id ?? c.pimCategoryId,
+        rejectReasons: [...(c.rejectReasonDetails ?? []), ...vs.flatMap((v: any) => v.rejectReasonDetails ?? [])].map((x: any) => x.rejectReasonDetail ?? x.rejectReason ?? JSON.stringify(x)),
+        description: c.description, images: (c.images ?? []).map((i: any) => String(i?.url ?? i)), attributes: attrs(c.attributes),
+        variants: vs.map((v: any) => ({ barcode: v.barcode, stockCode: v.stockCode, price: Number(v.price?.salePrice ?? v.salePrice), stock: Number(v.stock?.quantity ?? v.quantity), vatRate: v.vatRate, closed: false, attributes: attrs(v.attributes) })) });
+    }
+    await sleep(300);
+    if (!content.length) break;
+    if (tok) { tok = r.nextPageToken ?? ""; if (!tok) break; continue; }
+    pg++;
+    if (pg >= (r.totalPages ?? 0)) break;
+    if (pg * 100 >= 10000) { tok = r.nextPageToken ?? ""; if (!tok) break; }
+  }
+}
 writeFileSync(OUT, JSON.stringify(picked, null, 1));
 console.log(JSON.stringify({ taranan: seen, secilen: picked.length, varyant: picked.reduce((t, p) => t + p.variants.length, 0), cikti: OUT }));
-for (const p of picked) console.log(`${p.brand} | ${String(p.title).slice(0, 70)} | ${p.category} | ${p.variants.map((v: any) => `${v.price}TL/${v.stock}`).join(", ")}`);
+for (const p of picked) console.log(`${p.unapproved ? `[${p.status ?? "onaysız"}] ` : ""}${p.brand} | ${String(p.title).slice(0, 70)} | ${p.category} | ${p.variants.map((v: any) => `${v.price}TL/${v.stock}`).join(", ")}${p.rejectReasons?.length ? ` | RET: ${[...new Set(p.rejectReasons)].join(" / ").slice(0, 400)}` : ""}`);
