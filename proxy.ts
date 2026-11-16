@@ -10,7 +10,8 @@ export function proxy(req: NextRequest) {
   if (!isStoreHost(host)) return;
   const url = req.nextUrl.clone();
   const p = url.pathname;
-  if (p === "/magaza" || p.startsWith("/magaza/")) { url.pathname = p.slice(7) || "/"; return NextResponse.redirect(url, 308); }
+  // Yönlendirme mutlak adresle: arka uçta istek adresi 127.0.0.1:3100 görünür (Caddy), Host başlığı gerçek alan adıdır
+  if (p === "/magaza" || p.startsWith("/magaza/")) return NextResponse.redirect(new URL((p.slice(7) || "/") + url.search, `https://${String(host).split(":")[0].toLowerCase()}`), 308);
   url.pathname = p === "/" ? "/magaza" : `/magaza${p}`;
   return NextResponse.rewrite(url);
 }
