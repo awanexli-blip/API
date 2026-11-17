@@ -61,8 +61,7 @@ async function send(star: number, mp: string) {
 // K 18.11 (pazar talebi adayları): dosyadaki ürün kimlikleri (satır başına bir uuid) sırayla; sınır dolarsa baştakiler alınır
 async function sendIds(file: string, mp: string) {
   const { readFileSync } = await import("node:fs");
-  const ids = [...new Set(readFileSync(file, "utf8").split(/?
-/).map((x) => x.trim()).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))];
+  const ids = [...new Set(readFileSync(file, "utf8").split(/\s+/).map((x) => x.trim()).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))];
   const rows: { product_id: string; source: string }[] = [];
   for (let i = 0; i < ids.length; i += 200) {
     const { data, error } = await db.from("products").select("id, source, status").in("id", ids.slice(i, i + 200));
