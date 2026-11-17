@@ -8,7 +8,9 @@ En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kal
 - **Vitrin:** K'nın Öz Saray monogramı logo (başlık/alt bilgi/sekme simgesi, `public/brand`, proxy hariç).
 - **Sunucu:** node_modules'ta root'a ait dosyalar `npm ci`'yi EACCES (çıkış 243) ile düşürüyordu; sahiplik trentakip'e verildi, panel Next 16.4.6 ile derlendi.
 - **Telegram Claude köprüsü:** hata metni stdout'tan da okunuyor, sebebi (kullanım sınırı/giriş) bildiriliyor, sürdürme başarısızsa yeni konuşma; deneme cevabı geldi.
-- Açık: Colezium tam XML (180 bin) K'dan; vitrin ödeme/kargo sonra.
+- **GİB satıcı bilgisi (K 17.11, vergi dairesi değişti):** e-Arşiv portal Kullanıcı Bilgileri (EARSIV_PORTAL_KULLANICI_BILGILERI_KAYDET, K onaylı) yeni vergi dairesi + iş yeri adresine güncellendi, tekrar okunup doğrulandı; ad/kimlik aynı. İmzalı eski faturalar değişmez.
+- **Vitrin logosu v2 (K):** fotoğraf olduğu gibi (logo-120/240.jpg), sekme simgesi ÖS kısmı saydam (icon-*.png); panel icon.svg (panel) grubuna.
+- Açık: Colezium tam XML (180 bin) K'dan; vitrin ödeme/kargo sonra; kurumsal e-Fatura mükellefi 3 bekleyen + 5 eski hatalı e-Arşiv mali müşavirde.
 
 ## 2026-11-17 (81) — Gider takibi, kupon/tahsilat payı, marj ölçeği, HB gerçek kargo, Toptancım kazandıranlar, vitrin v3 (yarım)
 - **Gider takibi (K):** `worker/fees.ts` (günde 2 kez, trentakip-fees.timer): Trendyol kesintileri + kargo faturası kalemleri -> `mp_fees` (migration 091), sipariş gerçek kargosu (orders.act_shipping), ürün gerçek desisi (products.desi_actual), özet `app_state fees_report:trendyol`, ceza/zarar Telegram. İlk tur: gerçek kargo tahminden %7 fazla; 30 günlük genel gider 2.911 TL (reklam 1.000 + duyuru 920 tek seferlik, K).
