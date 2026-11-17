@@ -54,4 +54,7 @@ export const parseSort = (s: unknown): Sort => (typeof s === "string" && s in SO
 export const parsePage = (s: unknown) => { const n = Math.floor(Number(s)); return n >= 1 && n <= 500 ? n : 1; };
 // Arama: ILIKE kalıbı kaçışı (% _ \) ve en az 2 harf
 export const searchTerm = (q: unknown) => { const t = String(q ?? "").trim().slice(0, 80); return t.length >= 2 ? t : ""; };
+// Fiyat aralığı filtresi (TL, tam sayı); geçersiz ya da ters aralık yok sayılır
+export const parsePrice = (s: unknown) => { const n = Math.floor(Number(String(s ?? "").replace(/[^\d]/g, ""))); return String(s ?? "").trim() && n >= 0 && n <= 1_000_000 ? n : undefined; };
+export const PRICE_BANDS: [number | undefined, number | undefined, string][] = [[undefined, 250, "250 TL altı"], [250, 500, "250 - 500 TL"], [500, 1000, "500 - 1.000 TL"], [1000, 2500, "1.000 - 2.500 TL"], [2500, undefined, "2.500 TL üstü"]];
 export const likeEscape = (t: string) => t.replace(/[\\%_]/g, (c) => `\\${c}`);
