@@ -13,10 +13,25 @@ const addCost = (sup: Supplier, c: number) => Math.round((c + (Number(sup.cost_a
 
 // Aynı tedarikçinin ek XML linki (suppliers.feeds, migration 048). Boş alanlar ana linkin ayarını kullanır.
 // type "api": REST API (lib/supplier-api.ts, ayar api alanında); yoksa XML
-export type Feed = { id: string; label?: string; url?: string; sku_prefix?: string | null; mapping?: Record<string, Field> | null; item_path?: string | null; type?: "xml" | "api"; api?: ApiSource | null };
+// K 17.11 (Bezos API): price_includes_vat link bazında (Bezos XML KDV hariç, API KDV dahil); skip_known: önceki linklerde olan barkodlu ürün atlanır
+// (aynı ürün iki linkten iki ayrı ürün olarak açılmasın); transform "bezos": varyant ailesi ve "Hizmetler" atlanır (varyantlar XML'den gelir).
+export type Feed = { id: string; label?: string; url?: string; sku_prefix?: string | null; mapping?: Record<string, Field> | null; item_path?: string | null; type?: "xml" | "api"; api?: ApiSource | null;
+  price_includes_vat?: boolean | null; skip_known?: boolean; transform?: "bezos" | null };
 export function feedSupplier<T extends Supplier>(sup: T, feed?: Feed | null): T {
   if (!feed) return sup;
-  return { ...sup, sku_prefix: feed.sku_prefix ?? sup.sku_prefix, mapping: feed.mapping && Object.keys(feed.mapping).length ? feed.mapping : sup.mapping, item_path: feed.item_path || sup.item_path };
+  return { ...sup, sku_prefix: feed.sku_prefix ?? sup.sku_prefix, mapping: feed.mapping && Object.keys(feed.mapping).length ? feed.mapping : sup.mapping, item_path: feed.item_path || sup.item_path,
+    ...(feed.price_includes_vat != null ? { price_includes_vat: feed.price_includes_vat } : {}) };
+}
+
+// Bezos API ürün listesi süzgeci: tek ürünler (varyant ailesi değil), hizmet olmayan, ve skip_known ise önceki linklerde barkodu görülmemiş olanlar
+export function feedFilter(items: any[], feed: Feed, seen: Set<string>): { items: any[]; skipped: number } {
+  let out = items;
+  if (feed.transform === "bezos") {
+    const parents = new Set(items.map((x) => x?.variantParentId).filter((x) => x != null).map(String));
+    out = out.filter((x) => x && x.variantParentId == null && !parents.has(String(x.id)) && !/^hizmetler/i.test(String(x.categoryPath ?? "").trim()));
+  }
+  if (feed.skip_known) out = out.filter((x) => { const b = String(x?.barcode ?? "").replace(/\s/g, "").toLowerCase(); return !b || !seen.has(b); });
+  return { items: out, skipped: items.length - out.length };
 }
 
 const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);

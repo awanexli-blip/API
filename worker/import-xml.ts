@@ -13,7 +13,7 @@ import { env, chunk, arg, SUPPLIER_ARG } from "./core/util.ts";
 import { safeFetch } from "./core/safe-fetch.ts";
 import { notifyOnce } from "./core/notify.ts";
 import { esc } from "./core/telegram.ts";
-import { feedSupplier, findItems, flattenVarDeger, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
+import { feedSupplier, feedFilter, findItems, flattenVarDeger, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
 import { fetchApiItems, loadSupplierSecrets } from "../lib/supplier-api.ts";
 // REST API XML yanıtı için worker'ın kendi ayrıştırıcısı (lib/ dosyası paket çözemez: Actions yalnızca worker/node_modules kurar)
 const apiXml = new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false });
@@ -89,13 +89,16 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
       const name = feed.label || `Link ${fi + 1}`;
       if (!feed.url) throw new Error(`${name}: ${feed.type === "api" ? "API" : "XML"} adresi yok`);
       let built: ReturnType<typeof buildItems>;
+      let apiRaw = 0; // süzgeçten önceki API kaydı (hepsi önceki linkte varsa liste boş kalır: hata değil)
       if (feed.type === "api") {
         // REST API: tüm sayfalar okunur (eksik okumada hata: stoklar sıfırlanmaz), ürünler XML ile aynı eşleme hattından geçer
         const api = await fetchApiItems(feed.url, feed.api ?? {}, { label: name, parseXml: (t) => apiXml.parse(t) });
         const body = JSON.stringify(api.items);
         feedHash.update(body);
-        built = buildItems({ items: api.items }, { ...feedSupplier(sup, feed), item_path: "items" }, seen, seenSku);
-        console.log(`${sup.name} / ${name}: API ${api.pages} sayfa (${api.path || "kök"})`);
+        const f = feedFilter(api.items, feed, seen);
+        built = buildItems({ items: f.items }, { ...feedSupplier(sup, feed), item_path: "items" }, seen, seenSku);
+        apiRaw = api.items.length;
+        console.log(`${sup.name} / ${name}: API ${api.pages} sayfa (${api.path || "kök"}), ${api.items.length} kayıt, ${f.skipped} atlandı (önceki linkte var / varyant ailesi / hizmet)`);
       } else {
         // İç ağ adresi, sonsuz yönlendirme ve 300 MB üstü gövde reddedilir (denetim S2.1)
         const res = await safeFetch(feed.url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
@@ -103,7 +106,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
         feedHash.update(res.body);
         built = buildItems(parseXml(flattenVarDeger(res.text())), feedSupplier(sup, feed), seen, seenSku);
       }
-      if (!built.total) throw new Error(`${name}: ${feed.type === "api" ? "API yanıtında" : "XML'de"} ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
+      if (!built.total && !apiRaw) throw new Error(`${name}: ${feed.type === "api" ? "API yanıtında" : "XML'de"} ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
       // Satır numaraları link başına ayrı aralıkta (hata listesinde hangi linkten geldiği anlaşılsın)
       const off = fi * 1_000_000;
       items.push(...built.items.map((i) => ({ ...i, row: i.row + off })));

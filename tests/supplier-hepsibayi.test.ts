@@ -135,3 +135,27 @@ test("Colezium: sözcüğü kesilmiş başlık bozuk sayılır, düzgün başlı
   for (const t of ["Kız Çuk Giyim Mont", "Renal Beef Biftekli Yaş Kedi sı 85 Gr", "Lüks Kırmızı lü Taşlı B si"]) assert.ok(brokenTitle(t), t);
   for (const t of ["Transparan Tül String Tanga", "Pembe Renk Kulaklı Tavşan Şapkası", "Ahşap Kutu Klipsi - Büyük, 1 Adet"]) assert.ok(!brokenTitle(t), t);
 });
+
+import { feedFilter, feedSupplier } from "../lib/supplier-xml.ts";
+test("Bezos API linki: varyant ailesi, hizmet ve XML'de olan barkod atlanır; fiyat KDV dahil (link ayarı), kod = ürün kodu", () => {
+  const api = [
+    { id: 1, code: "BZS3DAE37EA12F04354", barcode: "0700484165126", name: "Metal Düdük Sarı İpli 24 Adet", categoryPath: "Ev & Yaşam Ürünleri > Spor", stock: 100, unitPrice: 554.52, vatRate: 20, desi: 2, images: ["https://bezos.com.tr/g/a.png", "https://bezos.com.tr/g/b.png"], variantParentId: null },
+    { id: 2, code: "RPPN05K", barcode: "BZCREA000312", name: "Halı", categoryPath: "Halılar", stock: 483, unitPrice: 1073, vatRate: 10, images: [], variantParentId: null },
+    { id: 3, code: "PN05K08080", barcode: "", name: "Halı · EBAT: 80X80", stock: 0, unitPrice: 1073, variantParentId: 2 },
+    { id: 4, code: "KRG1", barcode: "111", name: "Kargo hizmeti", categoryPath: "Hizmetler", stock: 9, unitPrice: 10, variantParentId: null },
+    { id: 5, code: "BZSXML", barcode: "8680000000001", name: "XML'de olan", categoryPath: "Ev", stock: 5, unitPrice: 50, variantParentId: null },
+  ];
+  const feed = { id: "bzapi", type: "api" as const, transform: "bezos" as const, skip_known: true, price_includes_vat: true, sku_prefix: "",
+    mapping: { code: "model", barcode: "barcode", name: "title", categoryPath: "category", stock: "stock", unitPrice: "cost_price", vatRate: "vat_rate", desi: "desi", images: "images" } as any };
+  const f = feedFilter(api, feed, new Set(["8680000000001"]));
+  assert.deepEqual(f.items.map((x) => x.id), [1]);
+  assert.equal(f.skipped, 4);
+  const sup = feedSupplier({ code: "bezos", name: "Bezos", sku_prefix: "BZS", price_includes_vat: false } as any, feed);
+  assert.equal(sup.price_includes_vat, true);
+  const [p] = itemsToGroups(f.items, sup.mapping as any).map((g) => supplierPayload(g, sup, new Set()).payload);
+  assert.equal(p.sku, "BZS3DAE37EA12F04354");
+  assert.equal(p.cost_price, 554.52, "KDV dahil fiyat ikinci kez KDV'lenmez");
+  assert.equal(p.variants[0].barcode, "0700484165126");
+  assert.equal(p.variants[0].stock, 100);
+  assert.equal(p.images?.length ?? p.image_urls?.length ?? 2, 2);
+});
