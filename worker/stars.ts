@@ -1,6 +1,7 @@
 // Ürün seçimi yıldızı ve yıldıza göre gönderim (migration 076; K, 01.11). Trendyol'da 50 bin ürün sınırı: en iyiler önce.
 //   node --experimental-strip-types worker/stars.ts rate [pazaryeri]                 -> yıldız ver (opportunity.ts puanlarından)
 //   node --experimental-strip-types worker/stars.ts send <yıldız> [pazaryeri] [--source xml:<tedarikçi>] [--apply] -> o yıldızdaki, pazaryerinde olmayan ürünleri kuyruğa al
+//   node --experimental-strip-types worker/stars.ts ids <dosya> [pazaryeri] [--apply]  -> dosyadaki ürün kimlikleri (sırayla)
 //   node --experimental-strip-types worker/stars.ts new xml:<tedarikçi> <gün> [pazaryeri] [--apply] -> o tedarikçinin son N günde eklenen stoklu ürünleri
 // rate: uygun ürünler (excluded boş) puana göre sıralanır, 10 eşit dilim -> 10 (en iyi) .. 1. Aynı ürün başka adla tekrar ediyorsa (aynı ilk
 // görsel ya da aynı başlık + maliyet) yalnızca en yüksek puanlı yıldız alır, diğerleri "kopya" elenir (Trendyol "çoklanan ürün" uyarısı).
@@ -57,6 +58,22 @@ async function send(star: number, mp: string) {
   await queueRows(o.data, mp, `${star}★${src ? " " + src : ""}`, `stars:${mp}:${star}${src ? ":" + src : ""}`);
 }
 
+// K 18.11 (pazar talebi adayları): dosyadaki ürün kimlikleri (satır başına bir uuid) sırayla; sınır dolarsa baştakiler alınır
+async function sendIds(file: string, mp: string) {
+  const { readFileSync } = await import("node:fs");
+  const ids = [...new Set(readFileSync(file, "utf8").split(/?
+/).map((x) => x.trim()).filter((x) => /^[0-9a-f-]{36}$/i.test(x)))];
+  const rows: { product_id: string; source: string }[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await db.from("products").select("id, source, status").in("id", ids.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    const by = new Map((data ?? []).filter((p: any) => p.status === "active").map((p: any) => [p.id, p.source]));
+    for (const id of ids.slice(i, i + 200)) if (by.has(id)) rows.push({ product_id: id, source: by.get(id) as string });
+  }
+  const tag = file.replace(/^.*[\/]/, "").replace(/[^A-Za-z0-9._-]/g, "");
+  await queueRows(rows, mp, `dosya ${tag}`, `ids:${mp}:${tag}`);
+}
+
 // K 17.11 ("Bezos'a yeni ürünler eklendi, hepsini ekle"): bir tedarikçinin son N günde eklenen, aktif ve stoklu ürünleri (puanlama beklemeden)
 async function sendNew(source: string, days: number, mp: string) {
   if (!/^xml:[a-z0-9_-]+$/.test(source) || !(days > 0 && days <= 60)) throw new Error("kullanım: stars.ts new xml:<tedarikçi> <gün> [pazaryeri] [--apply]");
@@ -103,6 +120,7 @@ if (process.argv[1]?.replace(/\\/g, "/").endsWith("worker/stars.ts")) {
   db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
   if (cmd === "rate") await rate(a1 || "trendyol");
   else if (cmd === "send") await send(Number(a1), a2 && !a2.startsWith("--") ? a2 : "trendyol");
+  else if (cmd === "ids") await sendIds(a1, a2 && !a2.startsWith("--") ? a2 : "trendyol");
   else if (cmd === "new") { const mp3 = process.argv[5]; await sendNew(a1, Number(a2), mp3 && !mp3.startsWith("--") ? mp3 : "trendyol"); }
   else console.log("kullanım: stars.ts rate [pazaryeri] | stars.ts send <yıldız> [pazaryeri] [--apply]");
 }

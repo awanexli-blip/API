@@ -19,3 +19,6 @@ kesintiler/
 # Sunucu paneli (ops/vps/panel-build.sh)
 .next-*
 .panel-restart
+
+# Ajan raporları (güvenlik/iş verisi; depo herkese açık, yalnızca yerelde)
+docs/raporlar/
