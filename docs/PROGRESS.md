@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-17 (82) — Bezos API yeni ürünleri (düdük dahil), vitrin logosu, Next 16.4.6, Telegram köprüsü
+- **Bezos API (K):** XML'de olmayan ürünler için ikinci link `bzapi` (REST, `products`, 500'lük sayfa): `price_includes_vat`, `skip_known` (ana linkte olan barkod atlanır), `transform: "bezos"` (varyant ailesi + Hizmetler atlanır, `lib/supplier-xml.ts feedFilter`). İçe aktarma: 109 bin kayıttan 603 yeni ürün, 0 hata.
+- **Kuyruk:** `stars.ts new xml:bezos 1 <mp> --apply`: Trendyol 862 + Hepsiburada 862 (son 1 gün, var olan/kuyruktaki 1.329 atlandı). Metal Düdük 24 Adet (0700484165126) iki pazaryerinde de kuyrukta.
+- **Vitrin:** K'nın Öz Saray monogramı logo (başlık/alt bilgi/sekme simgesi, `public/brand`, proxy hariç).
+- **Sunucu:** node_modules'ta root'a ait dosyalar `npm ci`'yi EACCES (çıkış 243) ile düşürüyordu; sahiplik trentakip'e verildi, panel Next 16.4.6 ile derlendi.
+- **Telegram Claude köprüsü:** hata metni stdout'tan da okunuyor, sebebi (kullanım sınırı/giriş) bildiriliyor, sürdürme başarısızsa yeni konuşma; deneme cevabı geldi.
+- Açık: Colezium tam XML (180 bin) K'dan; vitrin ödeme/kargo sonra.
+
 ## 2026-11-17 (81) — Gider takibi, kupon/tahsilat payı, marj ölçeği, HB gerçek kargo, Toptancım kazandıranlar, vitrin v3 (yarım)
 - **Gider takibi (K):** `worker/fees.ts` (günde 2 kez, trentakip-fees.timer): Trendyol kesintileri + kargo faturası kalemleri -> `mp_fees` (migration 091), sipariş gerçek kargosu (orders.act_shipping), ürün gerçek desisi (products.desi_actual), özet `app_state fees_report:trendyol`, ceza/zarar Telegram. İlk tur: gerçek kargo tahminden %7 fazla; 30 günlük genel gider 2.911 TL (reklam 1.000 + duyuru 920 tek seferlik, K).
 - **Analiz (K):** `worker/order-profit.ts`: Kasım tedarikçi siparişleri kuponsuz ort. net 172 TL, 1 zarar; K'nın kendi terlikleri (dokunulmaz) zararda.
