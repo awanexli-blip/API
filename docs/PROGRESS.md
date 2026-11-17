@@ -2,6 +2,17 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-17 (81) — Gider takibi, kupon/tahsilat payı, marj ölçeği, HB gerçek kargo, Toptancım kazandıranlar, vitrin v3 (yarım)
+- **Gider takibi (K):** `worker/fees.ts` (günde 2 kez, trentakip-fees.timer): Trendyol kesintileri + kargo faturası kalemleri -> `mp_fees` (migration 091), sipariş gerçek kargosu (orders.act_shipping), ürün gerçek desisi (products.desi_actual), özet `app_state fees_report:trendyol`, ceza/zarar Telegram. İlk tur: gerçek kargo tahminden %7 fazla; 30 günlük genel gider 2.911 TL (reklam 1.000 + duyuru 920 tek seferlik, K).
+- **Analiz (K):** `worker/order-profit.ts`: Kasım tedarikçi siparişleri kuponsuz ort. net 172 TL, 1 zarar; K'nın kendi terlikleri (dokunulmaz) zararda.
+- **Fiyat (K onaylı):** kupon payı %2 (`coupon_rate`, migration 090), net taban 50 TL, marj ölçeği 0,4 (rakipli %5, tek %9, basamak 9/7/5, en az %4; `worker/margin-tune.ts`: tipik net 54-59 TL). Hepsiburada: kargo Aras desi tarifesi (gerçekte 12/21 paket Aras 107,90; hepsiJET baremi geçersiz), barem boş, tahsilat bedeli %0,87 (`payment_fee_rate`, migration 092), en az marj %4, taban 60. Senkron `buildCfg`'e kupon/tahsilat eklendi (önce canlıya geçmiyordu). Önizleme: `worker/price-preview.ts`.
+- **Toptancım (K):** arşivden "stok geldi" ile açılan 2.956 ilan satıştaydı -> senkron dışlananlara stok 0; yeniden arşivlendi; sonra `worker/ty-allow.ts` + `allow_products:trendyol`: 2.757 kazandıran ilan (tek satıcı 2.518, buybox bizde 215, yeni fiyat buybox altında 21, satmış 3) geri açıldı.
+- **Colezium:** 30.750 ürün; Gıda Market'teki gıda adımları yasak (parfüm/temizlik/pet serbest), `&amp;` düzeltildi. Aynı ürün analizi (supplier-dupes, Colezium dahil) sunucuda çalışıyor (trentakip-job-dupes2, çıktı /var/lib/trentakip/claude-home/dupes2.out); bitince `send-all.ts hepsiburada --apply` ile Colezium HB'ye. Colezium'un 180 bin ürünü için tam XML linki K'dan.
+- **Satış kısıtı:** yalnızca gıda (iç giyim/kitap serbest).
+- **Fatura:** iptal/teslim edilemeyen siparişte 8 gün geçtiyse iade faturası taslağı düğmesi (muhasebeci onaylı).
+- **Racıng -> HB:** 7 ürün 35 beden, 999 TL / 20 stok (`ty-pick.ts`, `ty-to-hb.ts`). Hermes HB'de "Eco Lounge Hermes Günlük Spor Ayakkabı" olarak var.
+- **Vitrin v3 (YARIM, `vitrin-v3` dalı):** frontend-design becerisi (Anthropic, `.claude/skills/frontend-design`) + Bezos düzeninden ilham; İznik çinisi kimliği. Kalan: _ui kartı (stock rozeti, .body), kategori/arama sayfası (listede ara + sıralama select), ürün sayfası (rozet, meta, fiyat kutusu, özellik kartı, açıklama kartı, paylaş), ekran görüntüsüyle kontrol, main'e birleştirme. Canlıda v1 duruyor. DNS: K Namecheap'te CNAME www (parking) ve URL Redirect @ kayıtlarını silmeli.
+
 ## 2026-11-16 (80) — Colezium, satış kısıtı (yalnızca gıda), fatura iade/iptal, Racıng -> HB, ozsaraytr.com vitrini
 - **Colezium (K):** sunucuda tedarikçi (CLZ, KDV dahil, marka Eco Lounge|Genel Markalar|Tcx), 30.750 ürün içe aktarıldı; VariantName/VariantValue çiftleri (sıradan bağımsız renk/beden). XML'de ~2.679 başlıkta sözcük parçası silinmiş ("Kız Çuk Giyim", "Kedi sı"): taslak, satışa çıkmaz (`brokenTitle`). Kitap XML'i eklenmedi. K: ilk siparişten önce Colezium ile fatura/üyelik görüşmesi.
 - **Satış kısıtı (K):** "tüm ürünleri satabiliyoruz gıda hariç": iç giyim ve kitap yasağı kalktı (`lib/scope.ts`).
