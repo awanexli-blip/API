@@ -1,6 +1,7 @@
 // Ürün seçimi yıldızı ve yıldıza göre gönderim (migration 076; K, 01.11). Trendyol'da 50 bin ürün sınırı: en iyiler önce.
 //   node --experimental-strip-types worker/stars.ts rate [pazaryeri]                 -> yıldız ver (opportunity.ts puanlarından)
 //   node --experimental-strip-types worker/stars.ts send <yıldız> [pazaryeri] [--apply] -> o yıldızdaki, pazaryerinde olmayan ürünleri kuyruğa al
+//   node --experimental-strip-types worker/stars.ts new xml:<tedarikçi> <gün> [pazaryeri] [--apply] -> o tedarikçinin son N günde eklenen stoklu ürünleri
 // rate: uygun ürünler (excluded boş) puana göre sıralanır, 10 eşit dilim -> 10 (en iyi) .. 1. Aynı ürün başka adla tekrar ediyorsa (aynı ilk
 // görsel ya da aynı başlık + maliyet) yalnızca en yüksek puanlı yıldız alır, diğerleri "kopya" elenir (Trendyol "çoklanan ürün" uyarısı).
 // send: --apply yoksa yalnızca sayar (deneme). Pazaryerinde ilanı olan / kuyrukta bekleyen ürün atlanır. Trendyol üst sınırı LISTING_CAP (48.000).
@@ -50,6 +51,21 @@ async function send(star: number, mp: string) {
   if (!(star >= 1 && star <= 10)) throw new Error("yıldız 1-10 olmalı");
   const o = await readAll<any>((a, b) => db.from("product_opportunity").select("product_id, source").eq("marketplace", mp).eq("stars", star).is("excluded", null).order("product_id").range(a, b));
   if (o.error) throw new Error(o.error.message);
+  await queueRows(o.data, mp, `${star}★`, `stars:${mp}:${star}`);
+}
+
+// K 17.11 ("Bezos'a yeni ürünler eklendi, hepsini ekle"): bir tedarikçinin son N günde eklenen, aktif ve stoklu ürünleri (puanlama beklemeden)
+async function sendNew(source: string, days: number, mp: string) {
+  if (!/^xml:[a-z0-9_-]+$/.test(source) || !(days > 0 && days <= 60)) throw new Error("kullanım: stars.ts new xml:<tedarikçi> <gün> [pazaryeri] [--apply]");
+  const since = new Date(Date.now() - days * 864e5).toISOString();
+  const p = await readAll<any>((a, b) => db.from("products").select("id, source, product_variants(stock, reserved)").eq("source", source).eq("status", "active").gte("created_at", since).order("id").range(a, b));
+  if (p.error) throw new Error(p.error.message);
+  const rows = p.data.filter((x: any) => (x.product_variants ?? []).some((v: any) => Number(v.stock ?? 0) - Number(v.reserved ?? 0) >= 3)).map((x: any) => ({ product_id: x.id, source: x.source }));
+  await queueRows(rows, mp, `${source} son ${days} gün`, `new:${mp}:${source}`);
+}
+
+async function queueRows(rows: { product_id: string; source: string }[], mp: string, label: string, idem: string) {
+  const o = { data: rows };
   // Pazaryerinde ilanı olan, reddedilen (K, 04.11: "düzeltmeden gönderme"; düzeltilen ürünü ai-attrs kendisi kuyruğa alır) ya da kuyrukta bekleyen
   // ürün atlanır. Yalnızca kaldırılmış (gone) ve deneme (SEND_DRY, "DENEME") işaretli ilan yeniden alınır.
   const has = new Set<string>();
@@ -69,12 +85,12 @@ async function send(star: number, mp: string) {
     const room = Math.max(0, cap - live - (q ?? []).reduce((t: number, j: any) => t + (j.payload?.product_ids?.length ?? 0), 0));
     if (ids.length > room) { console.log(`sınır: ${cap} ilan; yer ${room}, ${ids.length - room} ürün dışarıda kaldı`); ids = ids.slice(0, room); }
   }
-  console.log(`${mp} ${star}★: ${o.data.length} ürün, ${o.data.length - ids.length} zaten var/kuyrukta, ${ids.length} kuyruğa ${apply ? "alınıyor" : "alınacak (deneme; --apply ile)"}`);
+  console.log(`${mp} ${label}: ${o.data.length} ürün, ${o.data.length - ids.length} zaten var/kuyrukta, ${ids.length} kuyruğa ${apply ? "alınıyor" : "alınacak (deneme; --apply ile)"}`);
   if (!apply || !ids.length) return;
   const day = new Date().toISOString().slice(0, 16);
   let n = 0;
   for (const [i, part] of chunk(ids, 200).entries()) {
-    const { error } = await db.from("jobs").insert({ type: `send_products:${mp}`, marketplace: mp, payload: { product_ids: part }, idempotency_key: `stars:${mp}:${star}:${day}:${i}`, created_by: process.env.ACTOR || "yildiz" });
+    const { error } = await db.from("jobs").insert({ type: `send_products:${mp}`, marketplace: mp, payload: { product_ids: part }, idempotency_key: `${idem}:${day}:${i}`, created_by: process.env.ACTOR || "yildiz" });
     if (error) console.error(error.message); else n += part.length;
   }
   console.log(`kuyruğa alındı: ${n}`);
@@ -84,5 +100,6 @@ if (process.argv[1]?.replace(/\\/g, "/").endsWith("worker/stars.ts")) {
   db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
   if (cmd === "rate") await rate(a1 || "trendyol");
   else if (cmd === "send") await send(Number(a1), a2 && !a2.startsWith("--") ? a2 : "trendyol");
+  else if (cmd === "new") { const mp3 = process.argv[5]; await sendNew(a1, Number(a2), mp3 && !mp3.startsWith("--") ? mp3 : "trendyol"); }
   else console.log("kullanım: stars.ts rate [pazaryeri] | stars.ts send <yıldız> [pazaryeri] [--apply]");
 }
