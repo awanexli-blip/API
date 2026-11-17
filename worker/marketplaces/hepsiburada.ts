@@ -562,6 +562,13 @@ export async function hbSendInvoiceLink(c: ReturnType<typeof hbClient>, packageN
 }
 
 export function hbOrder(x: any, tag: string): OrderIn | null {
+  // Kargodaki/teslim/teslim edilemedi listeleri (canlı 17.11): {Id, PackageNumber, OrderNumber, OrderNumbers, Barcode, HasInvoice, DeliveredDate}; kalem yok
+  if (x && x.items == null && (x.PackageNumber != null || x.OrderNumber != null)) {
+    const no = String(x.OrderNumber ?? (Array.isArray(x.OrderNumbers) ? x.OrderNumbers[0] : "") ?? "");
+    if (!no) return null;
+    return { statusOnly: true, packageId: no, orderNo: no, status: String(x.Status ?? x.status ?? tag), orderedAt: null, total: 0, currency: "TRY", deadline: null, cargo: null,
+      tracking: x.Barcode ?? null, city: null, lines: [] } as OrderIn;
+  }
   const its: any[] = x.items ?? x.lineItems ?? x.orderLines ?? x.lines ?? [x];
   const first = its[0] ?? {};
   const orderNo = String(x.orderNumber ?? first.orderNumber ?? x.packageNumber ?? "");
@@ -590,6 +597,9 @@ export function hbOrder(x: any, tag: string): OrderIn | null {
 export function mergeOrder(map: Map<string, OrderIn>, o: OrderIn) {
   const cur = map.get(o.packageId);
   if (!cur) { map.set(o.packageId, o); return; }
+  // Yalnızca durum: tam kaydın durumunu ilerletir (liste sırası Open -> Packaged -> Shipped -> Delivered -> Undelivered -> Cancelled)
+  if (o.statusOnly) { map.set(o.packageId, { ...cur, status: o.status, tracking: cur.tracking ?? o.tracking }); return; }
+  if (cur.statusOnly) { map.set(o.packageId, { ...o, status: cur.status }); return; }
   const seen = new Set(cur.lines.map((l: any) => l.lineId));
   const extra = o.lines.filter((l: any) => !seen.has(l.lineId));
   const lines = [...cur.lines, ...extra].map((l, i) => ({ ...l, lineNo: i + 1 }));

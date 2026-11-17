@@ -89,6 +89,16 @@ export async function syncOrders(db: any, mp: Marketplace, cfg: PricingConfig, c
   }
   const out = { fetched: orders.length, inserted: 0, updated: 0, same: 0, errors: 0, attention: 0, statuses: {} as Record<string, number> };
   for (const o of orders) {
+    if (o.statusOnly) {
+      // Satır/tutar yok: yeni sipariş açılmaz, var olanın durumu güncellenir (iptal/iade geri alınmaz)
+      const st = mapOrderStatus(mp.id, o.status);
+      const { data, error } = await db.from("orders").update({ status: st.status, marketplace_status: o.status, updated_at: new Date().toISOString() })
+        .eq("marketplace", mp.id).eq("package_id", o.packageId).not("status", "in", `(${st.status},cancelled,returned${st.status === "delivered" || st.status === "problem" ? "" : ",delivered"})`).select("id");
+      if (error) { out.errors++; if (out.errors <= 3) console.error("sipariş durumu yazılamadı:", error.message.slice(0, 200)); continue; }
+      out.statuses[st.status] = (out.statuses[st.status] ?? 0) + 1;
+      if (data?.length) out.updated++; else out.same++;
+      continue;
+    }
     const row = orderRow(mp.id, o, refs, cfg, frozen.get(o.packageId));
     out.statuses[row.status] = (out.statuses[row.status] ?? 0) + 1;
     if (row.needs_attention) out.attention++;

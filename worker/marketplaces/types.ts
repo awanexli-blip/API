@@ -33,7 +33,8 @@ export type OrderAddress = { fullAddress?: string; district?: string; city?: str
 export type OrderCustomer = { name: string | null; address: OrderAddress | null };
 // buyerType: kişisel veri değil, adres silinse de kalır (panel rozeti / iade uyarısı)
 export type BuyerType = "bireysel" | "kurumsal" | "kurumsal_efatura";
-export type OrderIn = { packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; customer?: OrderCustomer; buyerType?: BuyerType; lines: OrderLineIn[] };
+// statusOnly: listede yalnızca numara + durum var (HB kargodaki/teslim listeleri): var olan siparişin durumu güncellenir, satır/tutar ezilmez
+export type OrderIn = { statusOnly?: boolean; packageId: string; orderNo: string; status: string; orderedAt: number | null; total: number; currency: string; deadline: number | null; cargo: string | null; tracking: string | null; city: string | null; customer?: OrderCustomer; buyerType?: BuyerType; lines: OrderLineIn[] };
 export type QuestionIn = { id: string; text: string; productTitle: string; productKey: string | null; imageUrl: string | null; askedAt: number | null };
 // İade talebi (müşteri adı alınmaz)
 export type ClaimLineIn = { key: string; title: string; qty: number; price: number; status: string; reason: string | null };

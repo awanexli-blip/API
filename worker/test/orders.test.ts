@@ -65,5 +65,18 @@ check("kârlı siparişte zarar uyarısı yok", !/ZARARINA/.test(r.attention_rea
 const lossCancelled = orderRow("trendyol", { ...o, status: "Cancelled", total: 405.37, lines: [{ lineNo: 1, key: "TCX-1", title: "Duplo", qty: 1, unitPrice: 405.37 }] }, lossRefs, cfg);
 check("iptal edilen zararlı siparişte uyarı yok", !/ZARARINA/.test(lossCancelled.attention_reason ?? ""), lossCancelled.attention_reason);
 
+// HB kargodaki/teslim listesi kısa kayıt (canlı 17.11, PascalCase): yalnızca durum, satır/tutar ezilmez
+{
+  const full = hbOrder({ orderNumber: "4000000001", status: "Open", items: [{ orderNumber: "4000000001", lineItemId: "a", merchantSku: "X", productName: "Ürün", quantity: 1, unitPrice: { amount: 100 } }] }, "Open")!;
+  const short = hbOrder({ Id: "z", PackageNumber: "9000000001", OrderNumber: "4000000001", OrderNumbers: ["4000000001"], HasInvoice: true }, "Delivered")!;
+  check("HB kısa kayıt: statusOnly + sipariş no", !!short?.statusOnly && short.orderNo === "4000000001" && short.lines.length === 0);
+  const m = new Map<string, OrderIn>(); mergeOrder(m, full); mergeOrder(m, short);
+  const got = m.get("4000000001")!;
+  check("HB birleşme: durum Delivered, satırlar ve tutar korunur", got.status === "Delivered" && got.lines.length === 1 && !got.statusOnly && got.total === full.total, got);
+  const m2 = new Map<string, OrderIn>(); mergeOrder(m2, short);
+  check("HB yalnızca kısa kayıt: statusOnly kalır (yeni sipariş açılmaz)", !!m2.get("4000000001")?.statusOnly);
+  check("durum: HB Delivered -> delivered", mapOrderStatus("hepsiburada", "Delivered").status === "delivered");
+}
+
 if (fails) { console.log(`\n${fails} sipariş testi başarısız`); process.exit(1); }
 console.log("\nSipariş testleri geçti");
