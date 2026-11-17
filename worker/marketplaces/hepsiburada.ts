@@ -519,8 +519,9 @@ const money = (x: any): number | null => { const v = x != null && typeof x === "
 const msOf = (x: any): number | null => (x == null ? null : typeof x === "number" ? x : Date.parse(String(x)) || null);
 
 // OMS kaydı (satır ya da paket) -> sipariş. Ad/adres yalnızca tedarikçiye iletmek için; loglanmaz.
-// Fatura linki (K 17.11): sipariş no -> HB paketleri (paket numarası, durum, tutar). Paketlenmiş (tarihsiz) + kargoda/teslim/teslim edilemedi (tarihli).
-export type HbPackage = { packageNumber: string; status: string; total: number };
+// Fatura linki (K 17.11): sipariş no -> HB paketleri. Paketlenmiş liste küçük harfli alanlar + kalemler (tutar hesaplanır);
+// kargoda/teslim/teslim edilemedi listeleri canlıda (17.11) PascalCase: PackageNumber, OrderNumber, OrderNumbers, HasInvoice; tutar yok (null).
+export type HbPackage = { packageNumber: string; status: string; total: number | null; hasInvoice: boolean };
 export async function hbPackagesByOrder(c: ReturnType<typeof hbClient>, fromMs: number, toMs: number): Promise<Map<string, HbPackage[]>> {
   const fmt = (ms: number) => new Date(ms + 3 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
   const out = new Map<string, HbPackage[]>();
@@ -535,12 +536,17 @@ export async function hbPackagesByOrder(c: ReturnType<typeof hbClient>, fromMs: 
       const r: any = await c.hb(`${c.OMS}${path}?offset=${offset}&limit=100${dated ? `&begindate=${encodeURIComponent(fmt(fromMs))}&enddate=${encodeURIComponent(fmt(toMs))}` : ""}`);
       const list = Array.isArray(r) ? r : firstArray(r);
       for (const x of list) {
-        const pkg = String(x?.packageNumber ?? "");
-        const o = hbOrder(x, tag);
-        if (!pkg || !o) continue;
-        const arr = out.get(o.orderNo) ?? [];
-        if (!arr.some((p) => p.packageNumber === pkg)) arr.push({ packageNumber: pkg, status: o.status || tag, total: o.total });
-        out.set(o.orderNo, arr);
+        const pkg = String(x?.packageNumber ?? x?.PackageNumber ?? "");
+        if (!pkg) continue;
+        const its: any[] = Array.isArray(x.items) ? x.items : [];
+        const nos = new Set<string>([x.orderNumber, x.OrderNumber, ...(Array.isArray(x.OrderNumbers) ? x.OrderNumbers : []), ...its.map((i) => i?.orderNumber)].filter((v) => v != null && v !== "").map(String));
+        const total = its.length ? (hbOrder(x, tag)?.total ?? null) : null;
+        const hasInvoice = x.HasInvoice === true || x.hasInvoice === true;
+        for (const no of nos) {
+          const arr = out.get(no) ?? [];
+          if (!arr.some((p) => p.packageNumber === pkg)) arr.push({ packageNumber: pkg, status: String(x.status ?? x.Status ?? tag), total, hasInvoice });
+          out.set(no, arr);
+        }
       }
       await sleep(300);
       const total = Number(r?.totalCount ?? r?.total ?? NaN);

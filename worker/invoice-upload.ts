@@ -122,16 +122,20 @@ try {
       if (!v.ok && report.filter((x) => x.diag).length < 3) out.diag = invoiceDiag(html, corp?.company ?? o.customer_name);
       if (!v.ok) throw new Error(`GİB belgesi: ${v.problems.join(", ")}`);
       // 3) Pazaryeri paketi (canlı)
-      let pkCount = 1, hbPkgs: HbPackage[] = [];
+      let pkCount = 1, hbPkgs: HbPackage[] = [], hbHas = false;
       if (o.marketplace === "hepsiburada") {
         if (!hbPk) throw new Error(`Hepsiburada paket listesi alınamadı: ${hbErr || "bilinmiyor"}`);
         hbPkgs = hbPk.get(String(o.order_no)) ?? [];
         if (!hbPkgs.length) throw new Error("Hepsiburada'da bu siparişin paketi yok (henüz paketlenmemiş olabilir)");
         const bad = hbPkgs.find((x) => HB_BAD.test(x.status));
         if (bad) throw new Error(`Hepsiburada paket durumu ${bad.status}`);
-        const sum = r2(hbPkgs.reduce((t, x) => t + x.total, 0));
-        if (Math.abs(sum - Number(o.total)) > 0.01) throw new Error(`Hepsiburada paket tutarı ${sum.toFixed(2)} ≠ sistem ${Number(o.total).toFixed(2)}`);
+        // Tutar yalnızca paketlenmiş listede var (kargodaki/teslim edilen listede yok): varsa karşılaştırılır
+        if (hbPkgs.every((x) => x.total != null)) {
+          const sum = r2(hbPkgs.reduce((t, x) => t + (x.total ?? 0), 0));
+          if (Math.abs(sum - Number(o.total)) > 0.01) throw new Error(`Hepsiburada paket tutarı ${sum.toFixed(2)} ≠ sistem ${Number(o.total).toFixed(2)}`);
+        }
         pkCount = hbPkgs.length;
+        hbHas = hbPkgs.every((x) => x.hasInvoice);
       } else {
         const pk = await ty.orderPackages!(String(o.order_no));
         await sleep(300);
@@ -143,7 +147,14 @@ try {
       }
       // 4) PDF
       const pdf = toPdf(html);
-      if (mode === "dry") { out.ok = true; out.result = `uygun (${MP_NAME[o.marketplace]}, PDF ${Math.round(pdf.length / 1024)} KB${pkCount > 1 ? `, siparişte ${pkCount} paket` : ""}${unknownRate ? ", KDV oranı kayıtlı değil: %20 kesilmiş, kontrol et" : ""})`; continue; }
+      if (mode === "dry") { out.ok = true; out.result = hbHas ? "Hepsiburada'da pakete zaten fatura girilmiş: gönderilmez, yüklendi işaretlenir" : `uygun (${MP_NAME[o.marketplace]}, PDF ${Math.round(pdf.length / 1024)} KB${pkCount > 1 ? `, siparişte ${pkCount} paket` : ""}${unknownRate ? ", KDV oranı kayıtlı değil: %20 kesilmiş, kontrol et" : ""})`; continue; }
+      if (o.marketplace === "hepsiburada" && hbHas) {
+        // HB'de pakete zaten fatura girilmiş (elle yüklenmiş olabilir): ikinci link gönderilmez
+        const now = new Date().toISOString();
+        out.ok = true; out.result = "Hepsiburada'da bu pakete daha önce fatura girilmiş"; already++;
+        await db.from("order_invoices").update({ status: "uploaded", uploaded_at: now, error: "Hepsiburada: pakete daha önce fatura girilmiş (elle yüklenmiş olabilir); Hepsiburada panelinden kontrol et", updated_at: now }).eq("order_id", r.order_id).eq("status", "signed");
+        continue;
+      }
       if (o.marketplace === "hepsiburada") {
         // PDF sunucuya, token veritabanına; link açılıp PDF döndüğü doğrulanmadan HB'ye gönderilmez
         const token = /^[a-f0-9]{64}$/.test(r.file_token ?? "") ? r.file_token : randomBytes(32).toString("hex");
