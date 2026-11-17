@@ -29,11 +29,11 @@ Veritabanı: sunucu PostgREST. Worker komutlarını şöyle çalıştır: SUPABA
 Canlıya yazan, toplu ya da geri dönüşü olmayan işlemlerde (silme, toplu fiyat/stok, pazaryerine gönderim, müşteriye cevap) ÖNCE ne yapacağını ve etkisini (kaç ürün) yaz, K "evet/tamam" demeden yapma; K'nın cevabı sonraki mesajda gelir.
 Müşteri kişisel verisini (ad, adres, telefon) ve gizli anahtarları asla yazma. Kod değiştirirsen test çalıştır; git push yapma (K'ya söyle).`;
 
-function runClaude(prompt) {
+function runClaude(prompt, cont = existsSync(STARTED)) {
   return new Promise((resolve) => {
     const args = ["-p", "--output-format", "text", "--append-system-prompt", SYSTEM,
       "--allowedTools", "Bash Read Grep Glob Edit Write WebSearch WebFetch"];
-    if (existsSync(STARTED)) args.splice(1, 0, "--continue");
+    if (cont) args.splice(1, 0, "--continue");
     const ch = spawn(CLAUDE, args, { cwd: "/opt/trentakip", env: process.env, stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
     const kill = setTimeout(() => { ch.kill("SIGTERM"); err += "\nzaman aşımı"; }, TIMEOUT_MS);
@@ -58,12 +58,19 @@ for (;;) {
       await rest(`claude_inbox?id=eq.${m.id}`, { method: "PATCH", body: JSON.stringify({ seen_at: new Date().toISOString() }) });
       const typing = setInterval(() => tg("sendChatAction", { chat_id: CHAT, action: "typing" }), 4500);
       tg("sendChatAction", { chat_id: CHAT, action: "typing" });
-      const res = await runClaude(m.text);
+      let res = await runClaude(m.text);
+      // 17.11: önceki konuşma sürdürülemezse (bozuk/çok uzun oturum) yeni konuşmayla bir kez daha
+      if (res.code !== 0 && existsSync(STARTED) && !/limit|usage|rate|quota|credit/i.test(res.err + res.out)) res = await runClaude(m.text, false);
       clearInterval(typing);
       if (res.code === 0 && res.out.trim()) { await say(res.out); try { writeFileSync(STARTED, new Date().toISOString()); } catch (e) { console.error("işaret dosyası:", String(e?.message ?? e).slice(0, 120)); } }
       else {
-        const why = /login|auth|api key|credential|401/i.test(res.err) ? "Claude'a giriş yapılmamış (sunucuda `sudo -u trentakip claude` ile giriş ya da claude.env'de ANTHROPIC_API_KEY)." : `Claude hata verdi (kod ${res.code}).`;
-        console.error(`mesaj #${m.id}: kod ${res.code}: ${res.err.slice(-300)}`);
+        // 17.11: Claude hata metnini çoğu zaman stdout'a yazar (16.11'de 5 mesaj "kod 1" ile boş hata kaydı bıraktı): ikisi birlikte
+        const detail = `${res.err}
+${res.out}`.trim().slice(-300);
+        const why = /login|auth|api key|credential|401/i.test(detail) ? "Claude'a giriş yapılmamış (sunucuda `sudo -u trentakip claude` ile giriş ya da claude.env'de ANTHROPIC_API_KEY)."
+          : /limit|usage|rate|quota|credit/i.test(detail) ? `Claude kullanım sınırı doldu, sınır yenilenince tekrar yaz. (${detail.slice(-160)})`
+          : `Claude hata verdi (kod ${res.code}): ${detail.slice(-200) || "ayrıntı yok"}`;
+        console.error(`mesaj #${m.id}: kod ${res.code}: ${detail}`);
         await say(`❗ ${why}`);
       }
       await heartbeat();
