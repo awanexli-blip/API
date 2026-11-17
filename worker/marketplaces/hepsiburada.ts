@@ -519,6 +519,42 @@ const money = (x: any): number | null => { const v = x != null && typeof x === "
 const msOf = (x: any): number | null => (x == null ? null : typeof x === "number" ? x : Date.parse(String(x)) || null);
 
 // OMS kaydı (satır ya da paket) -> sipariş. Ad/adres yalnızca tedarikçiye iletmek için; loglanmaz.
+// Fatura linki (K 17.11): sipariş no -> HB paketleri (paket numarası, durum, tutar). Paketlenmiş (tarihsiz) + kargoda/teslim/teslim edilemedi (tarihli).
+export type HbPackage = { packageNumber: string; status: string; total: number };
+export async function hbPackagesByOrder(c: ReturnType<typeof hbClient>, fromMs: number, toMs: number): Promise<Map<string, HbPackage[]>> {
+  const fmt = (ms: number) => new Date(ms + 3 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
+  const out = new Map<string, HbPackage[]>();
+  const sources: [string, string, boolean][] = [
+    [`/packages/merchantid/${c.MERCHANT}`, "Packaged", false],
+    [`/packages/merchantid/${c.MERCHANT}/shipped`, "Shipped", true],
+    [`/packages/merchantid/${c.MERCHANT}/delivered`, "Delivered", true],
+    [`/packages/merchantid/${c.MERCHANT}/undelivered`, "Undelivered", true],
+  ];
+  for (const [path, tag, dated] of sources) {
+    for (let offset = 0, page = 0; page < 30; page++, offset += 100) {
+      const r: any = await c.hb(`${c.OMS}${path}?offset=${offset}&limit=100${dated ? `&begindate=${encodeURIComponent(fmt(fromMs))}&enddate=${encodeURIComponent(fmt(toMs))}` : ""}`);
+      const list = Array.isArray(r) ? r : firstArray(r);
+      for (const x of list) {
+        const pkg = String(x?.packageNumber ?? "");
+        const o = hbOrder(x, tag);
+        if (!pkg || !o) continue;
+        const arr = out.get(o.orderNo) ?? [];
+        if (!arr.some((p) => p.packageNumber === pkg)) arr.push({ packageNumber: pkg, status: o.status || tag, total: o.total });
+        out.set(o.orderNo, arr);
+      }
+      await sleep(300);
+      const total = Number(r?.totalCount ?? r?.total ?? NaN);
+      if (list.length < 100 || (Number.isFinite(total) && offset + 100 >= total)) break;
+    }
+  }
+  return out;
+}
+// Pakete e-Arşiv fatura linki: PUT /packages/merchantid/{id}/packagenumber/{no}/invoice {invoiceLink}
+export async function hbSendInvoiceLink(c: ReturnType<typeof hbClient>, packageNumber: string, link: string) {
+  if (!/^https:\/\//.test(link)) throw new Error("fatura linki https olmalı");
+  return c.hb(`${c.OMS}/packages/merchantid/${c.MERCHANT}/packagenumber/${encodeURIComponent(packageNumber)}/invoice`, { method: "PUT", body: JSON.stringify({ invoiceLink: link }) });
+}
+
 export function hbOrder(x: any, tag: string): OrderIn | null {
   const its: any[] = x.items ?? x.lineItems ?? x.orderLines ?? x.lines ?? [x];
   const first = its[0] ?? {};

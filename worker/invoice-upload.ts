@@ -1,4 +1,4 @@
-// İmzalı e-Arşiv faturalarını Trendyol paketlerine yükler (K, 30.10). node --experimental-strip-types worker/invoice-upload.ts <dry|apply> [adet]
+// İmzalı e-Arşiv faturalarını Trendyol paketlerine yükler (K, 30.10); Hepsiburada'ya fatura linki gönderir (K 17.11: PDF sunucuda, /api/invoice-file/<token>). node --experimental-strip-types worker/invoice-upload.ts <dry|apply> [adet]
 // dry: hiçbir şey yüklemez; her fatura için kontrolleri yapar, PDF'i basar (boyut/biçim), raporu app_state.invoice_upload_report'a yazar.
 // apply: YALNIZCA son 24 saatteki deneme raporunda "uygun" çıkanları, kontrolleri yeniden yaparak yükler.
 // Kontroller (hepsi tutmalı): fatura imzalı ve Trendyol siparişi; GİB belgesinde ETTN + belge no + sipariş no + alıcı adı + ödenecek tutar;
@@ -6,11 +6,13 @@
 // Depo herkese açık: günlüğe/rapora alıcı adı ve PDF yazılmaz (yalnızca belge no, sipariş no, neden).
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, appendFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, appendFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env, sleep } from "./core/util.ts";
 import { createTrendyol } from "./marketplaces/trendyol.ts";
+import { hbClient, hbPackagesByOrder, hbSendInvoiceLink, type HbPackage } from "./marketplaces/hepsiburada.ts";
 import { EarsivClient } from "../lib/earsiv.ts";
 import { invoiceDiag, verifyInvoice } from "../lib/invoice-verify.ts";
 
@@ -22,15 +24,20 @@ const gib = new EarsivClient(env("GIB_PORTAL_USER"), env("GIB_PORTAL_PASS"), pro
 const CHROME = process.env.CHROME_BIN || "google-chrome";
 const BAD_STATUS = /cancel|unsupplied|unpacked/i;
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const MP_NAME: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada" };
+// HB fatura linki: PDF dosyası + herkese açık (tahmin edilemez) adres
+const FILE_DIR = process.env.INVOICE_FILE_DIR || "/var/lib/trentakip/invoices";
+const PUBLIC_BASE = (process.env.INVOICE_PUBLIC_BASE || process.env.PANEL_URL || "https://trentakip.duckdns.org").replace(/\/+$/, "");
+const HB_BAD = /undelivered|cancel/i;
 
 type Out = { belge_no: string | null; order_no: string | null; ok: boolean; reason?: string; result?: string; diag?: unknown };
 const report: Out[] = [];
 
 const { data: rows, error } = await db.from("order_invoices")
-  .select("order_id, ettn, belge_no, amount, vat, status, error, orders(marketplace, package_id, order_no, total, status, customer_name, buyer_type, address, order_lines(ty_discount, title, qty, unit_price, vat_rate, product_id))")
+  .select("order_id, ettn, belge_no, amount, vat, status, error, file_token, orders(marketplace, package_id, order_no, total, status, ordered_at, customer_name, buyer_type, address, order_lines(ty_discount, title, qty, unit_price, vat_rate, product_id))")
   .eq("status", "signed").order("belge_no");
 if (error) throw new Error(error.message);
-let list = (rows ?? []).filter((r: any) => r.orders?.marketplace === "trendyol");
+let list = (rows ?? []).filter((r: any) => r.orders?.marketplace === "trendyol" || r.orders?.marketplace === "hepsiburada");
 // Ürün KDV oranları (satırda yoksa)
 const vatOf = new Map<string, number>();
 {
@@ -49,6 +56,23 @@ if (mode === "apply") {
   list = list.filter((r: any) => allow.has(r.belge_no));
 }
 list = list.slice(0, limit);
+// Hepsiburada'ya ilk gerçek gönderim tek fatura: K, HB panelinde linkin doğru pakette açıldığını görünce kalanlar gider
+if (mode === "apply" && list.some((r: any) => r.orders.marketplace === "hepsiburada")) {
+  const { count } = await db.from("order_invoices").select("order_id, orders!inner(marketplace)", { count: "exact", head: true }).eq("status", "uploaded").eq("orders.marketplace", "hepsiburada");
+  if (!count) { let seen = false; list = list.filter((r: any) => r.orders.marketplace !== "hepsiburada" || (!seen && (seen = true))); }
+}
+// Hepsiburada paketleri (sipariş no -> paket no): siparişlerin en eskisinden 2 gün önceden bugüne
+let hbc: ReturnType<typeof hbClient> | null = null, hbPk: Map<string, HbPackage[]> | null = null, hbErr = "";
+{
+  const hbRows = list.filter((r: any) => r.orders.marketplace === "hepsiburada");
+  if (hbRows.length) {
+    try {
+      hbc = hbClient();
+      const from = Math.min(...hbRows.map((r: any) => Date.parse(r.orders.ordered_at) || Date.now())) - 2 * 86400000;
+      hbPk = await hbPackagesByOrder(hbc, from, Date.now());
+    } catch (e: any) { hbErr = String(e?.message ?? e).slice(0, 160); }
+  }
+}
 
 const dir = mkdtempSync(join(tmpdir(), "fatura-"));
 function toPdf(html: string): Uint8Array {
@@ -97,16 +121,48 @@ try {
       // Tanı yalnızca rapora (veritabanı; günlüğe yazılmaz), ilk 3 başarısız belge
       if (!v.ok && report.filter((x) => x.diag).length < 3) out.diag = invoiceDiag(html, corp?.company ?? o.customer_name);
       if (!v.ok) throw new Error(`GİB belgesi: ${v.problems.join(", ")}`);
-      // 3) Trendyol paketi (canlı)
-      const pk = await ty.orderPackages!(String(o.order_no));
-      await sleep(300);
-      const p = pk.find((x) => x.packageId === String(o.package_id));
-      if (!p) throw new Error(`Trendyol'da bu sipariş no altında paket ${o.package_id} yok`);
-      if (BAD_STATUS.test(p.status)) throw new Error(`Trendyol paket durumu ${p.status}`);
-      if (p.total == null || Math.abs(p.total - Number(o.total)) > 0.01) throw new Error(`Trendyol paket tutarı ${p.total ?? "?"} ≠ sistem ${Number(o.total).toFixed(2)}`);
+      // 3) Pazaryeri paketi (canlı)
+      let pkCount = 1, hbPkgs: HbPackage[] = [];
+      if (o.marketplace === "hepsiburada") {
+        if (!hbPk) throw new Error(`Hepsiburada paket listesi alınamadı: ${hbErr || "bilinmiyor"}`);
+        hbPkgs = hbPk.get(String(o.order_no)) ?? [];
+        if (!hbPkgs.length) throw new Error("Hepsiburada'da bu siparişin paketi yok (henüz paketlenmemiş olabilir)");
+        const bad = hbPkgs.find((x) => HB_BAD.test(x.status));
+        if (bad) throw new Error(`Hepsiburada paket durumu ${bad.status}`);
+        const sum = r2(hbPkgs.reduce((t, x) => t + x.total, 0));
+        if (Math.abs(sum - Number(o.total)) > 0.01) throw new Error(`Hepsiburada paket tutarı ${sum.toFixed(2)} ≠ sistem ${Number(o.total).toFixed(2)}`);
+        pkCount = hbPkgs.length;
+      } else {
+        const pk = await ty.orderPackages!(String(o.order_no));
+        await sleep(300);
+        const p = pk.find((x) => x.packageId === String(o.package_id));
+        if (!p) throw new Error(`Trendyol'da bu sipariş no altında paket ${o.package_id} yok`);
+        if (BAD_STATUS.test(p.status)) throw new Error(`Trendyol paket durumu ${p.status}`);
+        if (p.total == null || Math.abs(p.total - Number(o.total)) > 0.01) throw new Error(`Trendyol paket tutarı ${p.total ?? "?"} ≠ sistem ${Number(o.total).toFixed(2)}`);
+        pkCount = pk.length;
+      }
       // 4) PDF
       const pdf = toPdf(html);
-      if (mode === "dry") { out.ok = true; out.result = `uygun (PDF ${Math.round(pdf.length / 1024)} KB${pk.length > 1 ? `, siparişte ${pk.length} paket` : ""}${unknownRate ? ", KDV oranı kayıtlı değil: %20 kesilmiş, kontrol et" : ""})`; continue; }
+      if (mode === "dry") { out.ok = true; out.result = `uygun (${MP_NAME[o.marketplace]}, PDF ${Math.round(pdf.length / 1024)} KB${pkCount > 1 ? `, siparişte ${pkCount} paket` : ""}${unknownRate ? ", KDV oranı kayıtlı değil: %20 kesilmiş, kontrol et" : ""})`; continue; }
+      if (o.marketplace === "hepsiburada") {
+        // PDF sunucuya, token veritabanına; link açılıp PDF döndüğü doğrulanmadan HB'ye gönderilmez
+        const token = /^[a-f0-9]{64}$/.test(r.file_token ?? "") ? r.file_token : randomBytes(32).toString("hex");
+        mkdirSync(FILE_DIR, { recursive: true, mode: 0o750 });
+        writeFileSync(join(FILE_DIR, `${token}.pdf`), pdf, { mode: 0o640 });
+        if (token !== r.file_token) {
+          const w = await db.from("order_invoices").update({ file_token: token, updated_at: new Date().toISOString() }).eq("order_id", r.order_id);
+          if (w.error) throw new Error(`token kaydedilemedi: ${w.error.message}`);
+        }
+        const link = `${PUBLIC_BASE}/api/invoice-file/${token}`;
+        const chk = await fetch(link, { signal: AbortSignal.timeout(30000) }).catch(() => null);
+        const head = chk?.ok ? Buffer.from(await chk.arrayBuffer()).subarray(0, 4).toString() : "";
+        if (head !== "%PDF") throw new Error(`fatura linki açılmıyor (${chk?.status ?? "bağlantı yok"}): panel güncel mi?`);
+        for (const x of hbPkgs) { await hbSendInvoiceLink(hbc!, x.packageNumber, link); await sleep(300); }
+        const now = new Date().toISOString();
+        out.ok = true; out.result = `Hepsiburada'ya fatura linki gönderildi${hbPkgs.length > 1 ? ` (${hbPkgs.length} paket)` : ""}`; uploaded++;
+        await db.from("order_invoices").update({ status: "uploaded", uploaded_at: now, error: null, updated_at: now }).eq("order_id", r.order_id).eq("status", "signed");
+        continue;
+      }
       const u = await ty.uploadInvoice!(String(o.package_id), pdf, r.belge_no);
       await sleep(300);
       const now = new Date().toISOString();
@@ -117,7 +173,7 @@ try {
         .eq("order_id", r.order_id).eq("status", "signed");
     } catch (e: any) {
       failed++; out.reason = String(e?.message ?? e).slice(0, 200);
-      if (mode === "apply") await db.from("order_invoices").update({ error: `Trendyol yükleme: ${out.reason}`, updated_at: new Date().toISOString() }).eq("order_id", r.order_id);
+      if (mode === "apply") await db.from("order_invoices").update({ error: `${MP_NAME[o.marketplace] ?? "Pazaryeri"} yükleme: ${out.reason}`, updated_at: new Date().toISOString() }).eq("order_id", r.order_id);
     }
   }
 } finally {

@@ -71,6 +71,8 @@ if [ ! -f /etc/trentakip/env ]; then
   echo "   /etc/trentakip/env oluşturuldu: değerleri doldur"
 fi
 install -d -m 750 -o "$USER_NAME" -g "$USER_NAME" /var/log/trentakip
+# Hepsiburada fatura linki PDF'leri (worker/invoice-upload.ts yazar, panel /api/invoice-file sunar)
+install -d -m 750 -o "$USER_NAME" -g "$USER_NAME" /var/lib/trentakip/invoices
 
 echo "== 8/8 zamanlayıcılar (systemd)"
 install -m 644 "$APP"/ops/vps/systemd/*.service "$APP"/ops/vps/systemd/*.timer /etc/systemd/system/

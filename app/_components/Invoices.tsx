@@ -5,10 +5,10 @@ import { tl, when, type Api, type Notify, type Row } from "./shared";
 import { confirmDialog } from "./confirm-dialog";
 
 // Faturalar (GİB e-Arşiv portalı, /api/invoices): sistem taslak oluşturur, K portalda toplu seçip tek SMS ile imzalar,
-// "İmzalananları kontrol et" durumu okur, imzalılar denemeden sonra Trendyol'a yüklenir. Sistem fatura imzalamaz.
+// "İmzalananları kontrol et" durumu okur, imzalılar denemeden sonra Trendyol'a yüklenir, Hepsiburada'ya fatura linki gider (K 17.11). Sistem fatura imzalamaz.
 // Ekran (K, 06.11 "daha kullanışlı"): üstte tek "sıradaki adım", yapılacak sayıları, işe göre sekmeler; seyrek araçlar "Diğer araçlar"da.
 const PORTAL_URL = "https://earsivportal.efatura.gov.tr/intragiris.html";
-const IST: Record<string, [string, string]> = { none: ["Kesilmedi", ""], creating: ["Oluşturuluyor", "info"], draft: ["İmza bekliyor", "info"], signed: ["Kesildi", "ok"], uploaded: ["Trendyol'a yüklendi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "partial"] };
+const IST: Record<string, [string, string]> = { none: ["Kesilmedi", ""], creating: ["Oluşturuluyor", "info"], draft: ["İmza bekliyor", "info"], signed: ["Kesildi", "ok"], uploaded: ["Pazaryerine yüklendi", "ok"], error: ["Hata", "error"], deleted: ["Taslak silinmiş", "partial"] };
 type Tab = "todo" | "sign" | "upload" | "warn" | "all" | "hb" | "ret";
 const DOC: Record<string, string> = { iptal: "Portalda iptal edildi", gider_pusulasi: "Gider pusulası kesildi", gerekmiyor: "Belge gerekmiyor", musteri_iade: "Müşterinin iade faturası alındı" };
 // Portal iptal süresi: kaynaklar 7-8 gün diyor, güvenli taraf 7 (K, 06.11). Kesin karar portalın kendisi: süre dolmuşsa kabul etmez.
@@ -19,13 +19,13 @@ const dup = (r: Row) => /^MÜKERRER/.test(r.invoice?.error ?? "");
 const inTab: Record<Tab, (r: Row) => boolean> = {
   todo: (r) => !r.invoice || ["error", "deleted", "creating"].includes(r.invoice.status),
   sign: (r) => r.invoice?.status === "draft",
-  upload: (r) => r.invoice?.status === "signed" && r.marketplace === "trendyol" && !dup(r),
+  upload: (r) => r.invoice?.status === "signed" && (r.marketplace === "trendyol" || r.marketplace === "hepsiburada") && !dup(r),
   warn: (r) => !!r.invoice?.error,
   all: () => true,
   hb: (r) => r.marketplace === "hepsiburada" && ["signed", "uploaded"].includes(r.invoice?.status),
   ret: () => false,
 };
-const EMPTY: Record<Tab, string> = { todo: "Fatura kesilecek sipariş yok.", sign: "İmza bekleyen taslak yok.", upload: "Trendyol'a yüklenecek fatura yok.", warn: "Uyarı yok.", all: "Son 60 günde sipariş yok.", hb: "Hepsiburada faturası yok.", ret: "İade yok." };
+const EMPTY: Record<Tab, string> = { todo: "Fatura kesilecek sipariş yok.", sign: "İmza bekleyen taslak yok.", upload: "Pazaryerine yüklenecek fatura yok.", warn: "Uyarı yok.", all: "Son 60 günde sipariş yok.", hb: "Hepsiburada faturası yok.", ret: "İade yok." };
 const daysAgo = (t?: string) => (t ? Math.floor((Date.now() - Date.parse(t)) / 86400000) : 0);
 const oldTag = (t?: string) => (daysAgo(t) >= 1 ? ` (${daysAgo(t)} gün önce, eski)` : "");
 
@@ -159,8 +159,8 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     // İlk gerçek yükleme tek fatura: K Trendyol panelinde doğru pakette doğru PDF'i görünce kalanlar gider
     const first = mode === "apply" && !(c.uploaded ?? 0);
     const count = first ? 1 : 200;
-    if (mode === "apply" && !(await confirmDialog(first ? "İLK yükleme: yalnızca 1 fatura Trendyol'a yüklenecek. Trendyol panelinde o siparişte faturanın doğru göründüğünü kontrol et, sonra kalanları yükle. Devam?"
-      : `Son denemede uygun çıkan ${u?.ok ?? 0} fatura Trendyol'a yüklenecek (kontroller yeniden yapılır, tutmayan atlanır). Trendyol aynı pakete ikinci faturayı kabul etmez. Devam?`))) return;
+    if (mode === "apply" && !(await confirmDialog(first ? "İLK yükleme: yalnızca 1 fatura yüklenecek. Pazaryeri panelinde o siparişte faturanın doğru göründüğünü kontrol et, sonra kalanları yükle. Devam?"
+      : `Son denemede uygun çıkan ${u?.ok ?? 0} fatura yüklenecek: Trendyol'a PDF, Hepsiburada'ya fatura linki (kontroller yeniden yapılır, tutmayan atlanır; Hepsiburada'ya ilk seferde yalnızca 1 fatura). Devam?`))) return;
     setBusy(mode === "dry" ? "Deneme başlatılıyor..." : "Yükleme başlatılıyor...");
     try {
       await post({ action: "upload", mode, count });
@@ -238,7 +238,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   const next: { text: string; tone?: string; act: ReactNode } = !canGib ? { text: "Önce bu panele GİB kullanıcı kodu ve şifresi tanımlanmalı (GIB_PORTAL_USER, GIB_PORTAL_PASS). O zamana kadar taslak ve kontrol kapalı.", tone: "var(--bad)", act: null }
     : dupSigned.length ? { text: `${dupSigned.length} siparişte çift fatura uyarısı var${d.audit ? ` (son kontrol ${daysAgo(d.audit.at)} gün önce)` : ""}. Portalda fazlalığı iptal ettiysen "Düzelttim" ile uyarıyı kaldır ya da kontrol başlat (çift olmayanların uyarısı kendiliğinden kalkar). Uyarısı duran fatura Trendyol'a yüklenmez.`, tone: "var(--bad)", act: <><button className="btn" disabled={!!busy} onClick={() => dismiss(dupSigned)}>Düzelttim, uyarıları kaldır ({dupSigned.length})</button><button className="btn primary" disabled={!!busy || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button></> }
     : n("sign") ? { text: `${n("sign")} taslak imzanı bekliyor. Portalda Düzenlenen Belgeler'den seçip imzala (tek SMS), sonra buraya dönüp kontrol et.`, act: <><a className="btn" href={PORTAL_URL} target="_blank" rel="noreferrer">e-Arşiv portalını aç</a><button className="btn primary" disabled={!!busy} onClick={sync}>İmzalananları kontrol et</button></> }
-    : n("upload") ? { text: dryFresh && d.upload?.ok ? `Son denemede ${d.upload.ok} fatura uygun çıktı, yükleyebilirsin.` : `${n("upload")} kesilmiş fatura Trendyol'a yüklenmeyi bekliyor. Önce deneme: hiçbir şey yüklenmez, her fatura tek tek karşılaştırılır.`,
+    : n("upload") ? { text: dryFresh && d.upload?.ok ? `Son denemede ${d.upload.ok} fatura uygun çıktı, yükleyebilirsin.` : `${n("upload")} kesilmiş fatura pazaryerine yüklenmeyi bekliyor. Önce deneme: hiçbir şey yüklenmez, her fatura tek tek karşılaştırılır.`,
         act: dryFresh && d.upload?.ok ? <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("apply")}>Uygun olanları yükle ({d.upload.ok})</button> : <button className="btn primary" disabled={!!busy || !canGh} onClick={() => upload("dry")}>Deneme başlat</button> }
     : n("todo") ? { text: `${n("todo")} siparişin faturası kesilmedi. Aşağıdan seç, taslak oluştur.`, act: null }
     : retOpen.length ? { text: `${retOpen.length} iade / iptal için belge durumu bekliyor. İadeler sekmesinden bak.`, act: <button className="btn primary" onClick={() => setTab("ret")}>İadeleri aç</button> }
@@ -261,7 +261,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
         {stat("todo", "Kesilecek", "Taslak oluştur")}
         {stat("sign", "İmza bekliyor", "Portalda imzala")}
-        {stat("upload", "Yüklenecek", "Trendyol'a gönder")}
+        {stat("upload", "Yüklenecek", "Trendyol / Hepsiburada")}
         {stat("warn", "Uyarı", "Kontrol gerekiyor", "var(--bad)")}
         {stat("ret", "İade / iptal", "Belgesi bekleyen", "var(--warn)")}
       </div>
@@ -297,7 +297,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
           {dupSigned.length > 0 && <button className="btn primary" disabled={!!busy || !canGib || !canGh} onClick={audit}>Mükerrer fatura kontrolü</button>}
           <span className="muted" style={{ fontSize: 12 }}>GİB'de ve Trendyol'da hiçbir şey değiştirmez; yalnızca buradaki rapor ve uyarıları günceller.</span>
         </div>}
-        {cur === "hb" && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Hepsiburada faturaları buradan yüklenmez: PDF'i açıp Hepsiburada paneline elle yükle.</p>}
+        {cur === "hb" && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Hepsiburada'ya fatura linki gönderilir ("Yüklenecek" sekmesi, önce deneme). Link sunucudaki imzalı PDF'e gider, tahmin edilemez.</p>}
 
         {cur === "ret" && (() => {
           const list = retAll.filter((r) => !qn || [r.order_no, r.title, r.barcode, r.reason, r.invoice?.belge_no, r.return_invoice?.belge_no].some((x) => String(x ?? "").toLocaleLowerCase("tr").includes(qn)));
