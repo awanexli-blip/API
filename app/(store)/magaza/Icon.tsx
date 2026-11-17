@@ -26,7 +26,7 @@ export function Star() {
     <svg viewBox="0 0 32 32" aria-hidden="true" fill="currentColor">
       <rect x="7" y="7" width="18" height="18" rx="1.5" />
       <rect x="7" y="7" width="18" height="18" rx="1.5" transform="rotate(45 16 16)" />
-      <circle cx="16" cy="16" r="4.2" fill="var(--paper)" />
+      <circle cx="16" cy="16" r="4.2" fill="var(--card, #fff)" />
     </svg>
   );
 }

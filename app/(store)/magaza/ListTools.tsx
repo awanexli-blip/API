@@ -9,7 +9,8 @@ const SORTS: [string, string][] = [["onerilen", "Önerilen"], ["fiyat-artan", "F
 export default function ListTools({ action, keep, q, sort, placeholder }: { action: string; keep: Record<string, string | undefined>; q?: string; sort: string; placeholder: string }) {
   const form = useRef<HTMLFormElement>(null);
   return (
-    <form ref={form} className="toolbar" action={action} role="search">
+    <form ref={form} className="toolbar" action={action} role="search"
+      onSubmit={(e) => { for (const el of Array.from(e.currentTarget.elements) as HTMLInputElement[]) if (el.name && !el.value) el.disabled = true; }}>
       {Object.entries(keep).filter(([, v]) => v).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <div className="search">
         <label className="sr" htmlFor="lq">Bu listede ara</label>
