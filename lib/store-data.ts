@@ -38,7 +38,7 @@ export async function list(o: { top?: string; sub?: string; q?: string; min?: nu
 }
 
 export type Variant = { id: string; label: string; price: number; inStock: boolean };
-export type Detail = Card & { description: string | null; images: string[]; variants: Variant[]; path: string | null; attrs: [string, string][] };
+export type Detail = Card & { description: string | null; images: string[]; variants: Variant[]; path: string | null; attrs: [string, string][]; vat: number | null };
 const HIDE_ATTR = /kategori|web color|barkod|stok|maliyet|tedarik|xml|desi|garanti süresi \(ay\)|^hb |^ty |trendyol|hepsiburada|amazon/i;
 export async function product(slug: string): Promise<Detail | null> {
   const db = admin();
@@ -46,7 +46,7 @@ export async function product(slug: string): Promise<Detail | null> {
   if (error) throw new Error(`ürün okunamadı: ${error.message}`);
   if (!c) return null;
   const [p, imgs, vs, ls] = await Promise.all([
-    db.from("products").select("description, attributes").eq("id", c.product_id).maybeSingle(),
+    db.from("products").select("description, attributes, vat_rate").eq("id", c.product_id).maybeSingle(),
     db.from("product_images").select("url, position").eq("product_id", c.product_id).order("position").limit(12),
     db.from("product_variants").select("id, attributes, stock").eq("product_id", c.product_id).order("id").limit(100),
     db.from("marketplace_listings").select("variant_id, price, stock").eq("marketplace", "trendyol").eq("status", "live").eq("product_id", c.product_id).limit(200),
@@ -64,7 +64,7 @@ export async function product(slug: string): Promise<Detail | null> {
   const attrs = Object.entries((p.data?.attributes ?? {}) as Record<string, unknown>)
     .filter(([k, v]) => v != null && typeof v !== "object" && String(v).trim() && String(v).length <= 80 && !HIDE_ATTR.test(k))
     .map(([k, v]) => [k, String(v)] as [string, string]).slice(0, 20);
-  return { ...(c as any), description: p.data?.description ?? null, images: (imgs.data ?? []).map((i: any) => i.url), variants: variants.length > 1 ? variants : [], attrs };
+  return { ...(c as any), description: p.data?.description ?? null, images: (imgs.data ?? []).map((i: any) => i.url), variants: variants.length > 1 ? variants : [], attrs, vat: p.data?.vat_rate != null ? Number(p.data.vat_rate) : null };
 }
 
 export async function similar(c: Card, n = 8): Promise<Card[]> {

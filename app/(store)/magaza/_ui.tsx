@@ -1,5 +1,5 @@
-// Vitrin ortak parçaları (sunucu bileşenleri)
-import { imgUrl, tl, SORTS, PRICE_BANDS, type Sort } from "@/lib/store";
+// Vitrin ortak parçaları (sunucu bileşenleri). Kart düzeni Bezos'tan ilham: beyaz kart, Stokta rozeti, görsel, ince ayırıcı, bilgi, fiyat kutusu.
+import { imgUrl, tl, PRICE_BANDS } from "@/lib/store";
 import type { Card, TopCat } from "@/lib/store-data";
 import Icon from "./Icon";
 
@@ -7,10 +7,15 @@ export function ProductCard({ p, base, eager = false }: { p: Card; base: string;
   const src = imgUrl(p.image);
   return (
     <article className="card">
-      <div className="media">{src ? <img src={src} alt="" width={400} height={500} loading={eager ? undefined : "lazy"} decoding="async" /> : <div className="noimg">Görsel yok</div>}</div>
-      {p.leaf && <div className="cat">{p.leaf}</div>}
-      <h3><a className="card-link" href={`${base}/urun/${p.slug}`}>{p.title}</a></h3>
-      <div className="price">{tl(p.price)}</div>
+      <div className="media">
+        {src ? <img src={src} alt="" width={400} height={400} loading={eager ? undefined : "lazy"} decoding="async" /> : <div className="noimg">Görsel yok</div>}
+        <span className="stock">Stokta</span>
+      </div>
+      <div className="body">
+        {p.leaf && <div className="cat">{p.leaf}</div>}
+        <h3><a className="card-link" href={`${base}/urun/${p.slug}`}>{p.title}</a></h3>
+        <div className="price">{tl(p.price)}</div>
+      </div>
     </article>
   );
 }
@@ -20,14 +25,6 @@ export function Grid({ items, base, eagerFirst = 0 }: { items: Card[]; base: str
 }
 export function Rail({ items, base }: { items: Card[]; base: string }) {
   return <div className="rail">{items.map((p) => <ProductCard key={p.product_id} p={p} base={base} />)}</div>;
-}
-
-export function SortLinks({ href, sort }: { href: (q: Record<string, string | number | undefined>) => string; sort: Sort }) {
-  return (
-    <nav className="sort" aria-label="Sıralama">
-      {(Object.keys(SORTS) as Sort[]).map((k) => <a key={k} href={href({ sirala: k === "onerilen" ? undefined : k, sayfa: undefined })} aria-current={k === sort ? "true" : undefined}>{SORTS[k]}</a>)}
-    </nav>
-  );
 }
 
 export function Pager({ page, pages, href }: { page: number; pages: number; href: (q: Record<string, string | number | undefined>) => string }) {
@@ -42,43 +39,42 @@ export function Pager({ page, pages, href }: { page: number; pages: number; href
     <nav className="pager" aria-label="Sayfalar">
       {page > 1 && <a href={href({ sayfa: page - 1 === 1 ? undefined : page - 1 })} aria-label="Önceki sayfa"><Icon name="back" size={18} /></a>}
       {out}
-      {page < pages && <a href={href({ sayfa: page + 1 })} aria-label="Sonraki sayfa"><span style={{ display: "inline-flex", transform: "scaleX(-1)" }}><Icon name="back" size={18} /></span></a>}
+      {page < pages && <a href={href({ sayfa: page + 1 })} aria-label="Sonraki sayfa"><Icon name="next" size={18} /></a>}
     </nav>
   );
 }
 
-// Filtre paneli: alt kategoriler (kategori sayfasında), fiyat bantları, özel fiyat aralığı (form GET, JS gerekmez)
-export function Filters({ cat, sub, base, path, cur, min, max }: {
-  cat?: TopCat; sub?: string; base: string; path: string; cur: Record<string, string | undefined>; min?: number; max?: number;
+// Filtre kartı (Bezos'tan ilham: sayılı kategori ağacı, seçili olan dolu). Fiyat: hazır aralıklar + özel aralık (form GET, JS gerekmez)
+export function Filters({ cat, sub, path, cur, min, max, idp = "" }: {
+  cat?: TopCat; sub?: string; path: string; cur: Record<string, string | undefined>; min?: number; max?: number; idp?: string;
 }) {
   const h = hrefWith(path, cur);
   return (
-    <div className="filters">
+    <div className="filters panel">
       {cat && cat.subs.length > 1 && (
-        <section aria-labelledby="f-sub">
-          <h2 id="f-sub">Kategori</h2>
+        <section aria-labelledby={`${idp}f-sub`}>
+          <h2 id={`${idp}f-sub`}>{cat.top}</h2>
           <ul>
             <li><a href={h({ alt: undefined, sayfa: undefined })} aria-current={!sub ? "page" : undefined}>Tümü <small>{cat.n.toLocaleString("tr-TR")}</small></a></li>
             {cat.subs.map((s) => <li key={s.slug}><a href={h({ alt: s.slug, sayfa: undefined })} aria-current={sub === s.slug ? "page" : undefined}>{s.sub} <small>{s.n.toLocaleString("tr-TR")}</small></a></li>)}
           </ul>
         </section>
       )}
-      <section aria-labelledby="f-price">
-        <h2 id="f-price">Fiyat</h2>
+      <section aria-labelledby={`${idp}f-price`}>
+        <h2 id={`${idp}f-price`}>Fiyat</h2>
         <ul>
           {PRICE_BANDS.map(([a, b, label]) => {
             const on = a === min && b === max;
             return <li key={label}><a href={h({ min: on ? undefined : a, max: on ? undefined : b, sayfa: undefined })} aria-current={on ? "page" : undefined}>{label}</a></li>;
           })}
         </ul>
-        <form className="range" action={path} style={{ marginTop: 10 }}>
+        <form className="range" action={path}>
           {Object.entries(cur).filter(([k, v]) => v && !["min", "max", "sayfa"].includes(k)).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-          <label className="sr" htmlFor="fmin">En az</label><input id="fmin" name="min" inputMode="numeric" placeholder="En az" defaultValue={min ?? ""} />
-          <label className="sr" htmlFor="fmax">En çok</label><input id="fmax" name="max" inputMode="numeric" placeholder="En çok" defaultValue={max ?? ""} />
+          <label className="sr" htmlFor={`${idp}fmin`}>En az fiyat</label><input id={`${idp}fmin`} name="min" inputMode="numeric" placeholder="En az" defaultValue={min ?? ""} />
+          <label className="sr" htmlFor={`${idp}fmax`}>En çok fiyat</label><input id={`${idp}fmax`} name="max" inputMode="numeric" placeholder="En çok" defaultValue={max ?? ""} />
           <button type="submit">Uygula</button>
         </form>
       </section>
-      <p className="muted" style={{ fontSize: 12.5, margin: 0 }}><a href={base || "/"}>Ana sayfaya dön</a></p>
     </div>
   );
 }
