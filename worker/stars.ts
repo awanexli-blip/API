@@ -1,6 +1,6 @@
 // Ürün seçimi yıldızı ve yıldıza göre gönderim (migration 076; K, 01.11). Trendyol'da 50 bin ürün sınırı: en iyiler önce.
 //   node --experimental-strip-types worker/stars.ts rate [pazaryeri]                 -> yıldız ver (opportunity.ts puanlarından)
-//   node --experimental-strip-types worker/stars.ts send <yıldız> [pazaryeri] [--apply] -> o yıldızdaki, pazaryerinde olmayan ürünleri kuyruğa al
+//   node --experimental-strip-types worker/stars.ts send <yıldız> [pazaryeri] [--source xml:<tedarikçi>] [--apply] -> o yıldızdaki, pazaryerinde olmayan ürünleri kuyruğa al
 //   node --experimental-strip-types worker/stars.ts new xml:<tedarikçi> <gün> [pazaryeri] [--apply] -> o tedarikçinin son N günde eklenen stoklu ürünleri
 // rate: uygun ürünler (excluded boş) puana göre sıralanır, 10 eşit dilim -> 10 (en iyi) .. 1. Aynı ürün başka adla tekrar ediyorsa (aynı ilk
 // görsel ya da aynı başlık + maliyet) yalnızca en yüksek puanlı yıldız alır, diğerleri "kopya" elenir (Trendyol "çoklanan ürün" uyarısı).
@@ -49,9 +49,12 @@ async function rate(mp: string) {
 
 async function send(star: number, mp: string) {
   if (!(star >= 1 && star <= 10)) throw new Error("yıldız 1-10 olmalı");
-  const o = await readAll<any>((a, b) => db.from("product_opportunity").select("product_id, source").eq("marketplace", mp).eq("stars", star).is("excluded", null).order("product_id").range(a, b));
+  // --source xml:<tedarikçi>: yalnızca o tedarikçi (K 17.11: Colezium'un uygunları Trendyol'a)
+  const si = process.argv.indexOf("--source"), src = si > 0 ? process.argv[si + 1] ?? "" : "";
+  if (src && !/^xml:[a-z0-9_-]+$/.test(src)) throw new Error("--source xml:<tedarikçi>");
+  const o = await readAll<any>((a, b) => { let q = db.from("product_opportunity").select("product_id, source").eq("marketplace", mp).eq("stars", star).is("excluded", null); if (src) q = q.eq("source", src); return q.order("product_id").range(a, b); });
   if (o.error) throw new Error(o.error.message);
-  await queueRows(o.data, mp, `${star}★`, `stars:${mp}:${star}`);
+  await queueRows(o.data, mp, `${star}★${src ? " " + src : ""}`, `stars:${mp}:${star}${src ? ":" + src : ""}`);
 }
 
 // K 17.11 ("Bezos'a yeni ürünler eklendi, hepsini ekle"): bir tedarikçinin son N günde eklenen, aktif ve stoklu ürünleri (puanlama beklemeden)
