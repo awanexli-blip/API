@@ -37,6 +37,19 @@ export async function list(o: { top?: string; sub?: string; q?: string; min?: nu
   return { items: (data ?? []) as Card[], total: count ?? 0, pages: Math.max(1, Math.ceil((count ?? 0) / size)) };
 }
 
+// Çok satanlar (K 17.11: "milletin iştahını açalım"): pazaryerlerinde son 60 günde gerçekten satılan ve vitrinde olan ürünler (uydurma rozet yok)
+export async function bestSellers(n = 15): Promise<(Card & { sold: number })[]> {
+  const since = new Date(Date.now() - 60 * 864e5).toISOString();
+  const { data, error } = await admin().from("order_lines").select("product_id, qty, orders!inner(ordered_at, status)").gte("orders.ordered_at", since).neq("orders.status", "cancelled").not("product_id", "is", null).limit(1000);
+  if (error) throw new Error(`çok satanlar okunamadı: ${error.message}`);
+  const sold = new Map<string, number>();
+  for (const l of data ?? []) sold.set(l.product_id, (sold.get(l.product_id) ?? 0) + (Number(l.qty) || 1));
+  const ids = [...sold.keys()];
+  if (!ids.length) return [];
+  const { data: cs } = await admin().from("store_catalog").select(CARD).in("product_id", ids.slice(0, 300));
+  return ((cs ?? []) as Card[]).map((c) => ({ ...c, sold: sold.get(c.product_id) ?? 0 })).sort((a, b) => b.sold - a.sold).slice(0, n);
+}
+
 export type Variant = { id: string; label: string; price: number; inStock: boolean };
 export type Detail = Card & { description: string | null; images: string[]; variants: Variant[]; path: string | null; attrs: [string, string][]; vat: number | null };
 const HIDE_ATTR = /kategori|web color|barkod|stok|maliyet|tedarik|xml|desi|garanti süresi \(ay\)|^hb |^ty |trendyol|hepsiburada|amazon/i;

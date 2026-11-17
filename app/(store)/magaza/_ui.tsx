@@ -3,17 +3,20 @@ import { imgUrl, tl, PRICE_BANDS } from "@/lib/store";
 import type { Card, TopCat } from "@/lib/store-data";
 import Icon from "./Icon";
 
-export function ProductCard({ p, base, eager = false }: { p: Card; base: string; eager?: boolean }) {
+// Rozet yalnızca gerçek bilgiden: "Çok satan" (pazaryerinde son 60 günde satıldı), "Yeni" (mağazaya son eklenen)
+export function ProductCard({ p, base, eager = false, tag }: { p: Card & { sold?: number }; base: string; eager?: boolean; tag?: "cok" | "yeni" }) {
   const src = imgUrl(p.image);
   return (
     <article className="card">
       <div className="media">
         {src ? <img src={src} alt="" width={400} height={400} loading={eager ? undefined : "lazy"} decoding="async" /> : <div className="noimg">Görsel yok</div>}
-        <span className="stock">Stokta</span>
+        {tag === "cok" && <span className="tag">Çok satan</span>}
+        {tag === "yeni" && <span className="tag new">Yeni</span>}
       </div>
       <div className="body">
         {p.leaf && <div className="cat">{p.leaf}</div>}
         <h3><a className="card-link" href={`${base}/urun/${p.slug}`}>{p.title}</a></h3>
+        {p.sold ? <div className="sold">Son 60 günde {p.sold} adet satıldı</div> : null}
         <div className="price">{tl(p.price)}</div>
       </div>
     </article>
@@ -23,8 +26,8 @@ export function ProductCard({ p, base, eager = false }: { p: Card; base: string;
 export function Grid({ items, base, eagerFirst = 0 }: { items: Card[]; base: string; eagerFirst?: number }) {
   return <div className="grid">{items.map((p, i) => <ProductCard key={p.product_id} p={p} base={base} eager={i < eagerFirst} />)}</div>;
 }
-export function Rail({ items, base }: { items: Card[]; base: string }) {
-  return <div className="rail">{items.map((p) => <ProductCard key={p.product_id} p={p} base={base} />)}</div>;
+export function Rail({ items, base, tag }: { items: (Card & { sold?: number })[]; base: string; tag?: "cok" | "yeni" }) {
+  return <div className="rail">{items.map((p) => <ProductCard key={p.product_id} p={p} base={base} tag={tag} />)}</div>;
 }
 
 export function Pager({ page, pages, href }: { page: number; pages: number; href: (q: Record<string, string | number | undefined>) => string }) {

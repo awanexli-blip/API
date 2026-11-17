@@ -20,7 +20,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [{ media: "(prefers-color-scheme: light)", color: "#ffffff" }, { media: "(prefers-color-scheme: dark)", color: "#0d1424" }],
+  themeColor: "#ffffff", // her zaman beyaz tema (K 17.11)
+  colorScheme: "light",
 };
 
 export default async function StoreLayout({ children }: { children: React.ReactNode }) {
