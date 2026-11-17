@@ -604,7 +604,9 @@ async function main() {
   if (doUpdate && !lite && s.auto_sync && marketplaceId === "trendyol") summary.lifecycle = await runLifecycle(db, mp, marketplaceId, listings, minStock, (m) => console.error(m)).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
   // Paneldeki "Pazaryerine gönder" kuyruğu (yalnızca yazma modlarında)
   let sendRes: Awaited<ReturnType<typeof processSendJobs>> | null = null;
-  if (doUpdate || mode === "create" || lite) {
+  // K 17.11 (operasyon denetimi): yeni ürün kuyruğu yavaşken tur süre sınırında öldürülüyor, stok/fiyat hiç gönderilmiyordu (HB 11 saat).
+  // Güncelleme modlarında kuyruk stok/fiyat gönderiminden SONRA işlenir; create/lite modunda eskisi gibi burada.
+  const runSend = async () => {
     sendRes = await processSendJobs(dbCtx, `sync-${process.env.GITHUB_RUN_ID ?? "yerel"}`).catch((e: any) => { summary.sendJobsError = String(e?.message ?? e); return null; });
     if (sendRes) { summary.sendJobs = { jobs: sendRes.jobs, sent: sendRes.sent, errors: sendRes.errors, noStock: sendRes.noStock }; summary.created += sendRes.sent; summary.batchIds.push(...sendRes.batchIds); }
     summary.attrOptions = await flushAttrOptions(db).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
@@ -612,7 +614,8 @@ async function main() {
     // K, 06.11: yapay zekâyla zorunlu alan doldurma iptal (başarısız oldu); yalnızca AI_FILL=1 ile açılır
     if (!lite && marketplaceId !== "amazon" && process.env.AI_FILL === "1") summary.aiAttrs = await aiFillAttributes(db, marketplaceId).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 200) }));
     if (!lite && s.auto_sync && marketplaceId !== "amazon") summary.retryQueue = await requeueFixable(dbCtx).catch((e: any) => ({ skipped: String(e?.message ?? e) }));
-  }
+  };
+  if (!doUpdate && (mode === "create" || lite)) await runSend();
 
   if (doUpdate) {
     // Stok rezervasyonu (F6): tedarikçiye verilmemiş açık siparişlerin adedi, XML stoğu düşene kadar stoktan düşülür
@@ -643,6 +646,8 @@ async function main() {
     for (const it of pushList) sentBy.set(it.id, { price: it.price, qty: it.quantity });
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
     noteErrors(summary, r);
+    // Yeni ürün kuyruğu stok/fiyattan sonra (yukarıdaki not)
+    await runSend();
     // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
     if (!lite && mp.buybox && dbCtx.econ?.size) summary.buybox = await syncBuybox(db, mp, listings, dbCtx.econ, Number(process.env.BUYBOX_PER_RUN ?? 2000), { minNet: Number(cfg.netProfitMin ?? 0), overridden: new Set([...ovMap.values()].filter((o: any) => o.price_override != null).map((o: any) => o.barcode)) }).catch((e: any) => ({ error: String(e?.message ?? e).slice(0, 300) }));
 
