@@ -7,6 +7,8 @@ import { env, sleep, chunk, san } from "../core/util.ts";
 import { defaultFor, matchOptions, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { hbCommissionMatcher } from "./hepsiburada-commission.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
+import { hostImage, publicOk, IMG_DIR } from "../core/img-host.ts";
+import { access, constants as fsc } from "node:fs/promises";
 import { noteMissing } from "../core/attr-options.ts";
 
 // Garanti (K, 22.10): yalnızca elektrikli/elektronik ürünlerde 24 ay (ithalatçı garantili, faturalı); diğerlerinde 0
@@ -31,6 +33,21 @@ const NEW_PREFIX = "OS13-";
 const BRAND_NAME = process.env.HB_BRAND_NAME || process.env.TRENDYOL_BRAND_NAME || "Eco Lounge";
 
 const cargo = JSON.parse(readFileSync(new URL("../data/hepsiburada/cargo.json", import.meta.url), "utf8")) as { carriers: string[]; byDesi: Record<string, number[]> };
+
+// Yeni ilan görsellerini sunucuda hazırla: anahtar "<merchantSku>|<kaynak>" -> herkese açık JPEG adresi. Depo yazılamıyorsa ya da
+// herkese açık adres açılmıyorsa null (çağıran eski yola döner). Eşzamanlı 4 indirme (tedarikçiye kibar).
+async function hostForHb(list: NewProduct[]): Promise<Map<string, string> | null> {
+  if (process.env.HB_IMG_SELF === "0") return null;
+  try { await access(IMG_DIR, fsc.W_OK); } catch { return null; }
+  const jobs = list.flatMap((p) => p.images.slice(0, 5).filter(Boolean).map((u) => ({ id: p.id, u })));
+  const out = new Map<string, string>();
+  let i = 0;
+  const work = async () => { while (i < jobs.length) { const j = jobs[i++]; try { out.set(j.id + "|" + j.u, (await hostImage(j.id, j.u)).url); } catch { /* hazırlanamadı */ } } };
+  await Promise.all(Array.from({ length: 4 }, work));
+  const first = out.values().next().value;
+  if (jobs.length && (!first || !(await publicOk(first)))) { console.error("HB görsel deposu: herkese açık adres açılmadı, dönüştürücüye dönülüyor"); return null; }
+  return out;
+}
 
 // Bağlantı (adaptör ve test aracı ortak kullanır)
 export function hbClient() {
@@ -286,6 +303,11 @@ export function createHepsiburada(): Marketplace {
     // Ürün açma: JSON dosyası multipart olarak gönderilir (en fazla 100 ürün)
     async createProducts(list: NewProduct[], ctx): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
+      // K 17.11: görseller sunucuda JPEG 1200x1200'e çevrilip kendi depomuzdan sunulur (worker/core/img-host.ts). wsrv.nl üzerinden
+      // gönderilen 12.795 ilanda HB "erişim problemi" verdi (HB'nin toplu çekişi dönüştürücü sınırına takılıyor). Depo yoksa
+      // (GitHub Actions) ya da HB_IMG_SELF=0 ise eski yol (dönüştürücü) kullanılır.
+      const hosted = await hostForHb(list);
+      if (hosted) imgCheck = "ok";
       // Görselsiz ilan açılmasın: JPG dönüştürücü bu çalışmada denenir; çalışmıyorsa hiçbir ürün gönderilmez.
       // 04.11: tek görselle tek deneme anlık bir kesintide turdaki tüm ürünleri düşürüyordu -> 3 farklı görsel, aralarında bekleme; biri yeterli
       const probes = [...new Set(list.flatMap((p) => p.images).filter((u) => jpgUrl(u) !== u))].slice(0, 3);
@@ -308,7 +330,8 @@ export function createHepsiburada(): Marketplace {
       // 29.10: yalnızca ilk görsel ısıtılıyordu; diğer WebP'leri HB ilk kez kendisi çekince "erişim problemi" (16 varyant İncelenecek).
       // İlk görsel hazırlanamazsa ürün bu turda gönderilmez; diğerlerinden hazırlanamayan listeden çıkarılır. Dönüştürücü sınırı için en fazla 1.500.
       const imgOk = new Map<string, boolean>();
-      const toWarm = [...new Set(list.flatMap((p) => p.images.slice(0, 5)).filter((u): u is string => !!u && jpgUrl(u) !== u))].slice(0, 1500);
+      const toWarm = hosted ? [] : [...new Set(list.flatMap((p) => p.images.slice(0, 5)).filter((u): u is string => !!u && jpgUrl(u) !== u))].slice(0, 1500);
+      if (hosted) for (const p of list) for (const u of p.images.slice(0, 5)) imgOk.set(u, hosted.has(p.id + "|" + u));
       for (let i = 0; i < toWarm.length; i += 8) {
         await Promise.all(toWarm.slice(i, i + 8).map(async (u) => {
           for (let t = 0; t < 2 && !imgOk.get(u); t++) {
@@ -322,7 +345,7 @@ export function createHepsiburada(): Marketplace {
         if (imgOk.get(p.images[0]) === false) { no("görsel hazırlanamadı (JPG dönüştürücü)"); continue; }
         if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
         used.add(p.id);
-        const imgs = p.images.slice(0, 5).filter((u, i) => i === 0 || imgOk.get(u) !== false).map((u) => jpgUrl(u)); // WebP -> JPG (HB WebP göstermiyor)
+        const imgs = p.images.slice(0, 5).filter((u, i) => i === 0 || imgOk.get(u) !== false).map((u) => hosted ? hosted.get(p.id + "|" + u) ?? "" : jpgUrl(u)).filter(Boolean); // WebP -> JPG (HB WebP göstermiyor)
         let extra: Record<string, unknown> = {};
         for (const a of Array.isArray(p.cat.attributes) ? p.cat.attributes : []) if (a?.name != null) extra[a.name] = a.value; // panelden: [{name, value}]
         // Zorunlu kategori özellikleri: başlıktaki değer / nötr değer; doldurulamazsa gönderme
