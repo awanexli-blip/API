@@ -18,5 +18,5 @@ export function proxy(req: NextRequest) {
 
 export const config = {
   // Statik dosyalar ve Next iç yolları hariç
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt|brand/).*)"],
 };

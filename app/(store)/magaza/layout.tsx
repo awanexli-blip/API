@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { basePath, STORE_NAME } from "@/lib/store";
 import { categories } from "@/lib/store-data";
 import CategoryMenu from "./CategoryMenu";
-import Icon, { Star, STAR_PATTERN } from "./Icon";
+import Icon, { STAR_PATTERN } from "./Icon";
 
 // Tek yazı ailesi (frontend-design): derlemede indirilir, uygulamayla sunulur (dış istek yok); Türkçe harfler için latin-ext
 const sans = Figtree({ subsets: ["latin", "latin-ext"], variable: "--font-sans", display: "swap", weight: ["400", "500", "600", "700", "800"] });
@@ -15,6 +15,7 @@ export const metadata: Metadata = {
   title: { default: `${STORE_NAME} | Ev, elektronik, aksesuar ve daha fazlası`, template: `%s | ${STORE_NAME}` },
   description: "Ev, elektronik, aksesuar, oyuncak ve daha binlerce üründe uygun fiyatlar.",
   robots: { index: false, follow: false },
+  icons: { icon: [{ url: "/brand/logo-96.png", sizes: "96x96" }, { url: "/brand/logo-192.png", sizes: "192x192" }], apple: "/brand/logo-192.png" },
 };
 export const viewport: Viewport = {
   width: "device-width",
@@ -28,7 +29,8 @@ export default async function StoreLayout({ children }: { children: React.ReactN
   const base = basePath((await headers()).get("host"));
   const cats = await categories().catch(() => []);
   const home = base || "/";
-  const logo = <><Star /><span>özsaray</span></>;
+  // Logo: K 17.11 monogramı (Öz Saray siyah-altın), public/brand
+  const logo = <><img className="mark" src="/brand/logo-96.png" width={38} height={38} alt="" /><span>ÖZSARAY</span></>;
   return (
     <html lang="tr" className={sans.variable} style={{ ["--star-pattern" as string]: STAR_PATTERN }}>
       <body>
