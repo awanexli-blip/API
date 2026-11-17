@@ -3,7 +3,11 @@ import { orderDb, guard, unauthorized, bad } from "@/lib/server";
 import { EarsivClient, isDeleted, isSigned } from "@/lib/earsiv";
 import { buildInvoice, buildReturnInvoice, trDateTime } from "@/lib/invoice-build";
 import { matchManualInvoices, docName, docTime } from "@/lib/invoice-match";
-import { dispatchWorkflow } from "@/lib/github";
+import { dispatchWorkflow, onServer } from "@/lib/github";
+import { execFile } from "node:child_process";
+
+// Sunucu iş kuyruğu aynı fatura işini ikinci kez başlatmaz (runq.sh "zaten çalışıyor, atlandı"); istek sessizce düşmesin diye önceden bakılır (K 17.11)
+const invoiceJobRunning = () => new Promise<boolean>((res) => { if (!onServer()) return res(false); execFile("systemctl", ["is-active", "--quiet", "trentakip-run-invoice.service"], (e) => res(!e)); });
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -144,6 +148,7 @@ export async function POST(req: NextRequest) {
       if (!prev || prev.mode !== "dry" || Date.now() - Date.parse(prev.at) > 24 * 3600000) return bad("Önce deneme çalıştır (son 24 saatte deneme yok)");
       if (!prev.ok) return bad("Son denemede yüklemeye uygun fatura yok");
     }
+    if (await invoiceJobRunning()) return bad("Şu an başka bir fatura işi çalışıyor (deneme/yükleme/denetim). Bitince ekran güncellenir, sonra tekrar dene.");
     const r = await dispatchWorkflow("invoice-upload.yml", { mode, count });
     if (!r.ok) return bad(r.error ?? "Başlatılamadı");
     return NextResponse.json({ ok: true, mode });
