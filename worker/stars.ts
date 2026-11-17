@@ -70,7 +70,7 @@ async function sendIds(file: string, mp: string) {
     const by = new Map((data ?? []).filter((p: any) => p.status === "active").map((p: any) => [p.id, p.source]));
     for (const id of ids.slice(i, i + 200)) if (by.has(id)) rows.push({ product_id: id, source: by.get(id) as string });
   }
-  const tag = file.replace(/^.*[\/]/, "").replace(/[^A-Za-z0-9._-]/g, "");
+  const tag = file.replace(/^.*[\\/]/, "").replace(/[^A-Za-z0-9._-]/g, "");
   await queueRows(rows, mp, `dosya ${tag}`, `ids:${mp}:${tag}`);
 }
 
