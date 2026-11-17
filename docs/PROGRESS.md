@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-17 (83) — Hepsiburada fatura linki, HB sipariş durumu, kategori önerileri
+- **HB fatura linki (K):** imzalı e-Arşiv PDF sunucuda (`/var/lib/trentakip/invoices/<token>.pdf`), herkese açık tahmin edilemez adres `/api/invoice-file/<64 hex>` (migration 093 `order_invoices.file_token`), HB `PUT /packages/merchantid/{id}/packagenumber/{no}/invoice {invoiceLink}`. Paket eşleme: paketli liste küçük harf + kalemler, kargoda/teslim listeleri PascalCase (`PackageNumber`, `OrderNumber(s)`, `HasInvoice`). `HasInvoice` olan pakete link gitmez, "yüklendi" işaretlenir. Link açılıp PDF dönmeden gönderilmez; HB'ye ilk sefer 1 fatura. Panel "Yüklenecek" sekmesi TY + HB. Sonuç: 16 link gönderildi, 8 elle yüklenmiş. Kalan: TY 3 fatura "ürün adı belgedekiyle uyuşmuyor" (GIB…146/151/154), HB 4988019049 iptal, 4564603191 paketsiz.
+- **Panel:** fatura işi sürerken yeni deneme/yükleme isteği hata verir (runq sessizce atlıyordu).
+- **HB sipariş durumu (hata):** kargodaki/teslim listeleri PascalCase olduğu için okunmuyordu, tüm HB siparişleri "yeni" kalıyordu. `statusOnly` kayıt: var olan siparişin durumu ilerler, satır/tutar ezilmez, iptal/iade/teslim geri alınmaz. 30 günlük geri doldurma: 25 teslim, 6 iptal, 3 yeni.
+- **TY kategori retleri (126 "kategori tutarsızlığı"):** 91'ine Trendyol kategori ağacından öneri yazıldı (`listing_fixes.proposed`, durum needs_user; gönderim yok): Akıllı Kamera 46 (Hikvision/Dahua/VIGI/Tiandy), Köpek Kuru Maması 16, Telefon Kasası 9 (arka kapak), Kolluk & Simit 4, Kedi Kuru 4, Köpek Konserve 3, diğer 9. K panelde Reddedilenler'den kontrol edip Gönder.
+- **Bulgu:** HB'de 12.795 yayındaki ilanda "görsel indirilemedi" uyarısı (ilan satışta, ek görsel). Ayrı iş.
+- **GİB satıcı bilgisi** güncellendi (82'ye bakın).
+
 ## 2026-11-17 (82) — Bezos API yeni ürünleri (düdük dahil), vitrin logosu, Next 16.4.6, Telegram köprüsü
 - **Bezos API (K):** XML'de olmayan ürünler için ikinci link `bzapi` (REST, `products`, 500'lük sayfa): `price_includes_vat`, `skip_known` (ana linkte olan barkod atlanır), `transform: "bezos"` (varyant ailesi + Hizmetler atlanır, `lib/supplier-xml.ts feedFilter`). İçe aktarma: 109 bin kayıttan 603 yeni ürün, 0 hata.
 - **Kuyruk:** `stars.ts new xml:bezos 1 <mp> --apply`: Trendyol 862 + Hepsiburada 862 (son 1 gün, var olan/kuyruktaki 1.329 atlandı). Metal Düdük 24 Adet (0700484165126) iki pazaryerinde de kuyrukta.
