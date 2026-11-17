@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   title: { default: `${STORE_NAME} | Ev, elektronik, aksesuar ve daha fazlası`, template: `%s | ${STORE_NAME}` },
   description: "Ev, elektronik, aksesuar, oyuncak ve daha binlerce üründe uygun fiyatlar.",
   robots: { index: false, follow: false },
-  icons: { icon: [{ url: "/brand/logo-96.png", sizes: "96x96" }, { url: "/brand/logo-192.png", sizes: "192x192" }], apple: "/brand/logo-192.png" },
+  icons: { icon: [{ url: "/brand/icon-32.png", sizes: "32x32", type: "image/png" }, { url: "/brand/icon-48.png", sizes: "48x48", type: "image/png" }, { url: "/brand/icon-192.png", sizes: "192x192", type: "image/png" }], apple: "/brand/icon-192.png" },
 };
 export const viewport: Viewport = {
   width: "device-width",
@@ -29,8 +29,8 @@ export default async function StoreLayout({ children }: { children: React.ReactN
   const base = basePath((await headers()).get("host"));
   const cats = await categories().catch(() => []);
   const home = base || "/";
-  // Logo: K 17.11 monogramı (Öz Saray siyah-altın), public/brand
-  const logo = <><img className="mark" src="/brand/logo-96.png" width={38} height={38} alt="" /><span>ÖZSARAY</span></>;
+  // Logo: K 17.11 fotoğrafı olduğu gibi (public/brand/logo-*.jpg); sekme simgesi ÖS kısmı, saydam (icon-*.png)
+  const logo = <img className="mark" src="/brand/logo-120.jpg" srcSet="/brand/logo-120.jpg 1x, /brand/logo-240.jpg 2x" width={177} height={120} alt={STORE_NAME} />;
   return (
     <html lang="tr" className={sans.variable} style={{ ["--star-pattern" as string]: STAR_PATTERN }}>
       <body>
