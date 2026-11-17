@@ -55,6 +55,9 @@ if (mode === "apply") {
   const allow = new Set((prev.rows ?? []).filter((x: Out) => x.ok).map((x: Out) => x.belge_no));
   list = list.filter((r: any) => allow.has(r.belge_no));
 }
+// Elle tek tek deneme: INVOICE_ONLY=<belge no>[,<belge no>]
+const only = (process.env.INVOICE_ONLY ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+if (only.length) list = list.filter((r: any) => only.includes(r.belge_no));
 list = list.slice(0, limit);
 // Hepsiburada'ya ilk gerçek gönderim tek fatura: K, HB panelinde linkin doğru pakette açıldığını görünce kalanlar gider
 if (mode === "apply" && list.some((r: any) => r.orders.marketplace === "hepsiburada")) {
