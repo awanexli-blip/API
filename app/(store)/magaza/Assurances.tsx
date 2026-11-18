@@ -6,7 +6,7 @@ export const ASSURANCES = [
   { icon: "truck", title: "Ücretsiz kargo", text: `${FREE_SHIP_MIN} TL ve üzeri siparişlerde` },
   { icon: "shield", title: "Güvenli ödeme", text: "3D Secure, karta taksit" },
   { icon: "return", title: "Kolay iade", text: "14 iş günü içinde" },
-  { icon: "receipt", title: "Faturalı satış", text: "Her siparişe e-Arşiv fatura" },
+  { icon: "receipt", title: "Kurumsal fatura", text: "Şirketiniz adına faturalı alışveriş" },
   { icon: "lock", title: "Güvenli alışveriş", text: "SSL ile şifreli bağlantı" },
 ] as const;
 
