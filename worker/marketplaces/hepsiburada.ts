@@ -218,7 +218,15 @@ export function createHepsiburada(): Marketplace {
       const out: Listing[] = [];
       const limit = 1000;
       for (let offset = 0, guard = 0; guard < 500; guard++, offset += limit) {
-        const r = await hb(`${LISTING}/listings/merchantid/${MERCHANT}?offset=${offset}&limit=${limit}`);
+        // HB bu uçta ara sıra 504 "upstream request timeout" veriyor (18.11: tüm tur çöküp stok/fiyat bir gün gitmedi): sayfa 5 kez, artan beklemeyle denenir
+        let r: any;
+        for (let t = 1; ; t++) {
+          try { r = await hb(`${LISTING}/listings/merchantid/${MERCHANT}?offset=${offset}&limit=${limit}`); break; }
+          catch (e: any) {
+            if (t >= 5 || !/ (429|5\d\d) |fetch failed|timeout|ECONNRESET/i.test(String(e?.message ?? e))) throw e;
+            await sleep(5000 * t);
+          }
+        }
         const list: any[] = r.listings ?? r.data ?? [];
         for (const l of list) {
           const sku = String(l.merchantSku ?? "");
