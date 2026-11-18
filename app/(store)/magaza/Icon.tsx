@@ -11,6 +11,11 @@ const P: Record<string, React.ReactNode> = {
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
   filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
   check: <><path d="M5 12.5l4.5 4.5L19 7.5" /></>,
+  truck: <><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z" /><circle cx="7" cy="17.5" r="1.8" /><circle cx="17" cy="17.5" r="1.8" /></>,
+  shield: <><path d="M12 3 5 6v5c0 4.4 3 8.2 7 9 4-.8 7-4.6 7-9V6z" /><path d="m9 12 2 2 4-4" /></>,
+  return: <><path d="M9 7 5 11l4 4" /><path d="M5 11h9a5 5 0 0 1 0 10h-2" /></>,
+  receipt: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></>,
+  lock: <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
 };
 export default function Icon({ name, size = 20 }: { name: keyof typeof P | string; size?: number }) {
   return (

@@ -7,6 +7,7 @@ import { Grid } from "../../_ui";
 import Icon from "../../Icon";
 import Gallery from "./Gallery";
 import Share from "./Share";
+import { AssuranceList } from "../../Assurances";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -62,6 +63,7 @@ export default async function ProductPage({ params }: Props) {
             )}
             <button className="btn" type="button" disabled aria-describedby="buy-note">Sepete ekle</button>
             <div className="note" id="buy-note"><Icon name="info" /><span>Online siparişe çok yakında başlıyoruz. Ödeme ve kargo seçenekleri hazırlanıyor.</span></div>
+            <AssuranceList price={ranged ? Math.min(...prices) : p.price} />
           </section>
           <section className="panel specs-card" aria-labelledby="h-specs">
             <h2 id="h-specs">Ürün özellikleri</h2>

@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { basePath, PRICE_BANDS, imgUrl } from "@/lib/store";
 import { bestSellers, categories, list } from "@/lib/store-data";
 import { Rail } from "./_ui";
+import { AssuranceBar } from "./Assurances";
 
 // Ana sayfa (K 17.11: beyaz, Trendyol/Hepsiburada'dan ilham, iştah açan; yalnızca gerçek bilgi: satış ve yeni ürün rozetleri)
 export default async function StoreHome() {
@@ -34,6 +35,8 @@ export default async function StoreHome() {
           ))}
         </section>
       )}
+
+      <AssuranceBar />
 
       <section className="sec" aria-labelledby="h-cats">
         <h2 id="h-cats" className="sr">Kategoriler</h2>

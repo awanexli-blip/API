@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { basePath, STORE_NAME } from "@/lib/store";
 import { categories } from "@/lib/store-data";
 import CategoryMenu from "./CategoryMenu";
+import { AssuranceBar } from "./Assurances";
 import Icon, { STAR_PATTERN } from "./Icon";
 
 // Tek yazı ailesi (frontend-design): derlemede indirilir, uygulamayla sunulur (dış istek yok); Türkçe harfler için latin-ext
@@ -56,6 +57,7 @@ export default async function StoreLayout({ children }: { children: React.ReactN
         </header>
         <main><div className="wrap">{children}</div></main>
         <footer className="foot">
+          <div className="wrap foot-assure"><AssuranceBar /></div>
           <div className="wrap">
             <div className="cols">
               <div>
