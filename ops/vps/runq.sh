@@ -27,6 +27,8 @@ run1() {
 }
 
 NODE="/usr/bin/node --experimental-strip-types"
+# Ağır tek seferlik işler aynı kilidi bekler (K 18.11)
+HEAVY="/usr/bin/flock -w 10800 /run/lock/trentakip-heavy.lock"
 QUIET="-E TELEGRAM_BOT_TOKEN= -E TELEGRAM_CHAT_ID="
 
 for f in "$Q"/*.json; do
@@ -54,14 +56,14 @@ for f in "$Q"/*.json; do
       esac ;;
     import.yml)
       if [ "$sup" = "all" ] || [ "$sup" = "-" ]; then systemctl start --no-block trentakip-supplier-vps.service; log "başlatıldı: trentakip-supplier-vps"
-      else run1 "trentakip-run-import-$sup" "$QUIET -E NODE_OPTIONS=--max-old-space-size=2500 -E ACTOR=panel" "$NODE worker/import-xml.ts $sup"; fi ;;
+      else run1 "trentakip-run-import-$sup" "$QUIET -E NODE_OPTIONS=--max-old-space-size=2500 -E ACTOR=panel" "$HEAVY $NODE worker/import-xml.ts $sup"; fi ;;
     invoice-upload.yml)
       case "$mode" in
         audit) run1 "trentakip-run-invoice" "-p EnvironmentFile=/etc/trentakip/panel.env" "$NODE worker/invoice-audit.ts" ;;
         dry|apply) run1 "trentakip-run-invoice" "-p EnvironmentFile=/etc/trentakip/panel.env -E CHROME_BIN=/usr/bin/google-chrome" "$NODE worker/invoice-upload.ts $mode ${cnt/-/200}" ;;
         *) log "geçersiz fatura modu: $mode" ;;
       esac ;;
-    catalog.yml) run1 "trentakip-run-catalog" "$QUIET" "$NODE worker/catalog.ts" ;;
+    catalog.yml) run1 "trentakip-run-catalog" "$QUIET" "$HEAVY $NODE worker/catalog.ts" ;;
     *) log "izinli olmayan iş: $file" ;;
   esac
 done

@@ -11,7 +11,8 @@ EnvironmentFile=/etc/trentakip/keys.env
 Environment=TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID= SUPABASE_DB_URL=
 WorkingDirectory=/opt/trentakip
 # Kota biterse durur; faturalandırma açılınca aynı iş hızlanır (AUDIT_N ile tur başı adet)
-ExecStart=/bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; exec /usr/bin/node --experimental-strip-types worker/content-audit.ts ${AUDIT_N:-150}"
+# Ağır iş (K 18.11): aynı anda tek ağır iş; diğerleri kilidi bekler (en çok 3 saat). Senkronlar (stok/fiyat) bu kilide girmez.
+ExecStart=/usr/bin/flock -w 10800 /run/lock/trentakip-heavy.lock /bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; exec /usr/bin/node --experimental-strip-types worker/content-audit.ts ${AUDIT_N:-150}"
 TimeoutStartSec=25min
 Nice=10
 NoNewPrivileges=true

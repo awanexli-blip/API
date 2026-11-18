@@ -11,6 +11,7 @@ WorkingDirectory=/opt/trentakip
 EnvironmentFile=/etc/trentakip/env
 EnvironmentFile=/etc/trentakip/keys.env
 Environment=ACTOR=sunucu-ice-aktarma
-ExecStart=/bin/sh -c "SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=2500 exec /usr/bin/node --experimental-strip-types worker/import-xml.ts nightly"
+# Ağır iş (K 18.11): aynı anda tek ağır iş; diğerleri kilidi bekler (en çok 3 saat). Senkronlar (stok/fiyat) bu kilide girmez.
+ExecStart=/usr/bin/flock -w 10800 /run/lock/trentakip-heavy.lock /bin/sh -c "SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY NODE_OPTIONS=--max-old-space-size=2500 exec /usr/bin/node --experimental-strip-types worker/import-xml.ts nightly"
 TimeoutStartSec=90min
 Nice=10

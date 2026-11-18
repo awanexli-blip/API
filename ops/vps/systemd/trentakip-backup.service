@@ -4,5 +4,8 @@ After=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash /opt/trentakip/ops/vps/backup.sh
+# Ağır iş (K 18.11): aynı anda tek ağır iş; diğerleri kilidi bekler (en çok 3 saat). Senkronlar (stok/fiyat) bu kilide girmez.
+# Açılışta (Persistent) veritabanı hazır olmadan çalışıp düşüyordu (18.11): önce hazır olmasını bekle
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do docker exec trentakip-db-1 pg_isready -U postgres -q && exit 0; sleep 5; done; exit 1'
+ExecStart=/usr/bin/flock -w 10800 /run/lock/trentakip-heavy.lock /bin/bash /opt/trentakip/ops/vps/backup.sh
 Nice=10
