@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-19 (88) — Vitrin araması ve ayrıntılı filtre
+- **K 19.11:** "arama kısmı çok detaylı, kullanıcı dostu, müşteri aradığını kolayca bulsun, güzel filtreleme".
+- **Veritabanı (migration 097, sunucuda uygulandı):** `store_norm` (Türkçe harfe duyarsız), `store_catalog` yeniden kuruldu (`tn`/`hay` hazır normal metin + trigram dizini), `store_search` RPC: çok kelimeli (sıra bağımsız, başlık + kategori yolu), az sonuçta yazım hatası toleransı (word_similarity ≥ 0,5, dizinden), tam eşleşme yoksa "benzer sonuçlar" işareti, sayılı kategori yüzeyi (üst > alt > tür) ve fiyat aralığı sayıları. Ölçüm: tam eşleşme 0,15–0,3 sn, toleranslı ~0,9 sn (önce 7–33 sn).
+- **Vitrin:** başlıkta yazarken öneri kutusu (`SearchBox.tsx`: ilk 6 ürün görsel+fiyat, eşleşen kategoriler, son aramalar, klavye ile gezinme, ARIA combobox), `/api/oneri` (vitrin içinde, salt okunur); arama/kategori sayfasında sayılı kategori ağacı + yukarı dönüş, sayılı fiyat aralıkları, "Ücretsiz kargo" filtresi, kaldırılabilir çipler, "Tüm filtreleri temizle", sonuç yoksa öneri + kategoriler.
+- Açık: canlıda tarayıcıyla son kontrol (panel derlemesinden sonra).
+
 ## 2026-11-19 (87) — İçerik düzeltme: çelişen açıklama + görsel ölçüsü (iki model) + başka satıcılardan uzlaşmalı özellik
 - **K 19.11:** açıklama ve özellikler "%100 doğru", "yanlış istemiyorum, kesin olsun"; "dur demeyene kadar devam et, diğer yapay zekâları çalıştır, sen kontrol et". 10.11 kararı (tedarikçi metni aynen) korunur: yalnızca ÇELİŞKİ değişir, bilgi uydurulmaz, emin olunmayan yerde dokunulmaz.
 - **Kod:** `worker/core/contradictions.ts` (saf): malzeme (baz metal ürüne "925 ayar / saf gümüş / 14 ayar altın" iddiası; "gümüş renk/kaplama" çelişki değil; suni deri ürüne hakiki deri; %100 pamuk/polyester; plastik/ahşap/cam/seramik/metal açık malzeme ifadesi) -> cümle çıkar; ürün tipi (başlık bileklik, açıklama hiç bileklik demeden kolye) -> gövde atılır, yalnızca çelişmeyen "Ad: değer" satırları kalır; ölçü (birim ya da "ölçü/boyut/ebat" etiketi zorunlu; birden çok ölçü/set ise dokunulmaz) -> iki görsel modeli aynı ölçüyü okursa yazılır, okuyamaz/anlaşamazsa ve başlık ya da görsel çelişki gösteriyorsa ölçü cümlesi çıkar + "Ölçü: ürün görseline bakınız.". İşçi modelin malzeme önerisi yalnızca kural doğrularsa (`confirmAiContradiction`).

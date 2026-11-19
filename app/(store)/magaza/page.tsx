@@ -11,8 +11,8 @@ export default async function StoreHome() {
   const top = cats.slice(0, 6);
   const [best, fresh, ...rails] = await Promise.all([
     bestSellers(15).catch(() => []),
-    list({ sort: "yeni", page: 1, size: 15 }),
-    ...top.slice(0, 4).map((c) => list({ top: c.top, sort: "onerilen", page: 1, size: 15 })),
+    list({ sort: "yeni", page: 1, size: 15, facets: false }),
+    ...top.slice(0, 4).map((c) => list({ top: c.top, sort: "onerilen", page: 1, size: 15, facets: false })),
   ]);
   const total = cats.reduce((t, c) => t + c.n, 0);
   const promo = cats.filter((c) => c.image).slice(0, 3);

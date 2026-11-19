@@ -1,6 +1,6 @@
 // Vitrin verisi (yalnızca sunucu: service_role). Liste sorguları store_catalog'dan (saatlik), ürün detayı canlı tablolardan.
 import { admin } from "@/lib/server";
-import { PAGE_SIZE, likeEscape, slugify, type Sort } from "@/lib/store";
+import { PAGE_SIZE, slugify, type Sort } from "@/lib/store";
 
 export type Card = { product_id: string; slug: string; title: string; price: number; image: string | null; top: string; sub: string | null; leaf: string | null };
 const CARD = "product_id, slug, title, price, image, top, sub, leaf";
@@ -21,20 +21,19 @@ export async function categories(): Promise<TopCat[]> {
   return [...by.values()].sort((a, b) => b.n - a.n);
 }
 
-export async function list(o: { top?: string; sub?: string; q?: string; min?: number; max?: number; sort: Sort; page: number; size?: number }) {
+export type Facets = { level: "top" | "sub" | "leaf"; cats: { name: string; n: number }[]; bands: number[]; free: number; pmin: number | null; pmax: number | null };
+export type SearchResult = { items: Card[]; total: number; pages: number; fuzzy: boolean; facets: Facets | null };
+// Arama + filtre tek RPC'de (migration 097 store_search): Türkçe harfe duyarsız, çok kelimeli, yazım hatası toleranslı; kategori/fiyat yüzeyi sayılı
+export async function list(o: { top?: string; sub?: string; leaf?: string; q?: string; min?: number; max?: number; sort: Sort; page: number; size?: number; facets?: boolean }): Promise<SearchResult> {
   const size = o.size ?? PAGE_SIZE;
-  let qb = admin().from("store_catalog").select(CARD, { count: "exact" });
-  if (o.top) qb = qb.eq("top", o.top);
-  if (o.sub) qb = qb.eq("sub", o.sub);
-  if (o.min != null) qb = qb.gte("price", o.min);
-  if (o.max != null) qb = qb.lte("price", o.max);
-  if (o.q) qb = qb.ilike("title", `%${likeEscape(o.q)}%`);
-  qb = o.sort === "fiyat-artan" ? qb.order("price", { ascending: true }) : o.sort === "fiyat-azalan" ? qb.order("price", { ascending: false })
-    : o.sort === "yeni" ? qb.order("created_at", { ascending: false }) : qb.order("stock", { ascending: false });
-  const from = (o.page - 1) * size;
-  const { data, error, count } = await qb.order("product_id").range(from, from + size - 1);
+  const { data, error } = await admin().rpc("store_search", {
+    p_q: o.q ?? null, p_top: o.top ?? null, p_sub: o.sub ?? null, p_leaf: o.leaf ?? null, p_min: o.min ?? null, p_max: o.max ?? null,
+    p_sort: o.sort, p_offset: (o.page - 1) * size, p_limit: size, p_facets: o.facets ?? true,
+  });
   if (error) throw new Error(`ürünler okunamadı: ${error.message}`);
-  return { items: (data ?? []) as Card[], total: count ?? 0, pages: Math.max(1, Math.ceil((count ?? 0) / size)) };
+  const r = (data ?? {}) as { items?: Card[]; total?: number; fuzzy?: boolean; facets?: Facets | null };
+  const total = Number(r.total ?? 0);
+  return { items: r.items ?? [], total, pages: Math.max(1, Math.ceil(total / size)), fuzzy: !!r.fuzzy, facets: r.facets ?? null };
 }
 
 // Çok satanlar (K 17.11: "milletin iştahını açalım"): pazaryerlerinde son 60 günde gerçekten satılan ve vitrinde olan ürünler (uydurma rozet yok)

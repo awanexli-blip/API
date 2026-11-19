@@ -1,6 +1,6 @@
 // Vitrin ortak parçaları (sunucu bileşenleri). Kart düzeni Bezos'tan ilham: beyaz kart, Stokta rozeti, görsel, ince ayırıcı, bilgi, fiyat kutusu.
 import { imgUrl, tl, PRICE_BANDS } from "@/lib/store";
-import type { Card, TopCat } from "@/lib/store-data";
+import type { Card, Facets } from "@/lib/store-data";
 import Icon from "./Icon";
 
 // Rozet yalnızca gerçek bilgiden: "Çok satan" (pazaryerinde son 60 günde satıldı), "Yeni" (mağazaya son eklenen)
@@ -47,40 +47,67 @@ export function Pager({ page, pages, href }: { page: number; pages: number; href
   );
 }
 
-// Filtre kartı (Bezos'tan ilham: sayılı kategori ağacı, seçili olan dolu). Fiyat: hazır aralıklar + özel aralık (form GET, JS gerekmez)
-export function Filters({ cat, sub, path, cur, min, max, idp = "" }: {
-  cat?: TopCat; sub?: string; path: string; cur: Record<string, string | undefined>; min?: number; max?: number; idp?: string;
+// Filtre kartı (K 19.11 ayrıntılı arama): sayılı kategori ağacı (üst > alt > tür, yukarı dönüş bağlantılı), sayılı fiyat aralıkları,
+// ücretsiz kargo, özel aralık (form GET, JS gerekmez). Sayılar arama/filtre sonucuna göre (store_search yüzeyi).
+export type Crumb = { label: string; href: string };
+export function Filters({ path, cur, facets, min, max, catTitle, trail, pick, idp = "" }: {
+  path: string; cur: Record<string, string | undefined>; facets: Facets | null; min?: number; max?: number;
+  catTitle: string; trail: Crumb[]; pick: (name: string) => { href: string; on: boolean }; idp?: string;
 }) {
   const h = hrefWith(path, cur);
+  const cats = facets?.cats ?? [];
+  const head = cats.slice(0, 8), rest = cats.slice(8);
+  const item = (c: { name: string; n: number }) => { const p = pick(c.name); return <li key={c.name}><a href={p.href} aria-current={p.on ? "page" : undefined}>{c.name} <small>{c.n.toLocaleString("tr-TR")}</small></a></li>; };
+  const freeOn = min === 500 && max == null;
+  const active = Object.entries(cur).some(([k, v]) => v && !["sirala", "sayfa", "q"].includes(k));
   return (
     <div className="filters panel">
-      {cat && cat.subs.length > 1 && (
-        <section aria-labelledby={`${idp}f-sub`}>
-          <h2 id={`${idp}f-sub`}>{cat.top}</h2>
-          <ul>
-            <li><a href={h({ alt: undefined, sayfa: undefined })} aria-current={!sub ? "page" : undefined}>Tümü <small>{cat.n.toLocaleString("tr-TR")}</small></a></li>
-            {cat.subs.map((s) => <li key={s.slug}><a href={h({ alt: s.slug, sayfa: undefined })} aria-current={sub === s.slug ? "page" : undefined}>{s.sub} <small>{s.n.toLocaleString("tr-TR")}</small></a></li>)}
-          </ul>
+      {(trail.length > 0 || cats.length > 0) && (
+        <section aria-labelledby={`${idp}f-cat`}>
+          <h2 id={`${idp}f-cat`}>{catTitle}</h2>
+          {trail.map((t) => <a key={t.href} className="up" href={t.href}><Icon name="back" size={14} /> {t.label}</a>)}
+          {cats.length > 0 && <ul>{head.map(item)}</ul>}
+          {rest.length > 0 && <details className="more-cats"><summary>{rest.length} kategori daha</summary><ul>{rest.map(item)}</ul></details>}
         </section>
       )}
       <section aria-labelledby={`${idp}f-price`}>
         <h2 id={`${idp}f-price`}>Fiyat</h2>
         <ul>
-          {PRICE_BANDS.map(([a, b, label]) => {
+          {PRICE_BANDS.map(([a, b, label], i) => {
             const on = a === min && b === max;
-            return <li key={label}><a href={h({ min: on ? undefined : a, max: on ? undefined : b, sayfa: undefined })} aria-current={on ? "page" : undefined}>{label}</a></li>;
+            const n = facets?.bands?.[i];
+            if (!on && n === 0) return null;
+            return <li key={label}><a href={h({ min: on ? undefined : a, max: on ? undefined : b, sayfa: undefined })} aria-current={on ? "page" : undefined}>{label} {n != null && <small>{n.toLocaleString("tr-TR")}</small>}</a></li>;
           })}
+          {(freeOn || (facets?.free ?? 0) > 0) && (
+            <li><a href={h({ min: freeOn ? undefined : 500, max: undefined, sayfa: undefined })} aria-current={freeOn ? "page" : undefined}><span><Icon name="truck" size={16} /> Ücretsiz kargo</span> {facets && <small>{facets.free.toLocaleString("tr-TR")}</small>}</a></li>
+          )}
         </ul>
         <form className="range" action={path}>
           {Object.entries(cur).filter(([k, v]) => v && !["min", "max", "sayfa"].includes(k)).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-          <label className="sr" htmlFor={`${idp}fmin`}>En az fiyat</label><input id={`${idp}fmin`} name="min" inputMode="numeric" placeholder="En az" defaultValue={min ?? ""} />
-          <label className="sr" htmlFor={`${idp}fmax`}>En çok fiyat</label><input id={`${idp}fmax`} name="max" inputMode="numeric" placeholder="En çok" defaultValue={max ?? ""} />
+          <label className="sr" htmlFor={`${idp}fmin`}>En az fiyat</label><input id={`${idp}fmin`} name="min" inputMode="numeric" placeholder={facets?.pmin != null ? `En az ${facets.pmin}` : "En az"} defaultValue={min ?? ""} />
+          <label className="sr" htmlFor={`${idp}fmax`}>En çok fiyat</label><input id={`${idp}fmax`} name="max" inputMode="numeric" placeholder={facets?.pmax != null ? `En çok ${facets.pmax}` : "En çok"} defaultValue={max ?? ""} />
           <button type="submit">Uygula</button>
         </form>
       </section>
+      {active && <section><a className="btn quiet clear-all" href={h({ kat: undefined, alt: undefined, tur: undefined, min: undefined, max: undefined, sayfa: undefined })}>Tüm filtreleri temizle</a></section>}
     </div>
   );
 }
+
+// Seçili filtre çipleri (her biri tek tıkla kaldırılır) + sonuç sayısı
+export function ListMeta({ total, chips, note }: { total: number; chips: Crumb[]; note?: string | null }) {
+  return (
+    <div className="listmeta">
+      <span><b>{total.toLocaleString("tr-TR")}</b> ürün</span>
+      {chips.map((c) => <a key={c.href + c.label} className="chip" href={c.href} aria-label={`${c.label} filtresini kaldır`}>{c.label} <Icon name="close" size={14} /></a>)}
+      {note && <span className="note">{note}</span>}
+    </div>
+  );
+}
+
+export const priceChip = (min?: number, max?: number) =>
+  min === 500 && max == null ? "Ücretsiz kargo (500 TL+)" : min != null || max != null ? `${min != null ? tl(min) : "0 TL"} - ${max != null ? tl(max) : "üstü"}` : null;
 
 // Mevcut sorgu parametrelerini koruyarak adres üret
 export function hrefWith(path: string, cur: Record<string, string | undefined>) {

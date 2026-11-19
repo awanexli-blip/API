@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { basePath, STORE_NAME } from "@/lib/store";
 import { categories } from "@/lib/store-data";
 import CategoryMenu from "./CategoryMenu";
+import SearchBox from "./SearchBox";
 import { AssuranceBar } from "./Assurances";
 import Icon, { STAR_PATTERN } from "./Icon";
 
@@ -41,12 +42,7 @@ export default async function StoreLayout({ children }: { children: React.ReactN
             <div className="row">
               <a className="logo" href={home} aria-label={`${STORE_NAME} ana sayfa`}>{logo}</a>
               <button type="button" className="menu-btn" data-open-catmenu><Icon name="menu" /> Kategoriler</button>
-              <form className="search" action={`${base}/ara`} role="search">
-                <label className="sr" htmlFor="q">Ürün ara</label>
-                <Icon name="search" />
-                <input id="q" name="q" type="search" placeholder="Ürün, marka ya da kategori ara" minLength={2} maxLength={80} autoComplete="off" enterKeyHint="search" />
-                <button type="submit">Ara</button>
-              </form>
+              <SearchBox base={base} />
             </div>
           </div>
           <div className="wrap">
