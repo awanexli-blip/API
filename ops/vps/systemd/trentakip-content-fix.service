@@ -12,10 +12,11 @@ Environment=TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID= SUPABASE_DB_URL=
 WorkingDirectory=/opt/trentakip
 # run: yalnızca app_state content_fix {"enabled":true} iken (panel Açıklamalar > "Sürekli çalıştır" / "Durdur"); süre, kota ve onay bekleyen sınırında durur.
 # apply --yes: yalnızca panelde ONAYLANAN özellikler (aynı satır iki kez uygulanmaz). Ağır iş kilidi (K 18.11): aynı anda tek ağır iş.
-ExecStart=/usr/bin/flock -w 10800 /run/lock/trentakip-heavy.lock /bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; /usr/bin/node --experimental-strip-types worker/content-fix.ts run; exec /usr/bin/node --experimental-strip-types worker/content-fix.ts apply --yes"
+# Ağır iş kilidini kullanmaz (K 19.11): iş çoğunlukla yapay zekâ yanıtı bekler (%2 işlemci); 20 dk tutunca yedek/içe aktarma/panel derlemesi aç kalıyordu. Kendi kilidi, üst üste binmez.
+ExecStart=/usr/bin/flock -n /run/lock/trentakip-contentfix.lock /bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; /usr/bin/node --experimental-strip-types worker/content-fix.ts run; exec /usr/bin/node --experimental-strip-types worker/content-fix.ts apply --yes"
 TimeoutStartSec=40min
 Nice=10
-CPUQuota=60%
+CPUQuota=30%
 MemoryMax=700M
 NoNewPrivileges=true
 ProtectSystem=strict
