@@ -48,6 +48,7 @@ quote: açıklamadaki cümleyi AYNEN kopyala. Yalnızca JSON: {"items":[{"kind":
 const MATERIAL_HINT = /925|ayar|gümüş|gumus|altın|altin|deri|pamuk|polyester|plastik|ahşap|ahsap|tahta|bambu|cam|seramik|porselen|metal|çelik|celik|malzeme|materyal/i;
 
 type P = { id: string; title: string; description: string; category: string | null; brand: string | null; source: string | null; attributes: Record<string, any> | null; source_hash: string; image_url: string | null };
+let attrQuota = false; // bu çalışmada Gemini arama kotası doldu
 type Res = { result: "degisiklik" | "yok" | "atlandi" | "hata"; findings: Finding[]; proposals: AttrProposal[]; summary: Record<string, any> };
 
 async function wantedAttrs(p: P): Promise<WantAttr[]> {
@@ -92,7 +93,8 @@ async function processProduct(p: P): Promise<Res> {
   summary.yzOnayli = findings.filter((f) => f.by === "yapay_zeka+kural").length;
   // 3) Özellikler: başka satıcılar, uzlaşma
   let proposals: AttrProposal[] = [];
-  if (process.env.CONTENT_FIX_ATTRS !== "0" && geminiEnabled()) {
+  if (attrQuota) summary.ozellik = { durum: "kota: bu turda özellik araştırması yapılmadı" };
+  else if (process.env.CONTENT_FIX_ATTRS !== "0" && geminiEnabled()) try {
     const want = await wantedAttrs(p);
     if (want.length) {
       const { data: vs } = await db.from("product_variants").select("barcode").eq("product_id", p.id);
@@ -102,6 +104,10 @@ async function processProduct(p: P): Promise<Res> {
       proposals = cons.accepted;
       summary.ozellik = { durum: rr.status, cagri: rr.calls, adaylar: rr.detail.slice(0, 4), kabul: cons.accepted.length, cekimser: cons.abstained.slice(0, 8) };
     } else summary.ozellik = { durum: "eksik izinli-liste özelliği yok" };
+  } catch (e: any) {
+    // Gemini araması kotası: çelişki/ölçü işi sürer, özellik araştırması bu turda kapanır (sonra: content_fix_seen'de durum "kota" olanlar silinip yeniden denenir)
+    if (!(e instanceof GeminiQuotaError || /kota|quota|429/i.test(String(e?.message)))) throw e;
+    attrQuota = true; summary.ozellik = { durum: "kota: bu turda özellik araştırması yapılmadı" };
   }
   const acts = findings.filter((f) => f.action !== "note");
   if (!acts.length && !proposals.length) return { result: "yok", findings, proposals, summary };
