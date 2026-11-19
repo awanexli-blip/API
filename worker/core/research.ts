@@ -61,7 +61,7 @@ export function imageHint(url: string): string {
   return file.replace(/(-\d+)*-sw\d+sh\d+$/i, "").replace(/-\d{4,}$/g, "").replace(/[-_]+/g, " ").replace(/\b\d+\b/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
-async function imagePart(url: string): Promise<GeminiPart | null> {
+export async function imagePart(url: string): Promise<GeminiPart | null> {
   try {
     const r = await safeFetch(url, { maxBytes: 8 * 1048576, timeoutMs: 30_000, accept: /^image\// });
     if (!r.ok || r.body.length < 500) return null;
@@ -70,7 +70,7 @@ async function imagePart(url: string): Promise<GeminiPart | null> {
 }
 
 // Google arama yönlendirme adresi -> gerçek ilan adresi (sayfa indirilmez, yalnızca Location okunur)
-async function realUrl(u: string): Promise<string> {
+export async function realUrl(u: string): Promise<string> {
   if (!/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect/.test(u)) return u;
   try {
     const r = await fetch(u, { redirect: "manual", signal: AbortSignal.timeout(15_000) });

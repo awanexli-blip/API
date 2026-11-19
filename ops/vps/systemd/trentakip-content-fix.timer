@@ -1,0 +1,9 @@
+[Unit]
+Description=Trentakip içerik düzeltme (30 dakikada bir; kapatma anahtarı kapalıysa hemen çıkar)
+
+[Timer]
+OnCalendar=*-*-* *:05,35:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

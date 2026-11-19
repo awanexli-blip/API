@@ -1,0 +1,22 @@
+[Unit]
+Description=Trentakip: içerik düzeltme (K 19.11; çelişen açıklama cümlesi, görsel ölçüsü iki modelle, başka satıcılardan uzlaşmalı özellik; worker/content-fix.ts). Sonuçlar panel onayına; onaylanan özellikler uygulanır
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trentakip
+EnvironmentFile=/etc/trentakip/env
+EnvironmentFile=/etc/trentakip/keys.env
+Environment=TELEGRAM_BOT_TOKEN= TELEGRAM_CHAT_ID= SUPABASE_DB_URL=
+WorkingDirectory=/opt/trentakip
+# run: yalnızca app_state content_fix {"enabled":true} iken (panel Açıklamalar > "Sürekli çalıştır" / "Durdur"); süre, kota ve onay bekleyen sınırında durur.
+# apply --yes: yalnızca panelde ONAYLANAN özellikler (aynı satır iki kez uygulanmaz). Ağır iş kilidi (K 18.11): aynı anda tek ağır iş.
+ExecStart=/usr/bin/flock -w 10800 /run/lock/trentakip-heavy.lock /bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; /usr/bin/node --experimental-strip-types worker/content-fix.ts run; exec /usr/bin/node --experimental-strip-types worker/content-fix.ts apply --yes"
+TimeoutStartSec=40min
+Nice=10
+CPUQuota=60%
+MemoryMax=700M
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true

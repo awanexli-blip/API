@@ -30,16 +30,29 @@ export async function GET(req: NextRequest) {
   const page = Math.max(0, Math.min(500, Number(sp.get("page") ?? 0) || 0));
   const db = admin();
   const n = (s: string) => db.from("product_descriptions").select("product_id", { count: "exact", head: true }).eq("status", s);
-  const [ls, ready, approved, rejected, skipped, pushed, big] = await Promise.all([
-    db.from("product_descriptions").select("product_id, status, draft, original, reason, checks, model, pushed, updated_at, decided_by, products(title, sku, source)")
+  const [ls, ready, approved, rejected, skipped, pushed, big, cf] = await Promise.all([
+    db.from("product_descriptions").select("product_id, status, kind, draft, original, reason, checks, model, pushed, applied, attr_proposals, updated_at, decided_by, products(title, sku, source)")
       .eq("status", status).order("updated_at", { ascending: false }).range(page * 25, page * 25 + 24),
     n("ready"), n("approved"), n("rejected"), n("skipped"), n("approved").not("pushed->trendyol", "is", null),
     slowCounts(db),
+    contentFixState(db),
   ]);
   // Listenin hata metni dolu gelir; head:true sayım hatalarında gövde olmaz
   if (ls.error) return missing(ls.error.message) ? NextResponse.json({ missing: true }) : bad(ls.error.message);
   if ([ready, approved, rejected, skipped, pushed].some((x) => x.error)) return bad("Açıklama sayıları alınamadı, yeniden dene");
-  return NextResponse.json({ counts: { ...big, ready: ready.count ?? 0, approved: approved.count ?? 0, rejected: rejected.count ?? 0, skipped: skipped.count ?? 0, pushed: pushed.count ?? 0 }, items: ls.data ?? [], page });
+  return NextResponse.json({ contentFix: cf, counts: { ...big, ready: ready.count ?? 0, approved: approved.count ?? 0, rejected: rejected.count ?? 0, skipped: skipped.count ?? 0, pushed: pushed.count ?? 0 }, items: ls.data ?? [], page });
+}
+
+// İçerik düzeltme (worker/content-fix.ts, migration 095): kapatma anahtarı + son çalışma özeti + onay bekleyen sayısı
+async function contentFixState(db: ReturnType<typeof admin>) {
+  const [st, pr, rd] = await Promise.all([
+    db.from("app_state").select("value, updated_at").eq("key", "content_fix").maybeSingle(),
+    db.from("app_state").select("value").eq("key", "content_fix_progress").maybeSingle(),
+    db.from("product_descriptions").select("product_id", { count: "exact", head: true }).eq("status", "ready").eq("kind", "content-fix"),
+  ]);
+  const parse = (v: any) => { try { return v ? JSON.parse(v) : null; } catch { return null; } };
+  if (st.error && /kind|attr_proposals/.test(String(rd.error?.message ?? ""))) return { missing: true };
+  return { enabled: parse(st.data?.value)?.enabled === true, by: parse(st.data?.value)?.by ?? null, at: st.data?.updated_at ?? null, progress: parse(pr.data?.value), ready: rd.count ?? 0, missing: !!rd.error };
 }
 
 // { action: "approve" | "reject" | "reopen", ids } · { action: "approve_all_ready", expect } · { action: "edit", id, draft }
@@ -56,7 +69,7 @@ export async function PUT(req: NextRequest) {
     const from = b.action === "reopen" ? ["approved", "rejected"] : ["ready", ...(b.action === "reject" ? ["approved"] : [])];
     // Yeniden açılan / reddedilen onaylı açıklama: pazaryerine gönderildiyse ilanda kalır (eski metni geri göndermek ayrı iş)
     const { data, error } = await db.from("product_descriptions").update({ status: to, decided_by: a.email, decided_at: now, updated_at: now, ...(to === "approved" ? { pushed: {} } : {}) })
-      .in("product_id", ids).in("status", from).not("draft", "is", null).select("product_id");
+      .in("product_id", ids).in("status", from).or("draft.not.is.null,kind.eq.content-fix").select("product_id");
     if (error) return bad(error.message);
     return NextResponse.json({ ok: true, changed: data?.length ?? 0 });
   }
@@ -64,9 +77,17 @@ export async function PUT(req: NextRequest) {
     // Ekrandaki sayıyla karşılaştırılır: arada yeni taslak geldiyse kullanıcı görmeden onaylanmasın
     const { count } = await db.from("product_descriptions").select("product_id", { count: "exact", head: true }).eq("status", "ready");
     if (Number(b.expect) !== count) return bad(`Bekleyen taslak sayısı değişti (${count}); listeyi yenileyip tekrar dene`);
-    const { data, error } = await db.from("product_descriptions").update({ status: "approved", decided_by: a.email, decided_at: now, updated_at: now, pushed: {} }).eq("status", "ready").not("draft", "is", null).select("product_id");
+    const { data, error } = await db.from("product_descriptions").update({ status: "approved", decided_by: a.email, decided_at: now, updated_at: now, pushed: {} }).eq("status", "ready").or("draft.not.is.null,kind.eq.content-fix").select("product_id");
     if (error) return bad(error.message);
     return NextResponse.json({ ok: true, changed: data?.length ?? 0 });
+  }
+  if (b.action === "content_fix_toggle") {
+    // Tek kapatma anahtarı: sürekli içerik düzeltme (sunucu zamanlayıcısı worker/content-fix.ts run) yalnızca açıkken çalışır
+    const on = b.enabled === true;
+    const { error } = await db.from("app_state").upsert({ key: "content_fix", value: JSON.stringify({ enabled: on, by: a.email, at: now }), updated_at: now }, { onConflict: "key" });
+    if (error) return bad(error.message);
+    await db.from("audit_log").insert({ actor: a.email, action: "update", entity: "app_state", entity_id: "content_fix", before: null, after: { enabled: on } });
+    return NextResponse.json({ ok: true, enabled: on });
   }
   if (b.action === "edit") {
     const id = String(b.id ?? "");

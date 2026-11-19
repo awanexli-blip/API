@@ -6,6 +6,9 @@ Son güncelleme: 14.11.2026.
 
 ## Şu an
 
+> **19.11 (PROGRESS 86):**
+> 1. [~] İçerik düzeltme (çelişen açıklama, görsel ölçüsü iki modelle, uzlaşmalı özellik): kod + test hazır; sunucu açılınca migration 095 + 50 önizleme (komutlar PROGRESS 86). (K) önizlemeyi panelde onayla, sonra "Sürekli çalıştır".
+
 > **15.11 (PROGRESS 76):**
 > 1. [~] TY: Toptancım 6.400 arşivde -> 16.11 02:30 kalıcı silme, 03:30 yıldız dolumu (Çerçici 3.500 uygun ürün dahil). Revize 1.280 geri çekildi (engel listesi).
 > 2. [~] HB: 6.567 ürün kuyrukta (Çerçici + kalanlar); 35 bin hatalı ilan (kategori/özellik) yeniden deneniyor, yapay zekâ kategori eşleme sürüyor.
