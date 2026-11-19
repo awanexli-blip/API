@@ -123,3 +123,6 @@ end $$;
 revoke all on function public.store_search(text, text, text, text, numeric, numeric, text, int, int, boolean) from public, anon, authenticated;
 grant execute on function public.store_search(text, text, text, text, numeric, numeric, text, int, int, boolean) to service_role;
 revoke all on function public.store_norm(text) from anon, authenticated;
+
+-- PostgREST şema önbelleği (19.11: eklenmeyince yeni RPC bulunamadı, vitrin ~55 dk 500 verdi)
+notify pgrst, 'reload schema';
