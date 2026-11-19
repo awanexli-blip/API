@@ -75,9 +75,10 @@ export function omniVision(model: string): VisionCaller {
 }
 export function visionCallers(spec = process.env.DIMS_MODELS ?? ""): VisionCaller[] {
   const list = spec.split(",").map((s) => s.trim()).filter(Boolean);
+  // Varsayılan (19.11 sunucuda ölçüldü): NVIDIA Nemotron VL (OpenRouter) + Google Gemma 4 31B; OpenRouter yoksa Gemini 2.5 Flash + Gemma 4 31B
   const def = list.length ? list : [
-    ...(process.env.GEMINI_API_KEY ? ["gemini:gemini-2.5-flash"] : []),
-    ...(process.env.OPENROUTER_API_KEY ? ["openrouter:nvidia/nemotron-3.5-super-vl:free"] : process.env.GEMINI_API_KEY ? ["gemini:gemma-4-31b-it"] : []),
+    ...(process.env.OPENROUTER_API_KEY ? ["openrouter:nvidia/nemotron-3.5-super-vl:free"] : process.env.GEMINI_API_KEY ? ["gemini:gemini-2.5-flash"] : []),
+    ...(process.env.GEMINI_API_KEY ? ["gemini:gemma-4-31b-it"] : []),
   ];
   return def.map((s) => {
     const [kind, ...rest] = s.split(":"); const m = rest.join(":");
@@ -90,7 +91,7 @@ export async function readDimsTwoModels(img: Img, callers: VisionCaller[], log: 
   if (callers.length < 2 || callers[0].name === callers[1].name) return null;
   const one = async (c: VisionCaller) => {
     try { return parseDimsReply(await c.call(DIMS_PROMPT, img)); }
-    catch (e: any) { if (/kota|429|quota/i.test(String(e?.message))) throw e; log(`görsel ölçü ${c.name}: ${String(e?.message ?? e).slice(0, 120)}`); return null; }
+    catch (e: any) { log(`görsel ölçü ${c.name}: ${String(e?.message ?? e).slice(0, 120)}`); return null; } // kota/yoğunluk = okunamadı (uzlaşma yok, değer yazılmaz)
   };
   const a = await one(callers[0]);
   const b = await one(callers[1]);
@@ -103,7 +104,7 @@ export async function readDimsImages(imgs: Img[], callers: VisionCaller[], log: 
   if (!imgs.length || callers.length < 2 || callers[0].name === callers[1].name) return null;
   const one = async (c: VisionCaller, img: Img) => {
     try { return parseDimsReply(await c.call(DIMS_PROMPT, img)); }
-    catch (e: any) { if (/kota|429|quota/i.test(String(e?.message))) throw e; log(`görsel ölçü ${c.name}: ${String(e?.message ?? e).slice(0, 120)}`); return null; }
+    catch (e: any) { log(`görsel ölçü ${c.name}: ${String(e?.message ?? e).slice(0, 120)}`); return null; } // kota/yoğunluk = okunamadı (uzlaşma yok, değer yazılmaz)
   };
   let firstA: Dims[] | null = null, anyRead = false;
   for (let i = 0; i < imgs.length; i++) {
