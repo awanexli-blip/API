@@ -85,7 +85,7 @@ async function processProduct(p: P): Promise<Res> {
   let ai: AiContra[] = [];
   if (process.env.CONTENT_FIX_AI !== "0" && providers().length && MATERIAL_HINT.test(p.description) && MATERIAL_HINT.test(p.title)) {
     const lines = toLines(p.description).map((l) => l.sentences.join(" ")).join("\n").slice(0, 3500);
-    const r = await llmJson<{ items?: AiContra[] }>(AI_SYSTEM, `BAŞLIK: ${p.title}\nKATEGORİ: ${p.category ?? ""}\nAÇIKLAMA:\n${lines}`, { log }).catch((e) => { log(`işçi model: ${String(e?.message ?? e).slice(0, 120)}`); return { data: null, by: "" }; });
+    const r = await llmJson<{ items?: AiContra[] }>(AI_SYSTEM, `BAŞLIK: ${p.title}\nKATEGORİ: ${p.category ?? ""}\nAÇIKLAMA:\n${lines}`, { log, maxWaitMs: 90_000 }).catch((e) => { log(`işçi model: ${String(e?.message ?? e).slice(0, 120)}`); return { data: null, by: "" }; });
     ai = (r.data?.items ?? []).slice(0, 6);
     summary.isciModel = { by: r.by, oneri: ai.length };
   }
