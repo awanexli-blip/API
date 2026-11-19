@@ -646,6 +646,9 @@ async function main() {
     for (const it of pushList) sentBy.set(it.id, { price: it.price, qty: it.quantity });
     summary.updated += r.ok; summary.failedBatches += r.failed; summary.batchIds.push(...r.batchIds);
     noteErrors(summary, r);
+    // Gönderilen stok/fiyat HEMEN ilan tablosuna (pushed_at): 19.11 HB turları yeni ürün kuyruğunda süre sınırına takılıp en sondaki
+    // kayda hiç ulaşamıyordu; stok gidiyor ama "son gönderim" 17.11'de kalıyordu. Tur sonundaki kayıt yine çalışır (üzerine yazar).
+    if (listings.length && pushList.length) summary.listingsTable = await snapshotListings(db, marketplaceId, listings, calcBy, sentBy).catch((e: any) => ({ error: String(e?.message ?? e) }));
     // Yeni ürün kuyruğu stok/fiyattan sonra (yukarıdaki not)
     await runSend();
     // Rekabet: buybox sırası ve fiyatı (salt okunur; fiyatı değiştirmez, öneri panelde)
