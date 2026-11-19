@@ -37,6 +37,9 @@ export interface PricingConfig {
   couponRate?: number | null;
   // Ödeme/tahsilat bedeli (K 17.11 Hepsiburada hakediş: "Tahsilat Yönetim Bedeli" satışın ~%0,87'si, KDV dahil, faturalı -> KDV'si indirilir)
   paymentFeeRate?: number | null;
+  // Genel fiyat zammı (K 19.11: "%5 zam", settings.price_markup): formül fiyatı x (1 + oran), x9,90 yuvarlama. Kargo basamağını aşıp
+  // net kârı düşürecekse o üründe uygulanmaz (zam zarar ettirmesin). Boş/0 = zam yok.
+  priceMarkup?: number | null;
   multiUnitMinNet?: number | null; // çoklu adet koruması: 300 TL altı üründen eşiği geçecek kadar (2-3 adet) alınınca kargo sonrası en az net kâr (TL). Boş = kapalı
 }
 
@@ -210,6 +213,13 @@ export function calcPrice(
 }
 
 function finish(cost: number, cfg: PricingConfig, commissionRate: number, r: { price: number; note?: string }, fail: (reason: string) => PriceResult): PriceResult {
+  const m = Math.min(0.5, Math.max(0, Number(cfg.priceMarkup) || 0));
+  if (m > 0 && Number.isFinite(r.price) && r.price > 0) {
+    const up = roundUpPsych(r.price * (1 + m));
+    if (up > r.price && profitOf(up, cost, cfg, commissionRate).net >= profitOf(r.price, cost, cfg, commissionRate).net) {
+      r = { price: up, note: [r.note, `%${Math.round(m * 1000) / 10} zam`].filter(Boolean).join(" · ") };
+    } else r = { ...r, note: [r.note, "zam uygulanmadı (kargo basamağı kârı düşürürdü)"].filter(Boolean).join(" · ") };
+  }
   if (r.price > cfg.maxPrice) return fail("fiyat üst sınırı aştı");
   const p = profitOf(r.price, cost, cfg, commissionRate);
   if (p.net <= 0) return fail("zarar");
@@ -291,5 +301,6 @@ export function cfgFromSettings(s: Record<string, any>, vatPct = 20): PricingCon
     shippingVatIncluded: s.shipping_vat_included !== false, vatRate: vatPct / 100, shippingBands: bandsFrom(s.shipping_bands),
     couponRate: s.coupon_rate != null ? Number(s.coupon_rate) : null,
     paymentFeeRate: s.payment_fee_rate != null ? Number(s.payment_fee_rate) : null,
+    priceMarkup: s.price_markup != null ? Number(s.price_markup) : null,
   };
 }

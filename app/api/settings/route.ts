@@ -29,9 +29,10 @@ const NUM: Record<string, [number, number, boolean]> = {
   net_margin_min: [0, 0.5, false],
   coupon_rate: [0, 0.3, false],
   payment_fee_rate: [0, 0.1, false],
+  price_markup: [0, 0.5, false],
 };
 // Boş bırakılabilen (null) sayısal alanlar
-const OPTIONAL = ["squeeze_min_net", "multi_unit_min_net", "net_profit_min", "net_profit_max", "net_margin_min", "coupon_rate", "payment_fee_rate"];
+const OPTIONAL = ["squeeze_min_net", "multi_unit_min_net", "net_profit_min", "net_profit_max", "net_margin_min", "coupon_rate", "payment_fee_rate", "price_markup"];
 const BOOL = ["cargo_fast", "sales_paused", "xml_price_includes_vat", "auto_sync", "auto_create", "update_prices", "zero_missing", "commission_plus_vat", "shipping_vat_included", "enabled"];
 const POLICIES = ["keep", "floor", "formula", "smart"];
 // Yalnızca ortak (settings) tablosunda olanlar

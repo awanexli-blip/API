@@ -133,6 +133,8 @@ function buildCfg(s: any) {
     shippingBands: bandsFrom(s.shipping_bands),
     // K 17.11: kupon payı ve tahsilat bedeli (worker/pricing.ts); sipariş kâr hesabında (orders.ts) kupon 0
     couponRate: s.coupon_rate != null ? Number(s.coupon_rate) : null, paymentFeeRate: s.payment_fee_rate != null ? Number(s.payment_fee_rate) : null,
+    // K 19.11: genel zam (settings.price_markup, worker/pricing.ts finish)
+    priceMarkup: s.price_markup != null ? Number(s.price_markup) : null,
   };
 }
 

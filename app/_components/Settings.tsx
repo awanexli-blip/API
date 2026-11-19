@@ -28,6 +28,7 @@ const FIELDS: Field[] = [
   { key: "fixed_cost", label: "Ürün başı sabit gider (TL)", kind: "num", hint: "Paketleme vb." },
   { key: "return_rate", label: "İade oranı (%)", kind: "pct", hint: "Siparişlerin yüzde kaçı iade geliyor (ör. 5)" },
   { key: "return_cost", label: "İade başına maliyet (TL)", kind: "num", hint: "İade kargosu + gidiş kargosu + hasar payı, KDV dahil (ör. 180)" },
+  { key: "price_markup", label: "Genel zam (%)", kind: "pct", optional: true, hint: "Hesaplanan fiyatın üstüne eklenen zam (ör. 5 = %5). Kargo basamağını aşıp kârı düşürecekse o üründe uygulanmaz. Boş = zam yok" },
   { key: "coupon_rate", label: "Kupon / indirim payı (%)", kind: "pct", optional: true, hint: "Satıcının karşıladığı kupon ve indirimler için fiyata eklenen pay (ör. 2 = satışın %2'si). Kasım 2026 siparişlerinde tedarikçi ürünlerinde ~%1,5. Boş = 0" },
   { key: "payment_fee_rate", label: "Tahsilat / ödeme bedeli (%)", kind: "pct", optional: true, hint: "Pazaryerinin satış tutarından kestiği tahsilat bedeli, KDV dahil (Hepsiburada \"Tahsilat Yönetim Bedeli\" ~0,87). Boş = 0" },
   { key: "net_profit_min", label: "Net kâr aralığı: en az (TL)", kind: "num", optional: true, hint: "Doluysa fiyat yüzde hedefine göre değil, en az bu kadar net kâr bırakan en ucuz fiyata göre hesaplanır (kâr kuralları ve 1,3x taban kullanılmaz). Boş = yüzde hedefi" },
@@ -80,6 +81,7 @@ export default function Settings({ api, notify, marketplace }: Props) {
     netMarginMin: String(f.net_margin_min ?? "").trim() === "" ? null : num("net_margin_min") / 100,
     couponRate: String(f.coupon_rate ?? "").trim() === "" ? null : num("coupon_rate") / 100,
     paymentFeeRate: String(f.payment_fee_rate ?? "").trim() === "" ? null : num("payment_fee_rate") / 100,
+    priceMarkup: String(f.price_markup ?? "").trim() === "" ? null : num("price_markup") / 100,
     vatRate: simVat / 100,
     commissionPlusVat: f.commission_plus_vat === true, shippingVatIncluded: f.shipping_vat_included !== false, shippingBands: bandsFrom(parseBands(String(f.shipping_bands_text ?? "")) || null),
   };

@@ -140,4 +140,13 @@ console.log(fails ? `\n${fails} birim testi başarısız` : "\nBirim testleri ge
   const r = calcPrice(500, pf, 0.12);
   check("tahsilat bedeli: fiyat sonrası net >= 60", r.ok && breakdown(r.price, 500, pf, 0.12).net >= 59.99, r);
 }
+// Genel zam (K 19.11: %5, settings.price_markup)
+{
+  const base = calcPrice(100, cfg, 0.18), up = calcPrice(100, { ...cfg, priceMarkup: 0.05 }, 0.18);
+  check("zam: fiyat en az %5 artar ve x9,90 biter", up.ok && up.price >= base.price * 1.05 - 0.01 && Math.abs((up.price * 100) % 1000 - 990) < 1, { base: base.price, up: up.price });
+  check("zam: net kâr düşmez", up.netProfit >= base.netProfit, { base, up });
+  const b2 = calcPrice(150, cfg, 0.18), u2 = calcPrice(150, { ...cfg, priceMarkup: 0.05 }, 0.18);
+  check("zam: 299,90 sıkıştırması 300 eşiğini aşıp kârı düşürecekse uygulanmaz", b2.price !== 299.9 || u2.price === 299.9 || u2.netProfit >= b2.netProfit, { b2: b2.price, u2: u2.price });
+  check("zam yok (0/boş) = eski fiyat", calcPrice(100, { ...cfg, priceMarkup: 0 }, 0.18).price === base.price);
+}
 process.exit(fails ? 1 : 0);
