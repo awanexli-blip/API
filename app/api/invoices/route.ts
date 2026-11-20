@@ -346,9 +346,10 @@ export async function POST(req: NextRequest) {
       }
       // Mükerrer: bizim imzalanmamış taslağımızın siparişi için portalda (bizim olmayan) imzalı ya da elle oluşturulmuş taslak var (aynı alıcı, sipariş sonrası tarih)
       // İade faturaları (IADE) da bizim: imzalandıysa durum güncellenir; mükerrer aramasında "elle kesilmiş" sayılmaz
-      let retSigned = 0;
+      let retSigned = 0, retWaiting = 0;
       for (const d of retDrafts as any[]) {
         const doc = docs.get(d.ettn);
+        if (doc && !isSigned(doc) && !isDeleted(doc)) retWaiting++;
         if (doc && isSigned(doc)) { retSigned++; await db.from("order_return_invoices").update({ status: "signed", belge_no: doc.belgeNumarasi ?? null, signed_at: now, updated_at: now }).eq("return_key", d.return_key); }
         else if (doc && isDeleted(doc)) await db.from("order_return_invoices").update({ status: "deleted", error: "Taslak portalda silinmiş", updated_at: now }).eq("return_key", d.return_key);
       }
@@ -378,7 +379,7 @@ export async function POST(req: NextRequest) {
         .gte("ordered_at", new Date(Date.now() - 60 * 86400000).toISOString());
       const m = matchManualInvoices(list, (cand ?? []).filter((o: any) => !has.has(o.id)), new Set((all ?? []).map((d: any) => d.ettn).filter(Boolean)));
       for (const l of m.links) await db.from("order_invoices").upsert({ order_id: l.order_id, status: "signed", ettn: l.ettn, belge_no: l.belge_no, error: null, created_by: "portal (elle)", signed_at: now, updated_at: now }, { onConflict: "order_id" });
-      return NextResponse.json({ signed, deleted, waiting, missing, duplicate, returnSigned: retSigned, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
+      return NextResponse.json({ signed, deleted, waiting, missing, duplicate, returnSigned: retSigned, returnWaiting: retWaiting, manual: m.links.length, manualAmbiguous: m.ambiguous, manualUnmatched: m.unmatched });
     } catch (e: any) { return bad(String(e?.message ?? e).slice(0, 300)); }
     finally { await logout(); }
   }
