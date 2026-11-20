@@ -302,3 +302,39 @@ export function cfgFromSettings(s: Record<string, any>, vatPct = 20): PricingCon
     priceMarkup: s.price_markup != null ? Number(s.price_markup) : null,
   };
 }
+
+// Rekabet fiyatı (K 20.11: "rakiplerin biraz altında, en iyi marj, %15-20"). Rakip bilgisi Trendyol buybox API'sinden (aynı ürün sayfasındaki
+// satıcılar; listing_buybox). Kural: fiyat [alt marj fiyatı, üst marj fiyatı] aralığında kalır (net en az netMin TL);
+//  rakip buybox'ta -> rakibin 1 TL altı; buybox bizde -> ikinci satıcının 1 TL altına kadar; tek satıcı -> üst marj; bilgi yok -> unknown marjı.
+export type CompInfo = { order: number | null; bb: number | null; second: number | null; multiple: boolean | null };
+export type CompBand = { lo: number; hi: number; alone: number; unknown: number; netMin: number };
+export function parseCompBand(v: unknown): (CompBand & { enabled: boolean }) | null {
+  let o: any = v;
+  if (typeof v === "string") { try { o = JSON.parse(v); } catch { return null; } }
+  if (!o || typeof o !== "object") return null;
+  const n = (x: unknown, d: number, a: number, b: number) => { const y = Number(x); return Number.isFinite(y) && y >= a && y <= b ? y : d; };
+  const lo = n(o.lo, 0.15, 0, 0.5), hi = Math.max(lo, n(o.hi, 0.2, 0, 0.6));
+  return { enabled: o.enabled === true, lo, hi, alone: n(o.alone, hi, lo, hi), unknown: n(o.unknown, lo, lo, hi), netMin: n(o.netMin, 70, 0, 10000) };
+}
+export function undercutPrice(p: number): number {
+  const x = p - 1;
+  return r2(Math.floor(x - 0.9 + 1e-9) + 0.9); // 394,90 -> 393,90; 271,13 -> 269,90
+}
+export function competitivePrice(cost: number, cfg: PricingConfig, commissionRate: number, comp: CompInfo | undefined, b: CompBand): PriceResult {
+  const at = (m: number) => calcPrice(cost, { ...cfg, netProfitMin: b.netMin, netProfitMax: null, netMarginMin: m, priceMarkup: 0 }, commissionRate);
+  const lo = at(b.lo);
+  if (!lo.ok) return lo;
+  const hi = at(b.hi);
+  if (!hi.ok) return lo;
+  const pct = (m: number) => `%${Math.round(m * 100)}`;
+  let target: number, why: string;
+  if (comp?.multiple && (comp.order ?? 0) > 1 && Number(comp.bb) > 0) { target = undercutPrice(Number(comp.bb)); why = `rakip ${Number(comp.bb).toFixed(2)} TL, 1 TL altı`; }
+  else if (comp?.multiple && comp.order === 1 && Number(comp.second) > 0) { target = undercutPrice(Number(comp.second)); why = `buybox bizde, ikinci satıcı ${Number(comp.second).toFixed(2)} TL`; }
+  else if (comp && comp.multiple === false) { const a = at(b.alone); return a.ok ? { ...a, note: [a.note, `tek satıcı: ${pct(b.alone)} marj`].filter(Boolean).join(" · ") } : lo; }
+  else { const u = at(b.unknown); return u.ok ? { ...u, note: [u.note, `rakip bilgisi yok: ${pct(b.unknown)} marj`].filter(Boolean).join(" · ") } : lo; }
+  if (target <= lo.price) return { ...lo, note: `${why}; alt sınır (${pct(b.lo)}) altına inilmez` };
+  if (target >= hi.price) return { ...hi, note: `${why}; üst sınır (${pct(b.hi)})` };
+  const k = breakdown(target, cost, cfg, commissionRate);
+  if (!(k.net > 0)) return lo;
+  return { ok: true, price: target, sellerPaysShipping: k.shipping > 0, shipping: k.shipping, netProfit: r2(k.net), profitRate: Math.round(k.rate * 1000) / 1000, note: why };
+}

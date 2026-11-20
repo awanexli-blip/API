@@ -10,7 +10,7 @@ import { loadGuard, type Guard } from "./core/holds.ts";
 import { inScopeAny } from "../lib/scope.ts";
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
-import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig } from "./pricing.ts";
+import { bandsFrom, calcPrice, existingPriceSafe, breakdown, type PricingConfig, parseCompBand, type CompInfo } from "./pricing.ts";
 import { tyShipCfg } from "./core/trendyol-cargo.ts";
 import { applyRules, rulesFor, type PricingRule } from "./pricing-rules.ts";
 import { snapshotListings, type ListingCalc } from "./core/listings.ts";
@@ -503,6 +503,24 @@ async function main() {
       }
       dbCtx.dyn = { cfg: dm, active: s.dynamic_margin_active === true, comp };
       summary.dynamicMargin = { active: dbCtx.dyn.active, withCompetitionData: comp.size };
+    }
+  }
+  // Rekabet fiyatı (K 20.11, settings.competitive_pricing {"enabled":true,"lo":0.15,"hi":0.2,"netMin":70}): buybox rakip fiyatı + marj aralığı.
+  // Açıkken duruma göre marjın yerine geçer (pricing.ts competitivePrice). Rakip bilgisi listing_buybox (Trendyol buybox API).
+  {
+    const cb = parseCompBand(s.competitive_pricing);
+    if (cb?.enabled) {
+      const map = new Map<string, CompInfo>();
+      for (let last = ""; ; ) {
+        const { data, error } = await db.from("listing_buybox").select("listing_key, buybox_order, buybox_price, second_price, multiple").eq("marketplace", marketplaceId).gt("listing_key", last).order("listing_key").limit(1000);
+        if (error || !data?.length) break;
+        for (const b of data as any[]) map.set(b.listing_key, { order: b.buybox_order != null ? Number(b.buybox_order) : null, bb: b.buybox_price != null ? Number(b.buybox_price) : null, second: b.second_price != null ? Number(b.second_price) : null, multiple: b.multiple });
+        last = data[data.length - 1].listing_key;
+        if (data.length < 1000) break;
+      }
+      dbCtx.comp = { band: cb, map };
+      dbCtx.dyn = null;
+      summary.competitivePricing = { band: { lo: cb.lo, hi: cb.hi, alone: cb.alone, unknown: cb.unknown, netMin: cb.netMin }, withBuyboxData: map.size };
     }
   }
 

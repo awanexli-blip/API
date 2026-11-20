@@ -1,6 +1,6 @@
 // Fiyat formülü ve mevcut ilan politikası birim testleri.
 // node --experimental-strip-types worker/test/pricing.test.ts
-import { calcPrice, defaultConfig as cfg, existingPrice, breakdown, shippingAt, bandsFrom } from "../pricing.ts";
+import { calcPrice, defaultConfig as cfg, existingPrice, breakdown, shippingAt, bandsFrom, competitivePrice, undercutPrice } from "../pricing.ts";
 
 let fails = 0;
 const check = (name: string, cond: boolean, info: unknown = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + JSON.stringify(info)}`); if (!cond) fails++; };
@@ -147,5 +147,23 @@ console.log(fails ? `\n${fails} birim testi başarısız` : "\nBirim testleri ge
   const b2 = calcPrice(150, cfg, 0.18), u2 = calcPrice(150, { ...cfg, priceMarkup: 0.05 }, 0.18);
   check("zam: her üründe uygulanır (299,90 dahil)", u2.ok && u2.price >= b2.price * 1.05 - 0.01, { b2: b2.price, u2: u2.price });
   check("zam yok (0/boş) = eski fiyat", calcPrice(100, { ...cfg, priceMarkup: 0 }, 0.18).price === base.price);
+}
+// Rekabet fiyatı (K 20.11, %15-20, rakibin 1 TL altı)
+{
+  const band = { lo: 0.15, hi: 0.2, alone: 0.2, unknown: 0.15, netMin: 70 };
+  const lo = calcPrice(300, { ...cfg, netProfitMin: 70, netMarginMin: 0.15 }, 0.18), hi = calcPrice(300, { ...cfg, netProfitMin: 70, netMarginMin: 0.2 }, 0.18);
+  const mid = Math.round((lo.price + hi.price) / 2);
+  const c1 = competitivePrice(300, cfg, 0.18, { order: 2, bb: mid, second: null, multiple: true }, band);
+  check("rekabet: rakip buybox'ta -> 1 TL altı", c1.ok && c1.price === undercutPrice(mid) && c1.price < mid, { c1, mid });
+  const c2 = competitivePrice(300, cfg, 0.18, { order: 2, bb: lo.price - 50, second: null, multiple: true }, band);
+  check("rekabet: rakip çok ucuz -> alt sınırda kalır", c2.price === lo.price, { c2: c2.price, lo: lo.price });
+  const c3 = competitivePrice(300, cfg, 0.18, { order: 2, bb: hi.price + 500, second: null, multiple: true }, band);
+  check("rekabet: rakip pahalı -> üst sınır (%20)", c3.price === hi.price, { c3: c3.price, hi: hi.price });
+  const c4 = competitivePrice(300, cfg, 0.18, { order: 1, bb: null, second: hi.price + 500, multiple: true }, band);
+  check("rekabet: buybox bizde, ikinci pahalı -> üst sınır", c4.price === hi.price);
+  check("rekabet: tek satıcı -> üst marj", competitivePrice(300, cfg, 0.18, { order: 1, bb: null, second: null, multiple: false }, band).price === hi.price);
+  check("rekabet: bilgi yok -> alt marj", competitivePrice(300, cfg, 0.18, undefined, band).price === lo.price);
+  check("rekabet: net en az 70 TL", competitivePrice(50, cfg, 0.18, undefined, band).netProfit >= 69.99);
+  check("undercut 394,90 -> 393,90", undercutPrice(394.9) === 393.9);
 }
 process.exit(fails ? 1 : 0);

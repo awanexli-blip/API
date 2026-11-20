@@ -2,7 +2,7 @@
 //  - dbInventory: veritabanından gönderilmiş ilanların stok/fiyatı (BayilikXML ilanları XML akışında kalır)
 //  - processSendJobs: paneldeki "Pazaryerine gönder" kuyruğu (jobs: send_products:<pazaryeri>) -> ürün açma
 // Ürün pazaryerinde doğrulanmadan "yayında" sayılmaz: gönderilen ilan "sent" olur, durumu sonraki senkronlarda pazaryerinden okunur.
-import { breakdown, calcPrice, existingPriceSafe, type PricingConfig } from "../pricing.ts";
+import { breakdown, calcPrice, competitivePrice, existingPriceSafe, type CompBand, type CompInfo, type PricingConfig } from "../pricing.ts";
 import { applyRules, type PricingRule } from "../pricing-rules.ts";
 import type { InventoryItem, Listing, Marketplace, NewProduct } from "../marketplaces/types.ts";
 import { normTitle, normFull, readAll, loadExclusions } from "./util.ts";
@@ -27,6 +27,8 @@ export type DbCtx = {
   econ?: Map<string, { cost: number; comm: number; pcfg: PricingConfig; price: number }>; // ilan başına maliyet/komisyon (buybox kâr hesabı)
   // Duruma göre marj: ayar + ilan -> başka satıcı var mı (listing_buybox.multiple); active=false ise yalnızca karşılaştırma (stats.marginSim)
   dyn?: { cfg: DynMargin; active: boolean; comp: Map<string, boolean> } | null;
+  // Rekabet fiyatı (K 20.11, settings.competitive_pricing): açıksa fiyat pricing.ts competitivePrice ile (buybox rakip fiyatı + %15-20 marj)
+  comp?: { band: CompBand; map: Map<string, CompInfo> } | null;
   scopeText?: Map<string, { cat: string; title: string }>; // ilan -> tedarikçi kategori yolu + başlık (faaliyet kapsamı)
   scopeActive?: boolean; // app_state.scope_filter = "on": kapsam dışı ürün gönderilmez
   sources?: Set<string> | null; // SYNC_SOURCES: yalnızca bu kaynakların ilanları stok/fiyat alır (sunucu, geçişe kadar)
@@ -70,7 +72,7 @@ export const listingKeyOf = (source: string, variant: { sku: string; barcode: st
   source === "xml:bayilik" ? `OS13-${variant.sku}` : variant.barcode ?? "";
 
 // Fiyat: tedarikçi maliyeti (döviz çevrilir) + pazaryeri komisyonu + akıllı kâr kuralları
-export function priceFor(ctx: Pick<DbCtx, "fx" | "cfg" | "catMap" | "mp" | "marketplaceId" | "rules" | "shipFor" | "shipCfg" | "dyn" | "skip">, p: any, v: any, key: string | null, stock: number, catName?: string | null) {
+export function priceFor(ctx: Pick<DbCtx, "fx" | "cfg" | "catMap" | "mp" | "marketplaceId" | "rules" | "shipFor" | "shipCfg" | "dyn" | "comp" | "skip">, p: any, v: any, key: string | null, stock: number, catName?: string | null) {
   const cost0 = Number(v.cost_price ?? p.cost_price) * (ctx.fx[p.currency ?? "TRY"] ?? 0);
   const cost = Number.isFinite(cost0) && cost0 > 0 ? cost0 : 0;
   // Ürün formunda girilen satış fiyatı (KDV dahil; "Satış fiyatı@hepsiburada" o pazaryerinde ezer): olduğu gibi gider (K, 28.10:
@@ -86,6 +88,11 @@ export function priceFor(ctx: Pick<DbCtx, "fx" | "cfg" | "catMap" | "mp" | "mark
   if (fixed > 0) {
     const loss = !(cost > 0) || breakdown(fixed, cost, pcfg, comm).net <= 0;
     return { ok: true as const, price: Math.round(fixed * 100) / 100, cost, comm, pcfg, fixed: true, loss };
+  }
+  if (ctx.comp) {
+    const c = competitivePrice(cost, pcfg, comm, key != null ? ctx.comp.map.get(key) : undefined, ctx.comp.band);
+    if (!c.ok) return { ok: false as const, reason: c.reason ?? "fiyat hesaplanamadı", cost, comm, pcfg };
+    return { ok: true as const, price: c.price, cost, comm, pcfg, note: c.note };
   }
   const r = calcPrice(cost, pcfg, comm);
   if (!r.ok) return { ok: false as const, reason: r.reason ?? "fiyat hesaplanamadı", cost, comm, pcfg };
