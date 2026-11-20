@@ -163,6 +163,20 @@ export async function POST(req: NextRequest) {
   // Sistemin portal oturumunu kapat (portal tek oturuma izin veriyor; K giriş yapamıyorsa): giriş + hemen çıkış
   // İmzalı faturanın GİB görünümü (panelde açılır, K tarayıcıdan PDF kaydeder; dosya adı = alıcı adı). Belge yalnızca isteyen admin'e döner, saklanmaz/loglanmaz.
   // İade faturası (K 15.11): kabul edilmiş iade satırları için e-Arşiv IADE taslağı (imza K'da). Veri istemciden değil rapordan yeniden okunur.
+  // İade faturası tarihi (K 20.11: GİB "geçiş kullanıcısı" yalnızca belli tarih aralığına izin veriyor): boş = bugün. Seçilen gün ileri olamaz,
+  // 7 günden eski olamaz (e-Arşiv geriye tarih sınırı), orijinal satış faturasından önce olamaz. Saat 12:00 (Türkiye).
+  const retDate = (orig: Date): Date | string => {
+    const s = typeof b.date === "string" ? b.date.trim() : "";
+    if (!s) return new Date();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "Tarih biçimi YYYY-AA-GG olmalı";
+    const d = new Date(`${s}T12:00:00+03:00`);
+    const day = (x: Date) => new Date(x.getTime() + 3 * 3600_000).toISOString().slice(0, 10);
+    if (Number.isNaN(d.getTime())) return "Geçersiz tarih";
+    if (s > day(new Date())) return "Fatura tarihi ileri bir gün olamaz";
+    if (Date.now() - d.getTime() > 7.5 * 86400000) return "Fatura tarihi 7 günden eski olamaz";
+    if (s < day(orig)) return `Fatura tarihi satış faturasından (${day(orig)}) önce olamaz`;
+    return d;
+  };
   if (b.action === "return_draft") {
     const ids: string[] = [...new Set<string>((Array.isArray(b.ids) ? b.ids : []).filter((x: unknown) => typeof x === "string"))].slice(0, 20);
     if (!ids.length) return bad("İade seç (en fazla 20)");
@@ -189,11 +203,16 @@ export async function POST(req: NextRequest) {
         const lq = Math.max(1, Number(line.qty) || 1), q = Math.min(lq, Math.max(1, Number(r.qty) || 1));
         let vatRate = line.vat_rate != null ? Number(line.vat_rate) : null;
         if (vatRate == null && line.product_id) { const { data: pr } = await db.from("products").select("vat_rate").eq("id", line.product_id).maybeSingle(); vatRate = pr?.vat_rate != null ? Number(pr.vat_rate) : null; }
+        const origAt = new Date(orig.signed_at ?? orig.created_at ?? o.ordered_at ?? Date.now());
+        const at = retDate(origAt);
+        if (typeof at === "string") { results.push({ id: r.id, ok: false, error: at }); continue; }
+        // Önceki hatalı deneme satırı yeni denemeyi engellemesin (tekil anahtar)
+        await db.from("order_return_invoices").delete().eq("return_key", r.id).in("status", ["error", "deleted", "creating"]);
         const claim = await db.from("order_return_invoices").insert({ return_key: r.id, order_id: o.id, order_no: o.order_no, marketplace: o.marketplace, status: "creating", original_belge_no: orig.belge_no, created_by: "panel", updated_at: now });
         if (claim.error) { results.push({ id: r.id, ok: false, error: claim.error.code === "23505" ? "Bu iade için zaten iade faturası var" : claim.error.message }); continue; }
         try {
           const inv = buildReturnInvoice({ ...o, lines: [{ title: line.title, qty: q, unit_price: Number(line.unit_price), ty_discount: (Number(line.ty_discount) || 0) * q / lq, vat_rate: vatRate ?? 20 }] } as any,
-            { belge_no: orig.belge_no, date: new Date(orig.signed_at ?? orig.created_at ?? o.ordered_at ?? Date.now()) });
+            { belge_no: orig.belge_no, date: origAt }, at);
           const { _ozet, _iade, ...payload } = inv as any;
           const doc = await gib.createDraft(payload);
           await db.from("order_return_invoices").update({ status: "draft", ettn: doc.ettn, belge_no: doc.belgeNumarasi ?? null, amount: _ozet.total, vat: _ozet.kdv, lines: [{ title: line.title, qty: q }], error: null, updated_at: new Date().toISOString() }).eq("return_key", r.id);
@@ -231,11 +250,14 @@ export async function POST(req: NextRequest) {
     const pids = ls.filter((l) => l.vat_rate == null && l.product_id).map((l) => l.product_id);
     const pv = new Map<string, number>();
     if (pids.length) { const { data } = await db.from("products").select("id, vat_rate").in("id", pids); for (const x of data ?? []) if (x.vat_rate != null) pv.set(x.id, Number(x.vat_rate)); }
+    const at = retDate(signedAt);
+    if (typeof at === "string") return bad(at);
+    await db.from("order_return_invoices").delete().eq("return_key", id).in("status", ["error", "deleted", "creating"]);
     const claim = await db.from("order_return_invoices").insert({ return_key: id, order_id: o.id, order_no: o.order_no, marketplace: o.marketplace, status: "creating", original_belge_no: orig.belge_no, created_by: "panel", updated_at: now });
     if (claim.error) return bad(claim.error.code === "23505" ? "Bu sipariş için zaten iade faturası var" : claim.error.message);
     try {
       await login();
-      const inv = buildReturnInvoice({ ...o, lines: ls.map((l) => ({ ...l, vat_rate: l.vat_rate != null ? Number(l.vat_rate) : pv.get(l.product_id) ?? 20 })) } as any, { belge_no: orig.belge_no, date: signedAt });
+      const inv = buildReturnInvoice({ ...o, lines: ls.map((l) => ({ ...l, vat_rate: l.vat_rate != null ? Number(l.vat_rate) : pv.get(l.product_id) ?? 20 })) } as any, { belge_no: orig.belge_no, date: signedAt }, at);
       const { _ozet, _iade, ...payload } = inv as any;
       const doc = await gib.createDraft(payload);
       await db.from("order_return_invoices").update({ status: "draft", ettn: doc.ettn, belge_no: doc.belgeNumarasi ?? null, amount: _ozet.total, vat: _ozet.kdv, lines: ls.map((l) => ({ title: l.title, qty: l.qty })), error: null, updated_at: new Date().toISOString() }).eq("return_key", id);

@@ -52,6 +52,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     : !r.invoice || !["signed", "uploaded"].includes(r.invoice.status) ? "Önce satış faturası" : r.buyer_type && r.buyer_type !== "bireysel" ? "Kurumsal: iade faturasını müşteri keser"
     : r.return_invoice && !["error", "deleted"].includes(r.return_invoice.status) ? "var" : ret?.marks?.[r.id] ? "işaretli" : null;
   const [rsel, setRsel] = useState<Set<string>>(new Set());
+  const [retDateIn, setRetDateIn] = useState(""); // iade faturası tarihi (boş = bugün; K 20.11 GİB geçiş dönemi)
   const n = (t: Tab) => (t === "ret" ? retOpen.length : all.filter(inTab[t]).length);
   // e-Fatura mükellefi kurumsal alıcıya e-Arşiv kesilmez (Trendyol kurumsal fatura rehberi): seçilemez, GİB e-Fatura portalından elle
   const selectable = (r: Row) => r.has_customer && r.buyer_type !== "kurumsal_efatura" && (!r.invoice || ["error", "deleted"].includes(r.invoice.status));
@@ -189,12 +190,12 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
   async function returnDraft() {
     const ids = [...rsel];
     if (!ids.length) return;
-    if (!(await confirmDialog(`${ids.length} iade için GİB e-Arşiv portalında İADE FATURASI TASLAĞI oluşturulacak (orijinal satış faturasına bağlı, yalnızca iade edilen ürün ve adet). İmzayı portalda sen atarsın. Devam?`))) return;
+    if (!(await confirmDialog(`${ids.length} iade için GİB e-Arşiv portalında İADE FATURASI TASLAĞI oluşturulacak (orijinal satış faturasına bağlı, yalnızca iade edilen ürün ve adet). Fatura tarihi: ${retDateIn ? retDateIn.split("-").reverse().join(".") : "bugün"}. İmzayı portalda sen atarsın. Devam?`))) return;
     let ok = 0; const errs: string[] = [];
     for (const id of ids) { const r = retAll.find((x) => x.id === id); if (r?.return_invoice && ["error", "deleted"].includes(r.return_invoice.status)) { try { await post({ action: "return_reset", id }); } catch (e: any) { errs.push(e.message); } } }
     for (let i = 0; i < ids.length; i += 5) {
       setBusy(`İade faturası taslakları oluşturuluyor (${Math.min(i + 5, ids.length)}/${ids.length})...`);
-      try { const r = await post({ action: "return_draft", ids: ids.slice(i, i + 5) }, 120000); ok += r.created; for (const x of r.results ?? []) if (!x.ok) errs.push(`${retAll.find((y) => y.id === x.id)?.order_no ?? ""}: ${x.error}`); }
+      try { const r = await post({ action: "return_draft", ids: ids.slice(i, i + 5), date: retDateIn || undefined }, 120000); ok += r.created; for (const x of r.results ?? []) if (!x.ok) errs.push(`${retAll.find((y) => y.id === x.id)?.order_no ?? ""}: ${x.error}`); }
       catch (e: any) { errs.push(e.message); break; }
     }
     setBusy(""); setRsel(new Set()); await load();
@@ -212,7 +213,7 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
     setBusy("İade faturası taslağı oluşturuluyor...");
     try {
       if (r.return_invoice && ["error", "deleted", "creating"].includes(r.return_invoice.status)) await post({ action: "return_reset", id: r.id });
-      const x = await post({ action: "cancel_return_draft", id: r.id }, 120000);
+      const x = await post({ action: "cancel_return_draft", id: r.id, date: retDateIn || undefined }, 120000);
       notify("good", `İade faturası taslağı oluşturuldu (${tl(Number(x.amount))}). Portalda imzala, sonra İmzalananları kontrol et.`);
     } catch (e: any) { notify("err", e.message); }
     setBusy(""); await load();
@@ -308,6 +309,9 @@ export default function Invoices({ api, notify }: { api: Api; notify: Notify }) 
             Trendyol ve Hepsiburada iadeleri{ret?.at ? ` (son okuma ${when(ret.at)})` : ""}. Kabul edilen her bireysel iade için <b>iade faturası</b> kesilir. Kurumsal müşteride iade faturasını müşteri keser, sistem dokunmaz; gelince &quot;Müşterinin iade faturası geldi&quot; ile işaretle. Sistem taslağı oluşturur, imzayı portalda sen atarsın, sonra &quot;İmzalananları kontrol et&quot;. Sipariş müşteriye ulaşmadan iptal edildiyse satış faturası portalda iptal edilir.
           </p>
           <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }} title="Boş = bugün. GİB geçiş döneminde izin verilen aralıkta bir gün seç (satış faturasından önce, ileri ya da 7 günden eski olamaz)">
+              Fatura tarihi <input type="date" value={retDateIn} onChange={(e) => setRetDateIn(e.target.value)} style={{ padding: "4px 6px" }} />
+            </label>
             <button className="btn primary" disabled={!!busy || !rsel.size || !canGib} onClick={returnDraft}>{rsel.size ? `${rsel.size} iade için iade faturası taslağı` : "İade faturası için iade seç"}</button>
             {eligible.length > 0 && <button className="btn ghost" onClick={() => setRsel(eligible.every((r) => rsel.has(r.id)) ? new Set() : new Set(eligible.map((r) => r.id)))}>{eligible.every((r) => rsel.has(r.id)) ? "Seçimi kaldır" : `Kesilecekleri seç (${eligible.length})`}</button>}
             <button className="btn" disabled={!!busy || !canGib} onClick={sync}>İmzalananları kontrol et</button>
