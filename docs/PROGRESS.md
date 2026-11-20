@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-21 (90) — Rekabet fiyatı açıldı, iade faturaları, HB gider analizi (DEVİR NOTU)
+- **Rekabet fiyatı AÇIK (K onaylı 21.11):** `settings.competitive_pricing` TY {lo .15, hi .20, alone .15, unknown .15, netMin 70}; HB `marketplace_settings` {.12 sabit, netMin 70}; `price_markup` ikisinde null (%7 zam kalktı). Kod `worker/pricing.ts competitivePrice` (rakip buybox'ta -> 1 TL altı, buybox bizde -> ikinci satıcının altına kadar, [lo,hi] aralığı), `db-products priceFor`, `sync.ts` (listing_buybox), migration 099. Simülasyon: TY 34.268 ilanın 33.294'ü "tek satıcı" (ayrı sayfadaki rakipler görünmüyor; Trendyol araması 403 + ToS -> kazıma yok). **Doğrula:** ilk TY turunun özeti `competitivePricing`, failedBatches 0.
+- **İade faturası:** 13 taslak (GIB...219-231, 19.11 tarihli) K imzası bekliyor; kalan: 11778602491 (seçilmemiş), HB 4988019049 (iptal düğmesi), 11836781325/11844619586 (iade henüz kabul edilmedi; 11844619586 satış faturası 20.11 -> e-Fatura aktif olunca). 4 iade iptal edilmiş (gerekmez), 11772581235 kurumsal e-Fatura (müşteri keser). "İmzalananları kontrol et" artık iade taslaklarını da sayıyor.
+- **GİB:** hesap "GEÇİŞ kullanıcısı" (12-19.11 tarih aralığı); K e-Fatura Portal başvurusu yapıyor; aktif olunca yeni girişle sistem denenmeli, bekleyen satış faturaları kesilmeli.
+- **HB gider analizi:** formül gerçekle uyumlu (kargo gerçek ort. 96 TL < formül 110). Zarar eden siparişler K'nın Gezer terlikleri (HB 115-150 TL; kargo+hizmet 121 TL) -> K karar verecek (fiyat ~250+, 2'li paket ya da kaldır). 4988019049 için 300 TL müşteri memnuniyeti yansıtma (ceza).
+- **TY formül dışı giderler (Kasım):** ceza 1.070, Müşteri Duyuruları 921, erken ödeme 353 TL -> K'ya duyuru/erken ödeme kapatma önerildi.
+- **Açık:** Bezos akışla içe aktarma denemesi (`import-xml.ts bezos --dry`, MemoryMax 1200M) sonucu bekleniyor; geçerse `systemctl enable --now trentakip-supplier-vps.timer` (şu an KAPALI, tedarikçi stokları güncellenmiyor!). "Ev Terliği" 116 yanlış kategori (K onayı). HB 4680375847 kurumsal, fatura bilgisi yok. Depoda ajanların commit edilmemiş değişiklikleri duruyor (barkod, buybox-auto vb.) — körlemesine commit etme.
+
 ## 2026-11-20 (89) — Sunucu boğulması, HB gönderim kaydı, %7 zam, iade faturası tarihi, yedek kilidi
 - **HB stok/fiyat:** tur gönderimden sonra yeni ürün kuyruğunda 150 dk sınırına takılıp `pushed_at` kaydına hiç ulaşmıyordu -> kayıt gönderimin hemen ardından (`worker/sync.ts`); HB ilan listesi 40 dk-1 sa 40 dk -> `trentakip-sync-vps@hepsiburada.service.d/timeout.conf` 300 dk. Doğrulandı: HB 20.11 19:12 gönderim kaydı.
 - **%7 zam (K):** `settings.price_markup` (migration 098, `worker/pricing.ts` finish: formül x (1+oran), x9,90, her ürüne; panel "Genel zam (%)"). Trendyol 35.534 ilan 01:35'te, ort. +%7,6.
