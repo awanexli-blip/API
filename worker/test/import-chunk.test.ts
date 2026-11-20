@@ -13,4 +13,15 @@ check("<urunler> açılışı ürün sanılmaz", !ch?.items.some((i) => /urunler
 const dup = `<urunler>${urun(1)}${urun(2)}${urun(3)}${urun(1)}</urunler>`;
 check("parçalar arası model tekrarı -> vazgeç (null)", buildItemsChunked(dup, sup, new Set(), new Set(), 2) === null);
 check("item_path yoksa vazgeç", buildItemsChunked(xml, { ...sup, item_path: "" }) === null);
+// Buffer kaynağı (akışla, dilim sınırında yarım öğe) ve değişmeyen ürünün hafif tutulması
+{
+  const big = Buffer.from(xml, "utf8");
+  const chB = buildItemsChunked(big, sup, new Set(), new Set(), 3);
+  check("Buffer kaynağı: sonuç metinle aynı", JSON.stringify(chB?.items.map((i) => [i.payload.sku, i.hash])) === JSON.stringify(whole.items.map((i) => [i.payload.sku, i.hash])));
+  const known = new Map(whole.items.slice(0, 5).map((i) => [i.payload.sku, i.hash]));
+  const slim = buildItemsChunked(big, sup, new Set(), new Set(), 4, known);
+  const first = slim?.items.find((i) => i.payload.sku === whole.items[0].payload.sku);
+  check("değişmeyen ürün hafif (başlık yok, varyant stokları var)", !!first && first.payload.title === undefined && Array.isArray(first.payload.variants), first);
+  check("değişen ürün tam kalır", slim?.items.find((i) => i.payload.sku === whole.items[10].payload.sku)?.payload.title != null);
+}
 process.exit(fails ? 1 : 0);
