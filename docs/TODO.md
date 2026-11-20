@@ -6,6 +6,11 @@ Son güncelleme: 14.11.2026.
 
 ## Şu an
 
+> **21.11 (PROGRESS 91):**
+> 1. [x] Bezos akışla içe aktarma doğrulandı, `trentakip-supplier-vps.timer` açık (bellek sınırı 1,7 GB).
+> 2. [x] Rekabet fiyatı ilk turlar: `competitivePricing` özette, failedBatches 0.
+> 3. [ ] Bezos ~4.213 ürün barkod çakışması (`product_variants_barcode_key`): iç barkod çözümü (`lib/barcode.ts`, commit edilmemiş) incelenip bağlanacak.
+
 > **19.11 (PROGRESS 87):**
 > 1. [~] İçerik düzeltme (çelişen açıklama, görsel ölçüsü iki modelle, uzlaşmalı özellik): kod + test hazır; sunucu açılınca migration 095 + 50 önizleme (komutlar PROGRESS 87). (K) önizlemeyi panelde onayla, sonra "Sürekli çalıştır".
 

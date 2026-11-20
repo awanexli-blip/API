@@ -2,6 +2,15 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-21 (91) — Bezos akışla içe aktarma açıldı, rekabet fiyatı doğrulandı
+- **Bezos denemesi geçti** (`import-xml.ts bezos --dry`): 111.914 + 434 ürün, 0 XML hatası, tepe bellek 1,15 GB (önce 2,2 GB + 1,1 GB takas), 14 dk.
+- **`trentakip-supplier-vps.timer` yeniden AÇIK** (21.11 00:28). Yeni bellek sınırı `ops/vps/systemd/trentakip-supplier-vps.service.d/memory.conf` (MemoryHigh 1400M / MemoryMax 1700M / MemorySwapMax 256M, sunucuya kuruldu): taşarsa yalnızca içe aktarma ölür, sunucu boğulmaz. Gerçek turlar: iş 1899 (278 yeni, 26.404 güncelleme) ve 1908 (666 güncelleme, 1.734 stok), sunucu sağlıklı (bellek ~1,8 GB boş).
+- **Rekabet fiyatı doğrulandı:** 00:12 turu yeni kod gelmeden 7 sn önce başladığı için eski kodla koştu; sonraki TY turları (22:42, 22:57, 23:12 UTC) özetinde `competitivePricing` var (59.081 ilan buybox verisi), `failedBatches` 0, 34.898 güncelleme.
+- **Açık — Bezos barkod çakışması:** her turda ~4.213 ürün `product_variants_barcode_key` tekrarı ile kaydedilemiyor (20.11 sabahı 1.613 idi, artıyor). Bezos barkodu başka tedarikçinin/ürünün varyantında zaten var. Çözüm önerisi: çakışan varyanta barkod boş ya da iç barkod (depodaki commit edilmemiş `lib/barcode.ts` bu iş için yazılmış, incelenmeli). "XML'den kalkan 19.540" ürün zaten stok 0 (yalnızca 1 yeni sıfırlama).
+- Takılı kalmış "running" içe aktarma kayıtları (1838, 1874, 1881, 1888, 1896: OOM/durdurma) yalnızca görüntü, temizlenmedi.
+- Bir turda başka tedarikçi XML'i HTTP 500 verdi (geçici, sonraki tur normal).
+- Depodaki commit edilmemiş ajan değişiklikleri (buybox-auto 094, iç barkod, ty-clean, monitor.sh) hâlâ duruyor; buybox-auto rekabet fiyatıyla çakışır, körlemesine commit edilmemeli.
+
 ## 2026-11-21 (90) — Rekabet fiyatı açıldı, iade faturaları, HB gider analizi (DEVİR NOTU)
 - **Rekabet fiyatı AÇIK (K onaylı 21.11):** `settings.competitive_pricing` TY {lo .15, hi .20, alone .15, unknown .15, netMin 70}; HB `marketplace_settings` {.12 sabit, netMin 70}; `price_markup` ikisinde null (%7 zam kalktı). Kod `worker/pricing.ts competitivePrice` (rakip buybox'ta -> 1 TL altı, buybox bizde -> ikinci satıcının altına kadar, [lo,hi] aralığı), `db-products priceFor`, `sync.ts` (listing_buybox), migration 099. Simülasyon: TY 34.268 ilanın 33.294'ü "tek satıcı" (ayrı sayfadaki rakipler görünmüyor; Trendyol araması 403 + ToS -> kazıma yok). **Doğrula:** ilk TY turunun özeti `competitivePricing`, failedBatches 0.
 - **İade faturası:** 13 taslak (GIB...219-231, 19.11 tarihli) K imzası bekliyor; kalan: 11778602491 (seçilmemiş), HB 4988019049 (iptal düğmesi), 11836781325/11844619586 (iade henüz kabul edilmedi; 11844619586 satış faturası 20.11 -> e-Fatura aktif olunca). 4 iade iptal edilmiş (gerekmez), 11772581235 kurumsal e-Fatura (müşteri keser). "İmzalananları kontrol et" artık iade taslaklarını da sayıyor.
