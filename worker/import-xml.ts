@@ -49,7 +49,7 @@ export function buildItemsChunked(text: string, sup: Supplier, seen = new Set<st
   const path = String(sup.item_path ?? "").split(".").map((x) => x.trim()).filter(Boolean);
   if (path.length < 2 || path.some((x) => !/^[A-Za-z_][\w.-]*$/.test(x))) return null;
   const tag = path[path.length - 1], parents = path.slice(0, -1);
-  const open = new RegExp(`<${tag}[\s>/]`, "g"), close = `</${tag}>`;
+  const open = new RegExp(`<${tag}[\\s>/]`, "g"), close = `</${tag}>`;
   const wrap = (body: string) => parents.map((p) => `<${p}>`).join("") + body + [...parents].reverse().map((p) => `</${p}>`).join("");
   const items: { row: number; payload: any; hash: string }[] = [];
   const errors: { row: number; sku: string; error: string }[] = [];
