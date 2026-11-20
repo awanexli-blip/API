@@ -2,6 +2,16 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-20 (89) — Sunucu boğulması, HB gönderim kaydı, %7 zam, iade faturası tarihi, yedek kilidi
+- **HB stok/fiyat:** tur gönderimden sonra yeni ürün kuyruğunda 150 dk sınırına takılıp `pushed_at` kaydına hiç ulaşmıyordu -> kayıt gönderimin hemen ardından (`worker/sync.ts`); HB ilan listesi 40 dk-1 sa 40 dk -> `trentakip-sync-vps@hepsiburada.service.d/timeout.conf` 300 dk. Doğrulandı: HB 20.11 19:12 gönderim kaydı.
+- **%7 zam (K):** `settings.price_markup` (migration 098, `worker/pricing.ts` finish: formül x (1+oran), x9,90, her ürüne; panel "Genel zam (%)"). Trendyol 35.534 ilan 01:35'te, ort. +%7,6.
+- **Sunucu 20.11 akşam boğuldu** (bellek+takas dolu, site açılmadı, 18:43 OOM): Bezos XML 239 MB / 112 bin ürün tüm ağaçla 2,2 GB. K onayıyla içe aktarma durduruldu, `trentakip-supplier-vps.timer` KAPALI (Bezos düzeltmesi doğrulanınca açılacak). Düzeltme: büyük XML Buffer'dan akışla 4 MB dilimler, 3000'lik parçalar, değişmeyen ürün hafif (`buildItemsChunked`, testler).
+- **Gece yedeği 18.11'den beri alınamıyordu:** ağır iş kilidi trentakip sahipliydi, root açamıyordu (protected_regular) -> root sahipli 0666 (`ops/vps/tmpfiles/trentakip.conf`), yedek elle başlatıldı.
+- **content-fix** ağır iş kilidinden çıktı (kendi kilidi, CPUQuota 30%), kilometre taşı Telegram (`trentakip-cf-milestone.timer`, %25/50/75/100).
+- **Vitrin araması** canlı (88); 22:20-23:14 PostgREST şema önbelleği yenilenmediği için 500 (migration 097'ye notify eklendi).
+- **Fatura:** K'nın 37 taslağı (GIB...182-218) denetlendi: tutar = sipariş, yeni adres + Beylikdüzü VD, mükerrer/kurumsal yok; 35 yüklendi. GİB hesabı "GEÇİŞ kullanıcısı" (e-Fatura portal başvurusu): yalnızca 12-19.11 tarihli belge. İade faturasına tarih seçimi (panel İadeler, ileri/7 günden eski/satış faturasından önce olamaz). İlk iade taslağı GIB...219 (iptal 11787712855, 19.11). K e-Fatura Portal yöntemini seçti (ücretsiz, e-imza).
+- **Açık:** Trendyol'da 116 ilan "Ev Terliği" kategorisinde yanlış (eşleştirici "Ev ..." -> Ev Terliği) — K onayı bekleniyor. HB 4680375847 kurumsal ama fatura bilgisi yok. Ağır/geçici işler K'nın bilgisayarına (K 20.11).
+
 ## 2026-11-19 (88) — Vitrin araması ve ayrıntılı filtre
 - **K 19.11:** "arama kısmı çok detaylı, kullanıcı dostu, müşteri aradığını kolayca bulsun, güzel filtreleme".
 - **Veritabanı (migration 097, sunucuda uygulandı):** `store_norm` (Türkçe harfe duyarsız), `store_catalog` yeniden kuruldu (`tn`/`hay` hazır normal metin + trigram dizini), `store_search` RPC: çok kelimeli (sıra bağımsız, başlık + kategori yolu), az sonuçta yazım hatası toleransı (word_similarity ≥ 0,5, dizinden), tam eşleşme yoksa "benzer sonuçlar" işareti, sayılı kategori yüzeyi (üst > alt > tür) ve fiyat aralığı sayıları. Ölçüm: tam eşleşme 0,15–0,3 sn, toleranslı ~0,9 sn (önce 7–33 sn).
