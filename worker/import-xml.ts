@@ -40,6 +40,47 @@ export function buildItems(parsed: any, sup: Supplier, seen = new Set<string>(),
   return { items, errors, total: raw.length, path };
 }
 
+// Büyük XML parça parça (K 20.11: Bezos 110 bin ürün; tüm belge ağacı 2,2 GB bellek -> sunucu takası doldu, OOM). Ürün öğeleri (item_path'in
+// son adı, ör. urunler.urun -> <urun>) metinde bulunur, PARTS'lık gruplar ayrı ayrı ayrıştırılır; ağaç bir anda yalnızca bir parça kadar olur.
+// Yalnızca her ürün öğesi kendi içinde bütünse (varyantlar iç içe) güvenlidir: aynı model iki öğede geçerse ayrı ürün sayılırdı, bu yüzden
+// parçalar arası tekrar eden model görülürse parça modundan vazgeçilir (null döner, çağıran tüm belgeyle eski yolu dener).
+export const CHUNK_MIN_BYTES = 40 * 1048576;
+export function buildItemsChunked(text: string, sup: Supplier, seen = new Set<string>(), seenSku = new Set<string>(), parts = 3000) {
+  const path = String(sup.item_path ?? "").split(".").map((x) => x.trim()).filter(Boolean);
+  if (path.length < 2 || path.some((x) => !/^[A-Za-z_][\w.-]*$/.test(x))) return null;
+  const tag = path[path.length - 1], parents = path.slice(0, -1);
+  const open = new RegExp(`<${tag}[\s>/]`, "g"), close = `</${tag}>`;
+  const wrap = (body: string) => parents.map((p) => `<${p}>`).join("") + body + [...parents].reverse().map((p) => `</${p}>`).join("");
+  const items: { row: number; payload: any; hash: string }[] = [];
+  const errors: { row: number; sku: string; error: string }[] = [];
+  const models = new Set<string>();
+  let total = 0, buf: string[] = [], pos = 0;
+  const flush = () => {
+    if (!buf.length) return true;
+    const parsed = parseXml(wrap(buf.join("")));
+    // Model (gruplama anahtarı) parçalar arası tekrar ediyorsa tüm belge gerekir (varyantlar birleşmeli)
+    for (const g of itemsToGroups(findItems(parsed, sup.item_path).items, sup.mapping)) { const m = String(g.model).toLowerCase(); if (models.has(m)) return false; models.add(m); }
+    const r = buildItems(parsed, sup, seen, seenSku);
+    for (const it of r.items) items.push({ ...it, row: it.row + total });
+    for (const e of r.errors) errors.push({ ...e, row: e.row + total });
+    total += r.total; buf = [];
+    return true;
+  };
+  for (;;) {
+    open.lastIndex = pos;
+    const m = open.exec(text);
+    if (!m) break;
+    const selfClose = text.startsWith("/>", m.index + tag.length + 1);
+    const end = selfClose ? m.index + tag.length + 3 : text.indexOf(close, m.index);
+    if (end < 0) break;
+    const stop = selfClose ? end : end + close.length;
+    buf.push(text.slice(m.index, stop)); pos = stop;
+    if (buf.length >= parts && !flush()) return null;
+  }
+  if (!flush()) return null;
+  return total ? { items, errors, total, path: path.join(".") } : null;
+}
+
 // XML'den kalkan ürünlerin stoğu sıfırlanır mı? Kalkan ürün XML'in %30'unu aşarsa bozuk/eksik indirme olabilir, sıfırlanmaz.
 // Ama XML en az 12 saattir aynı boyuttaysa (±%3, en az 3 içe aktarma) küçülme gerçektir: sıfırlanır (K, 12.11: Toptancım 35 bin -> 10,6 bin
 // ürüne indi, 26.542 ürün tedarikçide yokken satışta kaldı). ZERO_MISSING_FORCE=1: elle, tek seferlik.
@@ -104,7 +145,14 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
         const res = await safeFetch(feed.url, { maxBytes: 300 * 1048576, timeoutMs: 5 * 60_000 });
         if (!res.ok) throw new Error(`${name}: XML indirilemedi (HTTP ${res.status})`);
         feedHash.update(res.body);
-        built = buildItems(parseXml(flattenVarDeger(res.text())), feedSupplier(sup, feed), seen, seenSku);
+        const text = flattenVarDeger(res.text());
+        const fs = feedSupplier(sup, feed);
+        // Büyük XML parça parça ayrıştırılır (bellek); olmazsa (yol bilinmiyor / model tekrarı) tüm belgeyle eski yol
+        const seen0 = new Set(seen), sku0 = new Set(seenSku);
+        const ch = text.length >= CHUNK_MIN_BYTES ? buildItemsChunked(text, fs, seen, seenSku) : null;
+        if (ch) console.log(`${sup.name} / ${name}: büyük XML (${Math.round(text.length / 1048576)} MB) parça parça ayrıştırıldı`);
+        else if (text.length >= CHUNK_MIN_BYTES) { seen.clear(); seen0.forEach((x) => seen.add(x)); seenSku.clear(); sku0.forEach((x) => seenSku.add(x)); }
+        built = ch ?? buildItems(parseXml(text), fs, seen, seenSku);
       }
       if (!built.total && !apiRaw) throw new Error(`${name}: ${feed.type === "api" ? "API yanıtında" : "XML'de"} ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
       // Satır numaraları link başına ayrı aralıkta (hata listesinde hangi linkten geldiği anlaşılsın)
