@@ -20,6 +20,12 @@ test("tutar: satış geliri (müşteri + Trendyol indirimi), KDV içinden, topla
   assert.equal(inv.faturaUuid, ""); assert.equal(inv.ulke, "Türkiye"); assert.equal(inv.mahalleSemtIlce, "Kadıköy");
 });
 
+test("Hepsiburada: HB indirimi faturaya eklenmez (doğrulanana kadar müşterinin ödediği tutar, 22.11)", () => {
+  const inv = buildInvoice({ ...order, marketplace: "hepsiburada" }, new Date("2026-10-30T20:30:00Z"));
+  assert.equal(inv.vergilerDahilToplamTutar, "546.40");
+  assert.equal(buildInvoice({ ...order, marketplace: "trendyol" }, new Date("2026-10-30T20:30:00Z")).vergilerDahilToplamTutar, "569.90");
+});
+
 test("yazıyla tutar ve ad ayırma", () => {
   assert.equal(amountInWords(1279.9), "YalnızBinİkiYüzYetmişDokuzTürkLirasıDoksanKuruş");
   assert.equal(amountInWords(100), "YalnızYüzTürkLirası");

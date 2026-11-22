@@ -4,7 +4,7 @@
 // Tutar: satıcının geliri = müşterinin ödediği + Trendyol'un karşıladığı indirim (orders.ts "revenue" ile aynı); KDV içinden ayrılır.
 
 export type InvLine = { title: string; qty: number; unit_price: number; ty_discount?: number | null; vat_rate?: number | null; known?: (string | null)[] };
-export type InvOrder = { order_no: string | null; ordered_at: string | null; customer_name: string | null;
+export type InvOrder = { marketplace?: string | null; order_no: string | null; ordered_at: string | null; customer_name: string | null;
   address: { fullAddress?: string; district?: string; city?: string; postalCode?: string; neighborhood?: string; invoice?: InvCompany } | null; city?: string | null; lines: InvLine[] };
 // Kurumsal alıcı (orders.address.invoice, worker/core/invoice-info.ts)
 export type InvCompany = { company: string; taxNumber: string; taxOffice: string; eInvoice: boolean | null; fullAddress?: string; district?: string; city?: string; postalCode?: string };
@@ -69,6 +69,9 @@ export function invoiceItemName(lineTitle: string, known: (string | null | undef
   return tidy(base) || t;
 }
 
+// Pazaryerinin karşıladığı indirim bireysel faturaya eklenir mi (Trendyol rehberi: evet). Hepsiburada: doğrulanmadı, eklenmez.
+export const mpDiscInInvoice = (marketplace?: string | null) => marketplace !== "hepsiburada";
+
 export function buildInvoice(o: InvOrder, now = new Date()) {
   if (!o.lines.length) throw new Error("Sipariş satırı yok");
   const { date, time } = trDateTime(now);
@@ -78,7 +81,9 @@ export function buildInvoice(o: InvOrder, now = new Date()) {
     const qty = Math.max(1, Math.floor(Number(l.qty) || 1));
     const vat = [0, 1, 10, 20].includes(Number(l.vat_rate)) ? Number(l.vat_rate) : 20;
     // KDV dahil satır tutarı. Kurumsal: yalnızca müşterinin ödediği (Trendyol rehberi: pazaryerinin karşıladığı indirim ona ayrıca yansıtma faturasıyla)
-    const gross = r2(Number(l.unit_price) * qty + (corp ? 0 : Number(l.ty_discount) || 0));
+    // Hepsiburada (22.11): HB indirimi artık okunuyor (kâr hesabı) ama faturalar bugüne kadar müşterinin ödediği tutarla kesildi; HB kuralı
+    // doğrulanana kadar (K / mali müşavir) fatura tutarı değişmez -> HB'de indirim faturaya eklenmez.
+    const gross = r2(Number(l.unit_price) * qty + (corp || !mpDiscInInvoice(o.marketplace) ? 0 : Number(l.ty_discount) || 0));
     const unitNet = r2(gross / (1 + vat / 100) / qty);
     const net = r2(unitNet * qty), kdv = r2(gross - net);
     return { qty, vat, gross, unitNet, net, kdv, name: (invoiceItemName(String(l.title ?? ""), l.known ?? []) || "Ürün").slice(0, 200) };

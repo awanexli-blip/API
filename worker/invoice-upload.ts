@@ -14,6 +14,7 @@ import { env, sleep } from "./core/util.ts";
 import { createTrendyol } from "./marketplaces/trendyol.ts";
 import { hbClient, hbPackagesByOrder, hbSendInvoiceLink, type HbPackage } from "./marketplaces/hepsiburada.ts";
 import { EarsivClient } from "../lib/earsiv.ts";
+import { mpDiscInInvoice } from "../lib/invoice-build.ts";
 import { invoiceDiag, verifyInvoice } from "../lib/invoice-verify.ts";
 
 const mode = process.argv[2] === "apply" ? "apply" : "dry";
@@ -105,7 +106,7 @@ try {
       // Kurumsal (Trendyol rehberi): fatura müşterinin ödediği tutarla, şirket ünvanıyla kesilir; Trendyol indirimi ayrıca yansıtma faturası
       const corp = o.address?.invoice?.taxNumber ? o.address.invoice : null;
       if (o.buyer_type && o.buyer_type !== "bireysel" && !corp) throw new Error("kurumsal sipariş ama ünvan/VKN bilgisi yok: elle kontrol et");
-      const disc = (l: any) => (corp ? 0 : Number(l.ty_discount) || 0);
+      const disc = (l: any) => (corp || !mpDiscInInvoice(o.marketplace) ? 0 : Number(l.ty_discount) || 0);
       const tyDisc = (o.order_lines ?? []).reduce((a: number, l: any) => a + disc(l), 0);
       const expected = r2(Number(o.total) + tyDisc);
       if (Math.abs(Number(r.amount) - expected) > 0.01) throw new Error(`fatura tutarı ${Number(r.amount).toFixed(2)} ≠ sipariş ${expected.toFixed(2)}`);
