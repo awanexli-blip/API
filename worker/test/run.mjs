@@ -12,6 +12,7 @@ const mock = pathToFileURL(join(here, "mock.mjs")).href;
 const envBase = {
   ...process.env, SUPABASE_URL: "http://mock-supa", SUPABASE_SERVICE_ROLE_KEY: "x", XML_URL: "http://mock-xml",
   TRENDYOL_SELLER_ID: "1", TRENDYOL_API_KEY: "k", TRENDYOL_API_SECRET: "s",
+  TY_SAFE: "off", // eski senaryolar (Eco Lounge, OS13-) güvenli liste kapalıyken; güvenli liste 9f2
 };
 
 let fails = 0;
@@ -211,6 +212,18 @@ function run(mode, env = {}, marketplace = "trendyol") {
   check("faz4: iş tamamlandı", calls.jobFinish?.[0]?.job_id === 77 && calls.jobFinish?.[0]?.ok === true, JSON.stringify(calls.jobFinish));
   check("faz4: özet sendJobs", s.sendJobs?.sent === 1 && s.sendJobs?.errors === 1, JSON.stringify(s.sendJobs));
 }
+// 9f2) Güvenli liste (K 22.11, core/ty-safe.ts) açık: Eco Lounge markası ve iç/2xx barkod gitmez; gerçek marka (onaylı) + GTIN + eşlemeli kategori gider
+{
+  const bad = run("update", { MOCK_BULK: "50", MOCK_SEND: "1", MOCK_TY_SAFE: "1", TY_SAFE: "" });
+  const c1 = bad.calls.trendyolWrites.filter((w) => /\/v2\/products$/.test(w.path)).flatMap((w) => w.body.items);
+  const r1 = Object.fromEntries((bad.calls.listingRows ?? []).map((r) => [r.listing_key, r]));
+  check("güvenli liste: Eco Lounge markalı ürün gönderilmedi", !c1.length && /Güvenli liste.*Eco Lounge/.test(r1["8690000000012"]?.last_error ?? ""), JSON.stringify(r1["8690000000012"]));
+  check("güvenli liste: 2xx barkod ve markasız ürün nedenleriyle", /GTIN/.test(r1["2000000000017"]?.last_error ?? "") && /marka/.test(r1["2000000000017"]?.last_error ?? ""), JSON.stringify(r1["2000000000017"]));
+  const good = run("update", { MOCK_BULK: "50", MOCK_SEND: "1", MOCK_TY_SAFE: "1", TY_SAFE: "", MOCK_P1_BRAND: "Sertec" });
+  const c2 = good.calls.trendyolWrites.filter((w) => /\/v2\/products$/.test(w.path)).flatMap((w) => w.body.items);
+  const g = c2.find((i) => i.barcode === "8690000000012");
+  check("güvenli liste: onaylı gerçek marka + GTIN + eşlemeli kategori gönderildi, marka kendi markası", !!g && g.brandId === 88 && g.categoryId === 3, JSON.stringify(c2));
+}
 // 9g) preview: kuyruk işlenmez (pazaryerine yazmaz)
 {
   const { calls } = run("preview", { MOCK_BULK: "50", MOCK_SEND: "1" });
@@ -303,7 +316,7 @@ function run(mode, env = {}, marketplace = "trendyol") {
 }
 
 // 10) birim testleri
-for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts", "desc-check.test.ts", "research.test.ts", "sale-price.test.ts", "content-diff.test.ts", "deps.test.ts", "trendyol-cargo.test.ts", "holds.test.ts", "brand-pick.test.ts", "compat.test.ts", "stars.test.ts", "lifecycle.test.ts", "invoice-info.test.ts", "supplier-resolve.test.ts", "fee-category.test.ts", "img-host.test.ts", "contradictions.test.ts", "attr-consensus.test.ts", "import-chunk.test.ts"]) {
+for (const f of ["pricing.test.ts", "classify.test.ts", "pricing-rules.test.ts", "jobs.test.ts", "rejections.test.ts", "retire.test.ts", "brand-risk.test.ts", "util.test.ts", "safe-fetch.test.ts", "attr-infer.test.ts", "category-tree.test.ts", "hepsiburada-commission.test.ts", "orders.test.ts", "opportunity.test.ts", "gemini.test.ts", "desc-check.test.ts", "research.test.ts", "sale-price.test.ts", "content-diff.test.ts", "deps.test.ts", "trendyol-cargo.test.ts", "holds.test.ts", "brand-pick.test.ts", "compat.test.ts", "stars.test.ts", "lifecycle.test.ts", "invoice-info.test.ts", "supplier-resolve.test.ts", "fee-category.test.ts", "img-host.test.ts", "contradictions.test.ts", "attr-consensus.test.ts", "import-chunk.test.ts", "ty-safe.test.ts"]) {
   try { execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", join(here, f)], { stdio: "inherit" }); }
   catch { fails++; }
 }

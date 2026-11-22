@@ -12,6 +12,7 @@ import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
 import { genderOf } from "./attr-infer.ts";
+import { tySafeCheck, parseTySafe, brandKey, type TySafeCfg } from "./ty-safe.ts";
 import { trendyolRuleBlock, inScopeAny, inScopeForSend, vatSuspect, toyMismatch, adultMismatch } from "../../lib/scope.ts";
 
 export type DbCtx = {
@@ -240,6 +241,18 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
   // Tedarikçi ürünlerinin pazaryerindeki markası: tedarikçi ayarı "Pazaryeri markası" (ör. Toptancım -> Tcx, yetki belgesiyle).
   // Boşsa tedarikçi ürünü gönderilmez (mağaza markasıyla açmak istenmiyor; XML markası başkasına kayıtlı olabilir)
   const supBrand = new Map<string, string>();
+  // Trendyol güvenli liste (K 22.11, core/ty-safe.ts): app_state "ty_safe" yoksa AÇIK. Onaylı markalar app_state "ty_safe_brands" (dizi).
+  let tySafe: (TySafeCfg & { brands?: Set<string> }) | null = null;
+  if (ctx.marketplaceId === "trendyol") {
+    const r = await ctx.db.from("app_state").select("key, value").in("key", ["ty_safe", "ty_safe_brands"]);
+    if (r.error) throw new Error(`Güvenli liste ayarı okunamadı (gönderim durduruldu): ${r.error.message}`);
+    const get = (k: string) => (r.data ?? []).find((x: any) => x.key === k)?.value;
+    const cfg = parseTySafe(get("ty_safe"));
+    if (cfg.enabled) {
+      let list: any = get("ty_safe_brands"); if (typeof list === "string") { try { list = JSON.parse(list); } catch { list = []; } }
+      tySafe = { ...cfg, brands: cfg.brandAllowlist ? new Set((Array.isArray(list) ? list : []).map((b: any) => brandKey(String(b)))) : undefined };
+    }
+  }
   const supDefaults = new Map<string, Record<string, string>>(); // tedarikçi varsayılan özellikleri (ör. Menşei)
   const dedupeSources = new Set<string>(); // kod sonu -N kopyalarından yalnızca en ucuzu (migration 056)
   {
@@ -252,6 +265,20 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     }
   }
 
+  // Aynı barkod katalogda birden çok üründe (çoklama): yalnızca güvenli listede, gönderilecek barkodlar için sorulur
+  const dupCache = new Map<string, boolean>();
+  async function tyDupBarcodes(codes: string[]): Promise<Set<string>> {
+    const ask = codes.filter((c) => !dupCache.has(c));
+    for (let i = 0; i < ask.length; i += 100) {
+      const part = ask.slice(i, i + 100);
+      const r = await ctx.db.from("product_variants").select("barcode, product_id").in("barcode", part);
+      if (r.error) throw new Error(`Barkod çoklama denetimi okunamadı: ${r.error.message}`);
+      const by = new Map<string, Set<string>>();
+      for (const x of r.data ?? []) by.set(x.barcode, (by.get(x.barcode) ?? new Set()).add(x.product_id));
+      for (const c of part) dupCache.set(c, (by.get(c)?.size ?? 0) > 1);
+    }
+    return new Set(codes.filter((c) => dupCache.get(c)));
+  }
   const keyFor = (source: string, v: any) => (ctx.mp.listingKeyFor ? ctx.mp.listingKeyFor(source, v) : listingKeyOf(source, v));
   const needsCategory = ctx.mp.requiresCategory !== false;
   const excl = await loadExclusions(ctx.db, ctx.marketplaceId); // K 15.11: Trendyol'da toptancım kapalı, geri çekilen revize ilanlar
@@ -406,6 +433,13 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           // Pazaryeri kategorisi (varsa) izinli olmalı + tedarikçi ya da pazaryeri kategorisi izinli (lib/scope.ts inScopeForSend)
           if (ctx.scopeActive) { const vs = vatSuspect(p.vat_rate) ?? toyMismatch(p.category, catName) ?? adultMismatch(p.category, catName); const sc = vs ? { ok: false, reason: vs } : inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Satış kısıtı: ${sc.reason ?? ""} (gıda satılamaz)`); continue; } }
           if (ctx.marketplaceId === "trendyol") { const tr = trendyolRuleBlock(p.title); if (tr) { fail(key, p, v, tr); continue; } }
+          if (tySafe) {
+            const srcCat = manualCat ? "manual" : ctx.catMap.get(p.category)?.category_id ? "map" : categoryId ? "predicted" : "none";
+            const dupB = await tyDupBarcodes(vlist.map((x: any) => keyFor(p.source, x)).filter(Boolean));
+            const why = tySafeCheck({ title: p.title, description: p.description, brand: p.brand, category: p.category, mpCategory: catName, barcodes: [key], images: vImages, stock: Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0)) },
+              { dupBarcodes: dupB, allowedBrands: tySafe.brands, extraPlaceholders: [...supBrand.values()].flatMap((x) => x.split("|")), categorySource: srcCat, categoryMode: tySafe.categoryMode, predictedHigh: pick === pred && pred?.level === "yuksek", minStock: tySafe.minStock });
+            if (why.length) { fail(key, p, v, `Güvenli liste (yeni mağaza): ${why.join(" · ")}`); continue; }
+          }
           const risky = brandRisk?.(p.title, p.description ?? "");
           if (risky) { fail(key, p, v, `Marka riski: başlık/açıklamada "${risky}" geçiyor (marka ihlali uyarısı almamak için gönderilmedi; panel → Markalar → Gönderilmeyen markalar)`); continue; }
           // Tahmin güveni düşükse otomatik seçilmez; en iyi tahmin "öneri" olarak yazılır (panel → Gönderilemeyenler tek tıkla seçer)
@@ -423,7 +457,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
               else { fail(key, p, v, cands.length ? `${ctx.mp.label} eşleşmesi onay bekliyor: ürün detayında doğru ürünü seç (${cands.length} aday)` : `${ctx.mp.label}'da eşleşen ürün bulunamadı (gerçek EAN yok; yeni ürün açmak için GTIN muafiyeti gerekir)`); continue; }
             }
           }
-          if (String(p.source ?? "").startsWith("xml:") && !supBrand.has(p.source)) { fail(key, p, v, `Tedarikçinin pazaryeri markası ayarlanmadı (Ürünler → Tedarikçiler → "${String(p.source).slice(4)}" → Pazaryeri markası)`); continue; }
+          if (!tySafe && String(p.source ?? "").startsWith("xml:") && !supBrand.has(p.source)) { fail(key, p, v, `Tedarikçinin pazaryeri markası ayarlanmadı (Ürünler → Tedarikçiler → "${String(p.source).slice(4)}" → Pazaryeri markası)`); continue; }
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
           const pr = priceFor(ctx, p, v, null, avail, manualName ?? maleCat?.name ?? mapName ?? (pick && pick !== pred && String(pick.categoryId) === String(categoryId) ? pick.categoryName : null));
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
@@ -438,7 +472,8 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const fromSupplier = String(p.source ?? "").startsWith("xml:");
           // "*" = her ürün XML'deki kendi markasıyla (tedarikçi markalarını kullanma yetkisi var; K, 25.10 Royal Tedarik)
           const sb = fromSupplier ? supBrand.get(p.source) ?? "" : "";
-          const brand = fromSupplier ? (sb === "*" ? String(p.brand ?? "").trim().slice(0, 100) : pickBrand(sb, p.sku)) : (await brandOk(p.brand)) ? p.brand : "";
+          // Güvenli liste: her zaman ürünün kendi (gerçek) markası; mağaza/tedarikçi markası başkasının barkodlu ürününe takılmaz ("Hatalı Marka")
+          const brand = tySafe ? String(p.brand ?? "").trim().slice(0, 100) : fromSupplier ? (sb === "*" ? String(p.brand ?? "").trim().slice(0, 100) : pickBrand(sb, p.sku)) : (await brandOk(p.brand)) ? p.brand : "";
           if (fromSupplier && !brand) { fail(key, p, v, "Ürünün XML'de markası yok (tedarikçi ayarı: kendi markası)"); continue; }
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);

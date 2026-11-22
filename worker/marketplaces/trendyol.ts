@@ -1,5 +1,6 @@
 // Trendyol adaptörü — Product V2 servisleri (V1 15.10.2026'da kapandı).
 // Uç listesi: https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint.md
+import { tyHardBlock } from "../core/ty-safe.ts";
 import { readFileSync } from "node:fs";
 import { isElectric, defaultFor, matchOptions, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { leavesOf } from "../core/category-tree.ts";
@@ -403,7 +404,11 @@ export function createTrendyol(): Marketplace {
         const no = (why: string) => { ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
         if (used.has(p.id)) { no("aynı barkoda dönüşen ürün kodu"); continue; }
         used.add(p.id);
-        const brand = ctx.brandName || BRAND_NAME; // panel (Markalar) > ortam değişkeni > Eco Lounge
+        // Güvenli liste (K 22.11, core/ty-safe.ts): son kapı. Hangi yoldan gelirse gelsin GTIN olmayan barkod, gerçek olmayan marka
+        // (Eco Lounge / tedarikçi adı / boş) ve +18-yasak ürün Trendyol'a gitmez; yedek "Eco Lounge" markası kullanılmaz. Kapatma: TY_SAFE=off
+        const safe = process.env.TY_SAFE !== "off";
+        const brand = safe ? String(ctx.brandName ?? "").trim() : ctx.brandName || BRAND_NAME; // panel (Markalar) > ortam değişkeni > Eco Lounge
+        if (safe) { const hb = tyHardBlock({ id: p.id, brand, title: p.name, category: `${p.xmlCategory ?? ""} ${p.catName ?? ""}` }); if (hb) { no(hb); continue; } }
         const bId = await brandId(brand);
         if (!bId) { no(`marka Trendyol'da bulunamadı: ${brand}`); continue; }
         const cid = String(p.cat.category_id);

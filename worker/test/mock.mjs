@@ -99,6 +99,8 @@ globalThis.fetch = async (url, init = {}) => {
     const single = String(new Headers(init.headers).get("accept") ?? "").includes("vnd.pgrst.object");
     if (method === "GET") {
       if (noMig && u.search.includes("marketplace=")) return json({ message: "column marketplace does not exist" }, 400);
+      // Güvenli liste (core/ty-safe.ts): eski senaryolar kapalıyla, MOCK_TY_SAFE=1 açık + onaylı marka "Sertec"
+      if (t === "app_state" && u.search.includes("ty_safe")) return json(process.env.MOCK_TY_SAFE === "1" ? [{ key: "ty_safe_brands", value: ["Sertec"] }] : [{ key: "ty_safe", value: { enabled: false } }]);
       if (t === "settings") return json(single ? settings : [settings]);
       if (t === "marketplace_settings") return json(single ? hbSettings : [hbSettings]);
       if (t === "category_map") return json(catMap);
@@ -112,7 +114,7 @@ globalThis.fetch = async (url, init = {}) => {
         { id: "h3", sku: "TCX-3", title: "Bambu Kirli Sepeti Kapakli", description: "", category: "Banyo", desi: 2, cost_price: 90, vat_rate: 20, source: "xml:toptacim", product_variants: [{ sku: "TCX-3", barcode: "B3", stock: 9, cost_price: 90 }], product_images: [{ url: "https://i/3.jpg", position: 0 }] },
       ]);
       if (t === "products" && process.env.MOCK_SEND === "1") return json([
-        { id: "p1", sku: "TD-1", title: "Gonderilecek Urun Yepyeni", description: "aciklama", brand: "Eco Lounge", category: "Cat3", vat_rate: 20, desi: 2, cost_price: 100, currency: "TRY", status: "active", source: "xml:toptanci",
+        { id: "p1", sku: "TD-1", title: "Gonderilecek Urun Yepyeni", description: "aciklama", brand: process.env.MOCK_P1_BRAND ?? "Eco Lounge", category: "Cat3", vat_rate: 20, desi: 2, cost_price: 100, currency: "TRY", status: "active", source: "xml:toptanci",
           product_variants: [{ id: "v1", sku: "TD-1", barcode: "8690000000012", stock: 9, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/x.jpg", position: 0 }] },
         { id: "p2", sku: "TD-2", title: "Zzqx Wvpk Qjhb", description: "", brand: "", category: "Yok", vat_rate: 20, desi: 1, cost_price: 50, currency: "TRY", status: "active", source: "manual",
           product_variants: [{ id: "v2", sku: "TD-2", barcode: "2000000000017", stock: 5, reserved: 0, position: 0, attributes: {} }], product_images: [{ url: "https://i/y.jpg", position: 0 }] },
@@ -205,7 +207,7 @@ globalThis.fetch = async (url, init = {}) => {
       : [{ attribute: { id: 47, name: "Renk" }, required: true, allowCustom: false }, { attribute: { id: 1192, name: "Menşei" }, required: true, allowCustom: false }, { attribute: { id: 999, name: "Opsiyonel" }, required: false }] });
     const av = p.match(/\/product\/categories\/(\d+)\/attributes\/(\d+)\/values$/);
     if (av) return json({ totalPages: 1, content: av[2] === "47" ? [{ attributeValueId: 1, attributeValue: "Siyah" }, { attributeValueId: 2, attributeValue: "Çok Renkli" }] : av[2] === "1192" ? [{ attributeValueId: 3, attributeValue: "TR" }] : [] });
-    if (p.includes("/brands/by-name")) return json([{ id: 66, name: "Eco Lounge Home" }, { id: 77, name: "Eco Lounge" }]);
+    if (p.includes("/brands/by-name")) return json([{ id: 66, name: "Eco Lounge Home" }, { id: 77, name: "Eco Lounge" }, { id: 88, name: "Sertec" }]);
     if (p.includes("/batch-requests/")) {
       const id = p.split("/").pop();
       const w = log.trendyolWrites[Number(id.split("-")[1]) - 1];

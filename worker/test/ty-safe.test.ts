@@ -1,0 +1,42 @@
+// Trendyol güvenli liste (worker/core/ty-safe.ts). node --experimental-strip-types worker/test/ty-safe.test.ts
+import { isTyGtin, tyHardBlock, tySafeCheck, parseTySafe, placeholderBrand, brandKey } from "../core/ty-safe.ts";
+
+let fails = 0;
+const check = (name: string, cond: boolean, info: unknown = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + JSON.stringify(info)}`); if (!cond) fails++; };
+
+check("GTIN: geçerli EAN-13", isTyGtin("8690000000001") === (() => { const d = "869000000000".split("").map(Number); const s = d.reverse().reduce((t, x, i) => t + x * (i % 2 === 0 ? 3 : 1), 0); return (10 - (s % 10)) % 10 === 1; })());
+check("GTIN: 4006381333931 geçerli", isTyGtin("4006381333931"));
+check("GTIN: sağlama hanesi yanlış", !isTyGtin("4006381333932"));
+check("GTIN: iç kodlar geçersiz", !isTyGtin("BZ200700004550") && !isTyGtin("ÖS13-ABC") && !isTyGtin("OS13-ABC") && !isTyGtin("HS3102760150") && !isTyGtin("TCXBYP-401074"));
+check("GTIN: mağaza içi 2xx ve sıfırlar geçersiz", !isTyGtin("2000000000008") && !isTyGtin("0000000000000"));
+
+check("marka: yer tutucular", placeholderBrand("Eco Lounge") && placeholderBrand("TCX") && placeholderBrand("ÇERÇİCİ") && placeholderBrand("colezium") && placeholderBrand("") && placeholderBrand(null) && placeholderBrand("Genel Markalar"));
+check("marka: gerçek marka geçer", !placeholderBrand("Sertec") && !placeholderBrand("Whiskas"));
+
+const ok = { id: "4006381333931", brand: "Sertec", title: "Sertec Nokia BL-5C Uyumlu Batarya", category: "Elektronik > Telefon" };
+check("son kapı: temiz ürün geçer", tyHardBlock(ok) === null, tyHardBlock(ok));
+check("son kapı: iç barkod", /GTIN/.test(tyHardBlock({ ...ok, id: "BZ200700004550" }) ?? ""));
+check("son kapı: Eco Lounge markası", /gerçek markası değil/.test(tyHardBlock({ ...ok, brand: "Eco Lounge" }) ?? ""));
+check("son kapı: +18 kategori", /\+18/.test(tyHardBlock({ ...ok, title: "Kaz Gagası Kremi 100 ml", category: "Ev & Yaşam > +18 Ürünler > Genital Bölge Bakımı" }) ?? ""));
+check("son kapı: çakmak", /yasak/.test(tyHardBlock({ ...ok, title: "Figürlü Çakmak" }) ?? ""));
+
+const base = { title: "Sertec Nokia BL-5C Uyumlu Batarya", brand: "Sertec", category: "Elektronik", barcodes: ["4006381333931"], images: ["https://x/1.jpg"], stock: 20 };
+const allowed = new Set([brandKey("Sertec")]);
+check("tam denetim: temiz + onaylı marka + eşlemeli kategori", tySafeCheck(base, { allowedBrands: allowed, categorySource: "map", minStock: 5 }).length === 0, tySafeCheck(base, { allowedBrands: allowed, categorySource: "map", minStock: 5 }));
+check("tam denetim: onaysız marka", tySafeCheck(base, { allowedBrands: new Set(), categorySource: "map" }).some((r) => /onaylı markalar/.test(r)));
+check("tam denetim: marka listesi kapalıysa marka sorulmaz", !tySafeCheck(base, { categorySource: "map" }).some((r) => /onaylı/.test(r)));
+check("tam denetim: tahmin kategori strict'te geçmez", tySafeCheck(base, { categorySource: "predicted", predictedHigh: true }).some((r) => /tahmin/.test(r)));
+check("tam denetim: high modda yüksek tahmin geçer", !tySafeCheck(base, { categorySource: "predicted", predictedHigh: true, categoryMode: "high" }).some((r) => /kategori/.test(r)));
+check("tam denetim: çoklanan barkod", tySafeCheck(base, { categorySource: "map", dupBarcodes: new Set(["4006381333931"]) }).some((r) => /çoklama/.test(r)));
+check("tam denetim: uyumluluk ifadesi marka riski değil", !tySafeCheck({ ...base, title: "Samsung Galaxy S5 Uyumlu Batarya" }, { categorySource: "map" }).some((r) => /lisans/.test(r)));
+check("tam denetim: lisanslı karakter", tySafeCheck({ ...base, title: "Spiderman Desenli Kupa" }, { categorySource: "map" }).some((r) => /lisans/.test(r)));
+check("tam denetim: sağlık beyanı", tySafeCheck({ ...base, description: "Eklem ağrılarını tedavi eder" }, { categorySource: "map" }).some((r) => /sağlık/.test(r)));
+check("tam denetim: düşük stok", tySafeCheck({ ...base, stock: 2 }, { categorySource: "map", minStock: 5 }).some((r) => /stok/.test(r)));
+check("tam denetim: görsel yok", tySafeCheck({ ...base, images: [] }, { categorySource: "map" }).some((r) => /görsel/.test(r)));
+
+const d = parseTySafe(null);
+check("ayar: yoksa açık, strict, min stok 5, marka listesi açık", d.enabled && d.categoryMode === "strict" && d.minStock === 5 && d.brandAllowlist, d);
+check("ayar: kapatılabilir", parseTySafe({ enabled: false }).enabled === false);
+
+console.log(fails ? `\n${fails} test başarısız` : "\nGüvenli liste testleri geçti");
+if (fails) process.exit(1);
