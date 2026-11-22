@@ -55,6 +55,15 @@ const h2 = hbOrder({ packageNumber: "PK9", status: "Packaged", items: [{ orderNu
 const mm = new Map(); mergeOrder(mm, h1); mergeOrder(mm, h2);
 const m1 = mm.get("H1");
 check("HB: aynı sipariş açık + paketli listede tek kayıt, son durum ve kargo kodu", mm.size === 1 && m1.status === "Packaged" && m1.lines.length === 1 && m1.tracking === "HJ123" && m1.customer.name === "Ad", m1);
+// HB paket kalemi indirim alanları (canlı 22.11, 4110610141): totalHBDiscount (HB karşılar, satıcıya ödenir) + totalMerchantDiscount
+{
+  const pk = hbOrder({ packageNumber: "PK1", status: "Open", items: [{ orderNumber: "H5", lineItemId: "L5", merchantSku: "HS-1", quantity: 1, price: { amount: 1159.92 }, totalPrice: { amount: 1159.92 },
+    commissionRate: 16.67, totalHBDiscount: { amount: 209.99 }, totalMerchantDiscount: { amount: 30 }, merchantUnitPrice: { amount: 1369.91 } }] }, "Open")!;
+  const l = pk.lines[0] as any;
+  check("HB paket: HB indirimi okunur, toplam indirim = HB + satıcı", l.tyDiscount === 209.99 && Math.abs(l.discount - 239.99) < 0.001 && l.unitPrice === 1159.92, l);
+  const pr = orderRow("hepsiburada", pk, new Map([["HS-1", { product_id: null, variant_id: null, commission: 0.1667, cost: 801.92 }]]), cfg);
+  check("HB paket: gelir = müşterinin ödediği + HB indirimi (satıcı fiyatı)", pr.fin?.revenue === 1369.91, pr.fin);
+}
 check("durum: HB Packaged -> ready, Cancelled -> cancelled", mapOrderStatus("hepsiburada", "Packaged").status === "ready" && mapOrderStatus("hepsiburada", "CancelledByMerchant").status === "cancelled");
 
 // Zararına satış (30.10 Duplo: komisyon tarifesi fiyatı 405,37, maliyet 903,60): dikkat + neden; kârlı siparişte uyarı yok

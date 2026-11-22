@@ -607,8 +607,15 @@ export function hbOrder(x: any, tag: string): OrderIn | null {
   const lines = its.map((it, i) => {
     const qty = Number(it.quantity ?? 1) || 1;
     const unit = money(it.unitPrice) ?? money(it.price) ?? ((money(it.totalPrice) ?? 0) / qty);
+    // İndirim alan adları uca göre değişir (canlı 22.11, sipariş 4110610141): /orders satırı hbDiscount.totalPrice + merchantDiscount.totalPrice,
+    // /packages kalemi totalHBDiscount + totalMerchantDiscount. HB indirimi satıcıya ödenir (komisyon merchantUnitPrice üzerinden); okunmazsa
+    // gelir müşterinin ödediğiyle sınırlı kalıp sahte "zararına satış" ve eksik fatura tutarı çıkıyordu.
+    const hbDisc = money(it.totalHBDiscount) ?? money(it.hbDiscount?.totalPrice ?? it.hbDiscount);
+    const merchDisc = money(it.totalMerchantDiscount) ?? money(it.merchantDiscount?.totalPrice ?? it.merchantDiscount);
+    // discount = toplam indirim (Trendyol satırıyla aynı anlam: satıcı payı = discount - tyDiscount, order-profit.ts)
+    const totalDisc = money(it.totalDiscount) ?? (hbDisc != null || merchDisc != null ? (hbDisc ?? 0) + (merchDisc ?? 0) : null);
     return { lineNo: i + 1, lineId: String(it.id ?? it.lineItemId ?? it.orderLineId ?? i), key: String(it.merchantSku ?? it.sku ?? ""), title: String(it.productName ?? it.name ?? "").slice(0, 200), qty, unitPrice: unit,
-      tyDiscount: money(it.hbDiscount?.totalPrice ?? it.hbDiscount), discount: money(it.totalDiscount ?? it.merchantDiscount?.totalPrice), commissionAmt: money(it.commission),
+      tyDiscount: hbDisc, discount: totalDisc, commissionAmt: money(it.commission),
       commissionRate: Number(it.commissionRate) > 0 && Number(it.commissionRate) < 100 ? Number(it.commissionRate) / 100 : null } as any;
   });
   const a = x.shippingAddress ?? first.shippingAddress ?? x.deliveryAddress ?? null;
