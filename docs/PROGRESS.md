@@ -2,6 +2,13 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-22 (92) — TRENDYOL MAĞAZASI SÜRESİZ KAPATILDI
+- **Neden (Trendyol ihlal kaydı, K Telegram 21.11):** 21.11 **48 puan** "Orijinal olmayan / kuvvetli orijinallik şüphesi taşıyan ürün satışı" — gerekçe: satıştaki ürünlerde kural setindeki oranın üzerinde **hatalı barkod** (Hatalı Marka kapsamında kapanan ürünler). 11.11 **12 puan** "Kötü niyetli hatalı kategori" (barkod TYBDF6N3E2PURVT500, bizim kayıtlarda yok). K: "revize yapılması gereken ürünlerden dolayı kapandı"; 22.11 K: mağaza süresiz kapatıldı.
+- **21.11 sunucu Claude (Telegram /claude) yaptıkları, K onaylı:** Trendyol senkronu acil durduruldu (bayrak açılmadı); Colezium 1.671 TY ilanı + 335 fantezi giyim ilanı **arşivlendi** (kalıcı silme yapılmadı, 24 sa sonra mümkün, kupalar 4 adet hariç); HB 158 lisanslı karakter ilanı stok 0; 261 ürün veritabanında arşiv. TY durumları: yayında 37.068, red 532, hata/gönderilemeyen 16.906.
+- **HB:** senkronlar normal çalışıyor (`trentakip-sync-vps@hepsiburada` 15 dk, siparişler 15 dk; son tur 368 güncelleme, failedBatches 0; 117.843 HB ilanı). K 22.11 "tüm HB senkronları çalışsın": zaten çalışıyor, ek tetikleme çakışırdı.
+- **Risk notu:** kapanma gerekçesi hatalı barkod oranı. Bizim iç barkodlarımız (ÖS13-/OS13-, tedarikçi SKU kökenli, GTIN değil) aynı riski HB'de de taşır -> HB'ye yeni ürün gönderimi K kararı olmadan genişletilmemeli; commit edilmemiş `lib/barcode.ts` (iç barkod üretimi) bu yüzden şimdilik bağlanmamalı.
+- **Açık (K):** Trendyol itirazı (eşik/itiraz yolu Trendyol yazısında), arşivdeki 2.006 ilanın kalıcı silinmesi itiraz sonucuna kadar beklemeli.
+
 ## 2026-11-21 (91) — Bezos akışla içe aktarma açıldı, rekabet fiyatı doğrulandı
 - **Bezos denemesi geçti** (`import-xml.ts bezos --dry`): 111.914 + 434 ürün, 0 XML hatası, tepe bellek 1,15 GB (önce 2,2 GB + 1,1 GB takas), 14 dk.
 - **`trentakip-supplier-vps.timer` yeniden AÇIK** (21.11 00:28). Yeni bellek sınırı `ops/vps/systemd/trentakip-supplier-vps.service.d/memory.conf` (MemoryHigh 1400M / MemoryMax 1700M / MemorySwapMax 256M, sunucuya kuruldu): taşarsa yalnızca içe aktarma ölür, sunucu boğulmaz. Gerçek turlar: iş 1899 (278 yeni, 26.404 güncelleme) ve 1908 (666 güncelleme, 1.734 stok), sunucu sağlıklı (bellek ~1,8 GB boş).
