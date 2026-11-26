@@ -8,9 +8,9 @@
 //   node --experimental-strip-types worker/stock-guard.ts --apply    # pazaryerine 0 gönderir
 //   ... --full                                                        # tam tarama (pencere yok)
 // Ortam: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY (sunucu veritabanı), STOCK_GUARD_MARKETPLACES (varsayılan hepsiburada),
-// STOCK_GUARD_MAX (tek çalışmada en çok, varsayılan 5000; fazlası sonraki çalışmada). Kapatma: app_state stock_guard_off = true.
+// STOCK_GUARD_MAX (tek çalışmada en çok, varsayılan 10000; fazlası sonraki çalışmada). Kapatma: app_state stock_guard_off = true.
 import { createClient } from "@supabase/supabase-js";
-import { env } from "./core/util.ts";
+import { env, readAll } from "./core/util.ts";
 import { getMarketplace } from "./marketplaces/index.ts";
 import { tgSend } from "./core/telegram.ts";
 
@@ -18,7 +18,7 @@ const apply = process.argv.includes("--apply");
 const forceFull = process.argv.includes("--full");
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 const mps = (process.env.STOCK_GUARD_MARKETPLACES ?? "hepsiburada").split(",").map((s) => s.trim()).filter(Boolean);
-const MAX = Number(process.env.STOCK_GUARD_MAX ?? 5000);
+const MAX = Number(process.env.STOCK_GUARD_MAX ?? 10000);
 const OVERLAP_MS = 10 * 60000; // pencere örtüşmesi: yarıda kalan içe aktarma / saat farkı kaçmasın
 const FULL_EVERY_MS = 60 * 60000; // saatte bir tam tarama (pencerede kaçan olursa)
 
@@ -45,9 +45,10 @@ for (const id of mps) {
   const since = full ? null : new Date(lastOk - OVERLAP_MS).toISOString();
 
   const t0 = Date.now();
-  const c = await db.rpc("stock_guard_candidates", { p_mp: id, p_since: since, p_min_stock: minStock });
+  // readAll: PostgREST tek istekte en çok 1000 satır verir (hatasız keser; 26.11 ilk tam tarama 8.079 adayın 1000'ini görüyordu)
+  const c = await readAll<{ listing_key: string; avail: number; prod_status: string; known_qty: number }>((a, b) => db.rpc("stock_guard_candidates", { p_mp: id, p_since: since, p_min_stock: minStock }).order("listing_key").range(a, b));
   if (c.error) throw new Error(`${id} adaylar okunamadı: ${c.error.message}`);
-  const rows = (c.data ?? []) as { listing_key: string; avail: number; prod_status: string; known_qty: number }[];
+  const rows = c.data ?? [];
   const keys = [...new Set(rows.map((r) => r.listing_key))];
   const todo = keys.slice(0, MAX);
   const res: Record<string, unknown> = { full, since, minStock, candidates: keys.length, queryMs: Date.now() - t0, sample: todo.slice(0, 5) };
