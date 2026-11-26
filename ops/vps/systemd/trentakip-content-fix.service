@@ -20,4 +20,6 @@ CPUQuota=30%
 MemoryMax=700M
 NoNewPrivileges=true
 ProtectSystem=strict
+# kendi kilidi /run/lock altında: strict onu salt okunur yapıyordu (22.11-26.11 her çalışma "Read-only file system" ile düştü)
+ReadWritePaths=/run/lock
 PrivateTmp=true
