@@ -49,7 +49,9 @@ async function run() {
     const stKey = `stock_guard:${id}`;
     const st = await db.from("app_state").select("value").eq("key", stKey).maybeSingle();
     if (st.error) throw new Error(`durum okunamadı: ${st.error.message}`);
-    const prev: any = st.data?.value ?? {};
+    // app_state.value text kolonu: nesne JSON metni olarak döner (26.11: okunmayınca her tur tam tarama yapıyordu)
+    let prev: any = st.data?.value ?? {};
+    if (typeof prev === "string") { try { prev = JSON.parse(prev); } catch { prev = {}; } }
     const lastOk = Date.parse(prev.cursor ?? "");
     const lastFull = Date.parse(prev.lastFull ?? "");
     const full = forceFull || !Number.isFinite(lastOk) || !Number.isFinite(lastFull) || Date.now() - lastFull > FULL_EVERY_MS;
