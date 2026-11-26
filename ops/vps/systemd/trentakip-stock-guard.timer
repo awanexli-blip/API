@@ -1,0 +1,10 @@
+[Unit]
+Description=Trentakip stok koruyucu (3 dakikada bir)
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=3min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target
