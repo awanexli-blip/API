@@ -2,6 +2,12 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-26 (94) — STOK KORUYUCU (K: "en önemli olay stokların zamanında sıfırlanması")
+- **Olay:** HB sipariş 4793690435 / 4892195137 (Bezos balaklava 3916684710449, Bezos kodu BZS09D8A1756FA34928): tedarikçi stoğu 18:06'da 0, HB'ye 0 ancak 19:07'de gitti. Neden: HB senkron turu 25.11'den beri 1,5-3 saat (önce 10-25 dk); tur bitmeden yenisi başlamıyor.
+- **Bulunan büyük açık:** 8.079 HB ilanı (8.074 Colezium) bizde stok 0 iken HB'de 999-1000 stokla SATIŞTAYDI; ana senkron bunlara 20.11'den beri stok göndermemiş (kök neden açık: dbInventory bu ilanları neden atlıyor, incelenmeli). Hepsine stok 0 gönderildi, HB'de doğrulandı (availableStock 0, isSalable false).
+- **Kalıcı çözüm:** `worker/stock-guard.ts` + `trentakip-stock-guard.timer` (3 dk, ağır iş kilidi yok, CPUWeight 400): son turdan beri değişen varyantlarda stok-rezerv < min_stock ya da ürün pasif VE ilan yayında stoklu -> stok 0 (yalnızca sıfırlama yönü). Saatte bir tam tarama. Migration 100 (`stock_guard_candidates` plpgsql: pencere 0,17 sn, tam 4 sn; `stock_guard_mark`; varyant updated_at dizini). Hata olursa Telegram (30 dk'da bir). Kapatma `app_state stock_guard_off=true`. Durum `app_state stock_guard:hepsiburada`.
+- **Açık:** (1) Colezium ilanlarını ana senkronun atlama nedeni; (2) HB turunun 25.11'den beri yavaşlaması; (3) içerik düzeltme (`trentakip-content-fix.timer`) durduruldu, ürün tablosunu tarayan sorgusu veritabanını yoruyordu, yeniden açmadan önce sorgu hafifletilmeli.
+
 ## 2026-11-26 (93) — Güvenli liste, HB indirim düzeltmesi, logo, sunucu CPU, Falez analizi
 - **Trendyol güvenli liste (K 22.11, yeni mağaza):** `worker/core/ty-safe.ts` (gerçek GTIN, gerçek marka, onaylı marka listesi `app_state ty_safe_brands`, elle/eşleme kategori, +18/sağlık/yasak/lisans, çoklanan barkod, stok) gönderim kuyruğunda + adaptörde son kapı (`TY_SAFE=off` kapatır). Tarama `worker/ty-safe-scan.ts`: 134.594 stoklu üründen 0 uygun (barkod, Bezos markası boş, kategori). Yeni mağaza geçişi (kimlik, ilan tablosu sıfırlama, auto_create kapalı) K onayı bekliyor.
 - **HB sahte zarar (4110610141):** paket kalemindeki `totalHBDiscount/totalMerchantDiscount` okunuyor, gelir = ödenen + HB indirimi. HB faturasına HB indirimi eklenmez (`mpDiscInInvoice`), mali müşavir sorusu açık.
