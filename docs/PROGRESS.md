@@ -2,6 +2,14 @@
 
 En yeni üstte. Her oturum sonunda: ne yapıldı, ne doğrulandı, ne açık kaldı, sıradaki adım.
 
+## 2026-11-26 (93) — Güvenli liste, HB indirim düzeltmesi, logo, sunucu CPU, Falez analizi
+- **Trendyol güvenli liste (K 22.11, yeni mağaza):** `worker/core/ty-safe.ts` (gerçek GTIN, gerçek marka, onaylı marka listesi `app_state ty_safe_brands`, elle/eşleme kategori, +18/sağlık/yasak/lisans, çoklanan barkod, stok) gönderim kuyruğunda + adaptörde son kapı (`TY_SAFE=off` kapatır). Tarama `worker/ty-safe-scan.ts`: 134.594 stoklu üründen 0 uygun (barkod, Bezos markası boş, kategori). Yeni mağaza geçişi (kimlik, ilan tablosu sıfırlama, auto_create kapalı) K onayı bekliyor.
+- **HB sahte zarar (4110610141):** paket kalemindeki `totalHBDiscount/totalMerchantDiscount` okunuyor, gelir = ödenen + HB indirimi. HB faturasına HB indirimi eklenmez (`mpDiscInInvoice`), mali müşavir sorusu açık.
+- **Logo (K 25.11):** vitrin resmi logosu K'nın orijinalinden yazısız kalkan (`public/brand/logo-mark-*`, `icon-*`, `apple-icon-180`, Organization JSON-LD); dış platformlar için `logo-kare-500/1000.jpg`, `logo-kare-1000.png`, `logo-saydam-1000.png`.
+- **Sunucu CPU (K 25.11 "%90'a kadar"):** ağır işler CPUQuota 50% -> 150%, `system.slice` 180% (makinenin %90'ı), ağır işler CPUWeight=40 (veritabanı önce). Ağır iş kilidi korunur (4 GB bellek). "fetch failed" 24.11'den beri artıyor (günde 6 -> 37), izle.
+- **Düzeltildi:** `trentakip-content-fix` 22.11'den beri her çalışmada düşüyordu (ProtectSystem=strict, /run/lock salt okunur) -> `ReadWritePaths=/run/lock`.
+- **Falez (GOLDFALEZ) analizi:** 833 ürün, HB'deki ilanlarımızla örtüşme yok. Barkodlar 2xx (GS1 dışı iç kod) -> gerçek 869 barkodu ve bayi fiyatı istenmeli. %100 kârla HB'de ortalama net 405 TL/ürün (akış fiyatı maliyet sayıldı, Aras desi tarifesi). K kararı bekliyor.
+
 ## 2026-11-22 (92) — TRENDYOL MAĞAZASI SÜRESİZ KAPATILDI
 - **Neden (Trendyol ihlal kaydı, K Telegram 21.11):** 21.11 **48 puan** "Orijinal olmayan / kuvvetli orijinallik şüphesi taşıyan ürün satışı" — gerekçe: satıştaki ürünlerde kural setindeki oranın üzerinde **hatalı barkod** (Hatalı Marka kapsamında kapanan ürünler). 11.11 **12 puan** "Kötü niyetli hatalı kategori" (barkod TYBDF6N3E2PURVT500, bizim kayıtlarda yok). K: "revize yapılması gereken ürünlerden dolayı kapandı"; 22.11 K: mağaza süresiz kapatıldı.
 - **21.11 sunucu Claude (Telegram /claude) yaptıkları, K onaylı:** Trendyol senkronu acil durduruldu (bayrak açılmadı); Colezium 1.671 TY ilanı + 335 fantezi giyim ilanı **arşivlendi** (kalıcı silme yapılmadı, 24 sa sonra mümkün, kupalar 4 adet hariç); HB 158 lisanslı karakter ilanı stok 0; 261 ürün veritabanında arşiv. TY durumları: yayında 37.068, red 532, hata/gönderilemeyen 16.906.
