@@ -12,13 +12,12 @@
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { defaultFor, matchOptions, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
-import { placeholderBrand } from "../core/ty-safe.ts";
+import { tyHardBlock } from "../core/ty-safe.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
 const SKU_PREFIXES = ["OS13-", "ÖS13-"];
 const NEW_PREFIX = "OS13-";
-// Varsayılan mağaza markası YOK (27.11): Trendyol mağazası başkasının ürününü "Eco Lounge" ile açtığı için ("Hatalı Marka") kapandı.
-// Marka = ürünün kendi markası (ctx.brandName); boş / yer tutucu (mağaza, tedarikçi adı) ise ürün gönderilmez. Kendi tescilli markan için PAZARAMA_BRAND_NAME.
+// Kod içi varsayılan marka yok (27.11): marka tedarikçinin panelde ayarlı pazaryeri markasından gelir (HB gibi); yoksa PAZARAMA_BRAND_NAME.
 const BRAND_NAME = process.env.PAZARAMA_BRAND_NAME || "";
 const API = (process.env.PAZARAMA_API_URL || "https://isortagimapi.pazarama.com").replace(/\/+$/, "");
 const AUTH = (process.env.PAZARAMA_AUTH_URL || "https://isortagimgiris.pazarama.com").replace(/\/+$/, "");
@@ -208,8 +207,12 @@ export function createPazarama(): Marketplace {
         if (!p.images.length) { no("görsel yok"); continue; }
         if (!p.cat?.category_id) { no("pazaryeri kategorisi yok"); continue; }
         if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
+        // K 27.11: "marka ve barkodla şimdi uğraşamam" -> HB gibi: tedarikçinin panelde ayarlı pazaryeri markası (ctx.brandName). Başlığında
+        // tanınmış marka / lisanslı karakter geçen ürün gönderim kuyruğunda zaten elenir (brandRisk) + burada +18/yasak son kapı.
         const brandName = String(ctx.brandName || BRAND_NAME || "").trim();
-        if (placeholderBrand(brandName)) { no(`marka "${brandName}" ürünün gerçek markası değil (boş / mağaza / tedarikçi adı): gönderilmez`); continue; }
+        if (!brandName) { no("marka yok (tedarikçinin pazaryeri markası ayarlanmadı)"); continue; }
+        const hb0 = tyHardBlock({ id: "00000000", brand: brandName, title: p.name, category: `${p.xmlCategory ?? ""} ${p.catName ?? ""}` });
+        if (hb0 && !/GTIN|gerçek markası/.test(hb0)) { no(hb0.replace("Güvenli liste: ", "")); continue; }
         let bid: string | null;
         try { bid = await brandId(brandName); } catch (e: any) { no(`marka sorgusu başarısız (geçici): ${String(e.message).slice(0, 160)}`); continue; }
         if (!bid) { no(`marka Pazarama'da bulunamadı: ${brandName}`); continue; }
