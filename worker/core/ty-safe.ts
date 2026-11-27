@@ -60,13 +60,20 @@ const HEALTH = /(tedavi eder|tedavi edici|iyileştirir|şifa|zayıflat|kilo verd
 // Trendyol satış kuralı + yasal kısıt (lib/scope.ts TY_RULE'a ek): tütün ürünleri, silah, elektronik sigara, alkol, gıda
 const BANNED = /(?<![\p{L}])(çakmak|çakmağı|küllük|kül tablası|sigara|e-sigara|elektronik sigara|vape|tütün|nargile|puro|tabanca|tüfek|silah|mermi|şarjör|kasatura|muşta|sustalı|biber gazı|şok cihazı|alkol|bira|şarap|viski|rakı)(?![\p{L}])/u;
 // Lisanslı karakter / tanınmış marka sözcükleri (marka ihlali, belge ister). Ürünün KENDİ markası bunlardan biriyse ayrıca yetki listesine bakılır.
-const LICENSED = /(disney|marvel|pixar|frozen|elsa|mickey|minnie|spider[\s-]?man|örümcek adam|batman|superman|avengers|harry potter|hello kitty|barbie|pokemon|pokémon|star wars|darth vader|minecraft|roblox|fortnite|paw patrol|peppa|sonic|stitch|garfield|tweety|looney|ninja kaplumbağa|transformers|hot wheels|lego|nike|adidas|puma|gucci|louis vuitton|chanel|rolex|ray[\s-]?ban|apple|iphone orijinal|airpods|playstation|nintendo)/u;
+const LICENSED = /(disney|marvel|pixar|frozen|elsa|mickey|minnie|spider[\s-]?man|örümcek adam|batman|superman|avengers|harry potter|hello kitty|barbie|pokemon|pokémon|star wars|darth vader|minecraft|roblox|fortnite|paw patrol|peppa|sonic|stitch|garfield|tweety|looney|ninja kaplumbağa|transformers|hot wheels|lego|hasbro|mattel|fisher[\s-]?price|nerf|play[\s-]?doh|monopoly|my little pony|transformers|pj masks|l\.o\.l|bluey|cocomelon|polly pocket|beyblade|baby born|pokemon|uno kart|jenga|nike|adidas|puma|gucci|louis vuitton|chanel|rolex|ray[\s-]?ban|apple|iphone orijinal|airpods|playstation|nintendo)/u;
 // "X uyumlu" / "X için" uyumluluk ifadesi marka iddiası değildir (Samsung uyumlu batarya): eşleşme öncesi çıkarılır
 const COMPAT = /([\p{L}\d+\s-]{2,40})\s(uyumlu|için|ile uyumlu)\b/gu;
+
+/** Trendyol'un resmi "markası yok" markası (canlı 27.11: brands/by-name "Markası Yok" -> id 3024252). Yalnızca doğrulanmış markasız ürün. */
+export const TY_NOBRAND = "Ürünümün Markası Yok";
+/** Markasız ürünlerde kendi iç barkodumuz: ASCII, tekil, makul uzunluk */
+const OWN_CODE = /^[A-Z0-9][A-Z0-9._-]{5,39}$/;
 
 export type TySafeInput = {
   title: string; description?: string | null; brand?: string | null; category?: string | null; mpCategory?: string | null;
   barcodes: string[]; images?: string[]; stock?: number;
+  /** İki görsel model fotoğraf/ambalaj/başlık/açıklamada marka görmedi (worker/vision-attrs.ts -> "Markasız doğrulandı"=evet) */
+  verifiedNoBrand?: boolean;
 };
 export type TySafeCtx = {
   /** Katalogda birden çok ürüne ait barkodlar (çoklama riski) */
@@ -87,8 +94,10 @@ export type TySafeCtx = {
 
 /** Son kapı (adaptör): barkod GTIN, marka gerçek, +18/yasak değil. Neden ya da null. */
 export function tyHardBlock(p: { id: string; brand?: string | null; title?: string | null; category?: string | null }, extraPlaceholders: string[] = []): string | null {
-  if (!isTyGtin(p.id)) return `Güvenli liste: barkod gerçek GTIN değil (${p.id}); iç kodla ilan açılmaz`;
-  if (placeholderBrand(p.brand, extraPlaceholders)) return `Güvenli liste: marka "${p.brand ?? ""}" ürünün gerçek markası değil (mağaza/tedarikçi adı ya da boş)`;
+  const nobrand = String(p.brand ?? "").trim() === TY_NOBRAND;
+  if (nobrand) { if (!OWN_CODE.test(String(p.id ?? ""))) return `Güvenli liste: markasız üründe barkod biçimi uygun değil (${p.id})`; }
+  else if (!isTyGtin(p.id)) return `Güvenli liste: barkod gerçek GTIN değil (${p.id}); iç kodla ilan açılmaz`;
+  if (!nobrand && placeholderBrand(p.brand, extraPlaceholders)) return `Güvenli liste: marka "${p.brand ?? ""}" ürünün gerçek markası değil (mağaza/tedarikçi adı ya da boş)`;
   const t = fold(`${p.title ?? ""} ${p.category ?? ""}`);
   const a = t.match(ADULT); if (a) return `Güvenli liste: +18 / cinsel sağlık ürünü ("${a[1]}")`;
   const b = t.match(BANNED); if (b) return `Güvenli liste: yasak ürün ("${b[1]}")`;
@@ -99,14 +108,20 @@ export function tyHardBlock(p: { id: string; brand?: string | null; title?: stri
 export function tySafeCheck(p: TySafeInput, ctx: TySafeCtx = {}): string[] {
   const out: string[] = [];
   const codes = p.barcodes.map((b) => String(b ?? "").trim());
-  if (!codes.length || codes.some((b) => !isTyGtin(b))) out.push("barkod: gerçek GTIN değil (iç kod / sağlama hanesi hatalı / boş)");
-  if (ctx.knownPrefixes && codes.length && codes.every(isTyGtin)) {
+  const nb = !!p.verifiedNoBrand;
+  if (nb) {
+    // Markasız (K 27.11): iç barkod kabul, ama tekil ve düzgün biçimli; başlıkta "uyumlu" (başka markaya gönderme) olmaz
+    if (!codes.length || codes.some((b) => !OWN_CODE.test(b))) out.push("barkod: markasız üründe barkod biçimi uygun değil");
+    if (/(uyumlu|için uyumlu|ile uyumlu)/i.test(fold(p.title))) out.push("markasız: başlıkta 'uyumlu' (başka markaya gönderme) var");
+  } else if (!codes.length || codes.some((b) => !isTyGtin(b))) out.push("barkod: gerçek GTIN değil (iç kod / sağlama hanesi hatalı / boş)");
+  if (!nb && ctx.knownPrefixes && codes.length && codes.every(isTyGtin)) {
     const lone = codes.filter((b) => { const p = gtinPrefix(b); return p != null && !ctx.knownPrefixes!.has(p); });
     if (lone.length) out.push(`barkod: firma kodu katalogda tek (${lone[0]}) – rastgele üretilmiş barkod şüphesi, gerçek üretici barkodu değil`);
   }
   const dup = codes.filter((b) => ctx.dupBarcodes?.has(b));
   if (dup.length) out.push(`barkod: katalogda başka ürünle aynı (${dup.slice(0, 2).join(", ")}) – çoklama riski`);
-  if (placeholderBrand(p.brand, ctx.extraPlaceholders)) out.push(`marka: "${p.brand ?? ""}" gerçek üretici markası değil`);
+  if (nb) { /* marka TY_NOBRAND olarak gönderilir; onay listesi gerekmez */ }
+  else if (placeholderBrand(p.brand, ctx.extraPlaceholders)) out.push(`marka: "${p.brand ?? ""}" gerçek üretici markası değil`);
   else if (ctx.allowedBrands && !ctx.allowedBrands.has(fold(p.brand!))) out.push(`marka: "${p.brand}" onaylı markalar listesinde yok (fatura/yetki belgesiyle onayla)`);
   const text = fold(`${p.title} ${p.category ?? ""} ${p.mpCategory ?? ""}`);
   const full = fold(`${p.title} ${p.description ?? ""}`);
@@ -114,7 +129,8 @@ export function tySafeCheck(p: TySafeInput, ctx: TySafeCtx = {}): string[] {
   const b = text.match(BANNED); if (b) out.push(`yasak ürün: "${b[1]}"`);
   const h = full.match(HEALTH); if (h) out.push(`sağlık beyanı / ilaç-takviye: "${h[1]}"`);
   const lic = fold(p.title).replace(COMPAT, " ").match(LICENSED);
-  if (lic && !(p.brand && fold(p.brand).includes(lic[1]) && ctx.allowedBrands?.has(fold(p.brand)))) out.push(`marka/lisans riski: başlıkta "${lic[1]}"`);
+  const licAny = lic ?? fold(`${p.description ?? ""}`).replace(COMPAT, " ").match(LICENSED); // korumalı marka açıklamada da geçmemeli
+  if (licAny && (nb || !(p.brand && fold(p.brand).includes(licAny[1]) && ctx.allowedBrands?.has(fold(p.brand))))) out.push(`marka/lisans riski: "${licAny[1]}"`);
   const src = ctx.categorySource ?? "none";
   const catOk = src === "manual" || src === "map" || (src === "predicted" && ctx.categoryMode === "high" && ctx.predictedHigh);
   if (!catOk) out.push(src === "predicted" ? "kategori: yalnızca tahmin (elle seç ya da kategori eşlemesini onayla)" : "kategori: seçilmemiş");

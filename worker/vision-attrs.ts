@@ -7,7 +7,8 @@
 //
 //   node --experimental-strip-types worker/vision-attrs.ts <girdi.json> <çıktı.json> [--mp pazarama]
 // Girdi: { categories: { <id>: { name, attrs: [{ id, name, required, values: [{ id, value }] }] } }, products: [{ id, sku, title, description, images[], categoryId }] }
-// Çıktı: { results: [{ id, sku, accepted: { <özellik>: <değer> }, abstained: { <özellik>: [a, b] }, missingRequired: [] }], sql }
+// Çıktı: { results: [{ id, sku, accepted, abstained, missingRequired, noBrand, brandCheck }], sql }
+// Marka kontrolü (K 27.11): fotoğrafta / ambalajda / başlık-açıklamada marka var mı; iki model de "HAYIR" derse "Markasız doğrulandı"=evet.
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -48,7 +49,11 @@ KURALLAR:
 - Arka plan, ambalaj ve sunum aksesuarlarının rengi ürünün rengi değildir.
 Özellikler ve izinli değerler:
 ${attrs.map((a) => `- ${a.name}: ${a.values.join(" | ")}`).join("\n")}
-Sadece JSON döndür: {"attrs": {"<özellik adı>": "<listeden değer ya da BELIRSIZ>"}}`;
+AYRICA MARKA KONTROLÜ: Ürünün kendisinde, ambalajında, etiketinde, kartında ya da fotoğraftaki herhangi bir yazıda marka adı, logo veya üretici/firma adı var mı?
+Başlıkta ya da açıklamada bir marka/üretici adı geçiyor mu (ör. "X Kitchenware", "Y Home")? Ürün tanımı ("Çelik Rende") marka değildir.
+- marka_gorunur: "EVET" (en az birinde marka/logo/firma adı var), "HAYIR" (hiçbir yerde yok, emin), "BELIRSIZ" (yazı okunamıyor / emin değilsin)
+- marka_metni: gördüğün marka yazısı (yoksa boş)
+Sadece JSON döndür: {"attrs": {"<özellik adı>": "<listeden değer ya da BELIRSIZ>"}, "marka_gorunur": "EVET|HAYIR|BELIRSIZ", "marka_metni": ""}`;
 }
 
 async function ask(model: string, text: string, images: string[]): Promise<Record<string, string> | null> {
@@ -61,7 +66,7 @@ async function ask(model: string, text: string, images: string[]): Promise<Recor
       const txt = String(j.choices?.[0]?.message?.content ?? "");
       const m = txt.match(/\{[\s\S]*\}/);
       const o = m ? JSON.parse(m[0]) : null;
-      return o?.attrs && typeof o.attrs === "object" ? o.attrs : null;
+      return o?.attrs && typeof o.attrs === "object" ? { ...o.attrs, __marka: String(o.marka_gorunur ?? "BELIRSIZ"), __markaMetni: String(o.marka_metni ?? "") } : null;
     } catch (e: any) { if (t === 3) { console.error(`  ${model}: ${String(e?.message ?? e).slice(0, 120)}`); return null; } await new Promise((s) => setTimeout(s, 4000 * t)); }
   }
   return null;
@@ -86,14 +91,20 @@ for (const p of input.products) {
     const agree = vals.length >= 2 && answers.every(Boolean) && vals.every((v) => norm(v) === norm(vals[0])) && pick && norm(vals[0]) !== "belirsiz";
     if (agree) r.accepted[a.name] = pick; else if (vals.some((v) => norm(v) !== "belirsiz")) r.abstained[a.name] = vals;
   }
+  // Markasız doğrulaması: iki model de "HAYIR" derse (biri bile EVET/BELIRSIZ derse marka var sayılır, ürün markasız olarak gönderilmez)
+  const mk = answers.map((ans) => (ans ? norm(ans.__marka) : "hata"));
+  r.brandCheck = { answers: mk, texts: answers.map((ans) => ans?.__markaMetni ?? "").filter(Boolean) };
+  r.noBrand = answers.every(Boolean) && mk.every((x) => x === "hayır" || x === "hayir");
   r.missingRequired = required.filter((n: string) => !r.accepted[n] && !(p.known ?? {})[`${n}@${mp}`]);
-  console.log(`${p.sku} | ${String(p.title).slice(0, 45)} | kabul ${JSON.stringify(r.accepted)} | çekimser ${Object.keys(r.abstained).join(",") || "-"}${r.missingRequired.length ? " | ZORUNLU EKSİK: " + r.missingRequired.join(",") : ""}`);
+  console.log(`${p.sku} | ${String(p.title).slice(0, 45)} | ${r.noBrand ? "MARKASIZ" : "marka:" + (r.brandCheck.texts.join("/") || r.brandCheck.answers.join("/"))} | kabul ${JSON.stringify(r.accepted)} | çekimser ${Object.keys(r.abstained).join(",") || "-"}${r.missingRequired.length ? " | ZORUNLU EKSİK: " + r.missingRequired.join(",") : ""}`);
   results.push(r);
 }
 // Sunucu veritabanına uygulanacak SQL: kabul edilen değerler ürün kaydına "<özellik>@<pazaryeri>" anahtarıyla (adaptör bunları kullanır)
 const esc = (s: string) => s.replace(/'/g, "''");
-const sql = results.filter((r) => r.accepted && Object.keys(r.accepted).length).map((r) => {
-  const obj = Object.fromEntries(Object.entries(r.accepted).map(([k, v]) => [`${k}@${mp}`, v]));
+const sql = results.filter((r) => r.accepted && (Object.keys(r.accepted).length || r.brandCheck)).map((r) => {
+  const obj: Record<string, string> = Object.fromEntries(Object.entries(r.accepted).map(([k, v]) => [`${k}@${mp}`, String(v)]));
+  // Pazaryerinden bağımsız: iki model de fotoğrafta/metinde marka görmedi (Trendyol "Ürünümün Markası Yok" yalnızca bununla)
+  obj["Markasız doğrulandı"] = r.noBrand ? "evet" : "hayır";
   return `update products set attributes = coalesce(attributes, '{}'::jsonb) || '${esc(JSON.stringify(obj))}'::jsonb where id = '${r.id}';`;
 }).join("\n");
 writeFileSync(outFile, JSON.stringify({ models: MODELS, at: new Date().toISOString(), results, sql }, null, 1), "utf8");

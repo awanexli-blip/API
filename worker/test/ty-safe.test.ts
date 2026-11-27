@@ -1,5 +1,5 @@
 // Trendyol güvenli liste (worker/core/ty-safe.ts). node --experimental-strip-types worker/test/ty-safe.test.ts
-import { isTyGtin, tyHardBlock, tySafeCheck, parseTySafe, placeholderBrand, brandKey, gs1Assigned, gtinPrefix } from "../core/ty-safe.ts";
+import { isTyGtin, tyHardBlock, tySafeCheck, parseTySafe, placeholderBrand, brandKey, gs1Assigned, gtinPrefix, TY_NOBRAND } from "../core/ty-safe.ts";
 
 let fails = 0;
 const check = (name: string, cond: boolean, info: unknown = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + JSON.stringify(info)}`); if (!cond) fails++; };
@@ -52,5 +52,16 @@ check("GS1: firma kodu 7 hane, UPC başına 0", gtinPrefix("4006381333931") === 
 }
 
 check("yer tutucu: NW NessiWorld / BEZOS / Akıllı Bayi", placeholderBrand("NW NessiWorld") && placeholderBrand("BEZOS") && placeholderBrand("Akıllı Bayi"));
+
+// Markasız (K 27.11): Trendyol "Ürünümün Markası Yok" yalnızca iki modelin marka görmediği üründe; iç barkod kabul, "uyumlu" ve korumalı marka hayır
+{
+  const g = { title: "Çevirmeli Metal Kasa Numaratör", brand: "", category: "Ev", barcodes: ["BZ5A56ADF60666F3705C"], images: ["https://i/1.jpg"], stock: 10 };
+  check("markasız: doğrulanmamış -> GTIN/marka engeli", tySafeCheck(g, { categorySource: "map" }).some((r) => /GTIN|marka/.test(r)));
+  check("markasız: doğrulanmış -> geçer", tySafeCheck({ ...g, verifiedNoBrand: true }, { categorySource: "map", allowedBrands: new Set() }).length === 0, tySafeCheck({ ...g, verifiedNoBrand: true }, { categorySource: "map", allowedBrands: new Set() }));
+  check("markasız: başlıkta uyumlu -> engel", tySafeCheck({ ...g, title: "Samsung Uyumlu Kılıf", verifiedNoBrand: true }, { categorySource: "map" }).some((r) => /uyumlu/.test(r)));
+  check("markasız: açıklamada korumalı marka -> engel", tySafeCheck({ ...g, description: "Lego ile uyumlu değil, Hasbro oyuncağı", verifiedNoBrand: true }, { categorySource: "map" }).some((r) => /lisans/.test(r)));
+  check("son kapı: markasız + iç barkod geçer, markasız + bozuk barkod engel", tyHardBlock({ id: "BZ5A56ADF60666F3705C", brand: TY_NOBRAND, title: "Numaratör" }) === null && !!tyHardBlock({ id: "ÖS13-x y", brand: TY_NOBRAND, title: "Numaratör" }));
+  check("korumalı oyuncak markası", tySafeCheck({ ...g, title: "Hasbro Nerf Tabanca Seti", verifiedNoBrand: true }, { categorySource: "map" }).some((r) => /lisans/.test(r)));
+}
 
 if (fails) process.exit(1);

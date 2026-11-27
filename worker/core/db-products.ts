@@ -12,7 +12,9 @@ import { marginFor, type DynMargin } from "./dynamic-margin.ts";
 import { isRealGtin } from "../marketplaces/amazon.ts";
 import { loadBrandMatcher, neutralizeCompat } from "./brand-risk.ts";
 import { genderOf } from "./attr-infer.ts";
-import { tySafeCheck, parseTySafe, brandKey, type TySafeCfg } from "./ty-safe.ts";
+import { tySafeCheck, parseTySafe, brandKey, TY_NOBRAND, type TySafeCfg } from "./ty-safe.ts";
+// K 27.11: iki görsel model fotoğraf/ambalaj/metinde marka görmedi (worker/vision-attrs.ts) -> Trendyol "Ürünümün Markası Yok"
+const noBrandOk = (p: any) => String(p?.attributes?.["Markasız doğrulandı"] ?? "").toLocaleLowerCase("tr") === "evet";
 import { trendyolRuleBlock, inScopeAny, inScopeForSend, vatSuspect, toyMismatch, adultMismatch } from "../../lib/scope.ts";
 
 export type DbCtx = {
@@ -458,10 +460,13 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           // Pazaryeri kategorisi (varsa) izinli olmalı + tedarikçi ya da pazaryeri kategorisi izinli (lib/scope.ts inScopeForSend)
           if (ctx.scopeActive) { const vs = vatSuspect(p.vat_rate) ?? toyMismatch(p.category, catName) ?? adultMismatch(p.category, catName); const sc = vs ? { ok: false, reason: vs } : inScopeForSend(p.category, catName, p.title); if (!sc.ok) { fail(key, p, v, `Satış kısıtı: ${sc.reason ?? ""} (gıda satılamaz)`); continue; } }
           if (ctx.marketplaceId === "trendyol") { const tr = trendyolRuleBlock(p.title); if (tr) { fail(key, p, v, tr); continue; } }
+          // Pazarama (K 27.11): ürün tedarikçi markasıyla (Eco Lounge/TCX) açılıyor; fotoğrafta/açıklamada başka marka varsa "Hatalı Marka" olur.
+          // Yalnızca iki görsel modelin marka görmediği ürün gider (worker/vision-attrs.ts; pilotta İBİCO / PABLITO / Ew's Kitchenware çıktı).
+          if (ctx.marketplaceId === "pazarama" && !noBrandOk(p)) { fail(key, p, v, "Fotoğrafta/açıklamada marka kontrolü yapılmadı ya da marka görünüyor (görsel inceleme gerekli)"); continue; }
           if (tySafe) {
             const srcCat = manualCat ? "manual" : ctx.catMap.get(p.category)?.category_id ? "map" : categoryId ? "predicted" : "none";
             const dupB = await tyDupBarcodes(vlist.map((x: any) => keyFor(p.source, x)).filter(Boolean));
-            const why = tySafeCheck({ title: p.title, description: p.description, brand: p.brand, category: p.category, mpCategory: catName, barcodes: [key], images: vImages, stock: Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0)) },
+            const why = tySafeCheck({ verifiedNoBrand: noBrandOk(p), title: p.title, description: p.description, brand: p.brand, category: p.category, mpCategory: catName, barcodes: [key], images: vImages, stock: Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0)) },
               { dupBarcodes: dupB, knownPrefixes: tySafe.prefixes, allowedBrands: tySafe.brands, extraPlaceholders: [...supBrand.values()].flatMap((x) => x.split("|")), categorySource: srcCat, categoryMode: tySafe.categoryMode, predictedHigh: pick === pred && pred?.level === "yuksek", minStock: tySafe.minStock });
             if (why.length) { fail(key, p, v, `Güvenli liste (yeni mağaza): ${why.join(" · ")}`); continue; }
           }
@@ -499,7 +504,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           // "*" = her ürün XML'deki kendi markasıyla (tedarikçi markalarını kullanma yetkisi var; K, 25.10 Royal Tedarik)
           const sb = fromSupplier ? supBrand.get(p.source) ?? "" : "";
           // Güvenli liste: her zaman ürünün kendi (gerçek) markası; mağaza/tedarikçi markası başkasının barkodlu ürününe takılmaz ("Hatalı Marka")
-          const brand = tySafe ? String(p.brand ?? "").trim().slice(0, 100) : fromSupplier ? (sb === "*" ? String(p.brand ?? "").trim().slice(0, 100) : pickBrand(sb, p.sku)) : (await brandOk(p.brand)) ? p.brand : "";
+          const brand = tySafe ? (noBrandOk(p) ? TY_NOBRAND : String(p.brand ?? "").trim().slice(0, 100)) : fromSupplier ? (sb === "*" ? String(p.brand ?? "").trim().slice(0, 100) : pickBrand(sb, p.sku)) : (await brandOk(p.brand)) ? p.brand : "";
           if (fromSupplier && !brand) { fail(key, p, v, "Ürünün XML'de markası yok (tedarikçi ayarı: kendi markası)"); continue; }
           if (!groups.has(brand)) groups.set(brand, []);
           groups.get(brand)!.push(np);
