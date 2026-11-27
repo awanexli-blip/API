@@ -175,7 +175,11 @@ export function createTrendyol(): Marketplace {
   }
   const lo = (s: string) => s.replace(/İ/g, "i").replace(/I/g, "ı").toLocaleLowerCase("tr");
   // Belirsiz durumlarda seçilecek nötr değerler (sırayla)
-  const NEUTRAL = ["çok renkli", "karışık", "renkli", "tek ebat", "standart", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
+  const NEUTRAL_ALL = ["çok renkli", "karışık", "renkli", "tek ebat", "standart", "unisex", "yetişkin", "belirtilmemiş", "diğer"];
+  // Güvenli liste (K 27-28.11 "çok temkinli"): yalnızca "bilgi yok" anlamındaki nötrler; "Çok Renkli" gibi iddia içeren değer uydurulmaz,
+  // başka ilandan özellik kopyalanmaz. TY_SAFE=off eski davranış.
+  const SAFE_ATTR = process.env.TY_SAFE !== "off";
+  const NEUTRAL = SAFE_ATTR ? ["belirtilmemiş", "diğer"] : NEUTRAL_ALL;
   const isColor = (name: string) => /renk|color/i.test(name);
 
   // Zorunlu özellikleri doldur: panel değeri > (renk ise) başlıktaki renk / nötr renk > başlık/açıklama > Menşei TR > nötr değer > başlığı benzer onaylı ilan
@@ -215,7 +219,7 @@ export function createTrendyol(): Marketplace {
         else {
           const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
           if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
-          else if (ca.allowCustom) val = { attributeId: id, customAttributeValue: "Çok Renkli" };
+          else if (ca.allowCustom && !SAFE_ATTR) val = { attributeId: id, customAttributeValue: "Çok Renkli" };
         }
       }
       // Ürünün kendi başlık/açıklamasından (Şarjlı, 44 mm, 10000 mAh, Mikrofon var/yok, 50 Hz...); benzer ilanın değerinden önce gelir
@@ -237,7 +241,7 @@ export function createTrendyol(): Marketplace {
         const neutral = NEUTRAL.map((n) => vals.find((v) => lo(v.name) === n)).find(Boolean);
         if (neutral) val = { attributeId: id, attributeValueId: neutral.id };
       }
-      if (!val) for (const b of refs) {
+      if (!val && !SAFE_ATTR) for (const b of refs) {
         const a = attrsByBarcode.get(b)?.find((x) => x.attributeId === id);
         if (a) {
           val = a.attributeValueId ? { attributeId: id, attributeValueId: a.attributeValueId } : { attributeId: id, customAttributeValue: a.customAttributeValue };
