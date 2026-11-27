@@ -20,7 +20,7 @@ globalThis.fetch = (async (url: any, init: any = {}) => {
     tokenCalls++;
     if (hdr.get("authorization") !== "Basic " + Buffer.from("cid:csecret").toString("base64")) return json({ error: "invalid_client" }, 400);
     if (!String(init.body).includes("grant_type=client_credentials") || !String(init.body).includes("merchantgatewayapi.fullaccess")) return json({ error: "invalid_request" }, 400);
-    return json({ access_token: "pz-token", expires_in: 3600, token_type: "Bearer" });
+    return json({ success: true, messageCode: "", message: "", data: { accessToken: "pz-token" } }); // canlı biçim (27.11)
   }
   if (u.host !== "isortagimapi.pazarama.com") throw new Error("beklenmeyen istek " + url);
   if (hdr.get("authorization") !== "Bearer pz-token") return json({ message: "yetkisiz" }, 401);

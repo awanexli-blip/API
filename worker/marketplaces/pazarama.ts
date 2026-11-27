@@ -25,16 +25,16 @@ const WAIT_MS = 10_000; // Pazarama: iki güncelleme/ürün açma isteği arası
 
 // Uç yolları tek yerde: canlıda farklı çıkarsa yalnızca burası değişir. "?" = canlıda doğrulanmadı, yolun kendisi tahmin.
 export const EP = {
-  token: "/connect/token",                              // AUTH host; kaynak: PR 599 (Basic başlık)
+  token: "/connect/token",                              // AUTH host; CANLIDA DOĞRULANDI 27.11 (Basic + scope, cevap data.accessToken)
   create: "/product/create",                            // kaynak: Odoo + PR 331
   updateStock: "/product/updateStock",                  // kaynak: Odoo + PR 331
   updatePrice: "/product/updatePrice",                  // kaynak: Odoo + PR 331
   productBatch: "/product/getProductBatchResult",       // kaynak: Odoo (sorgu anahtarı ?)
   listingResult: "/product/getListingResult",           // ? (stok/fiyat sonucu; ad ikincil kaynaktan)
-  approved: "/product/products",                        // ? (onaylı ürün listesi, nextCursor ile sayfalı; yol tahmin)
-  categories: "/category/getCategoryTree",              // kaynak: Odoo
-  categoryAttrs: "/category/getCategoryWithAttributes", // kaynak: Odoo
-  brands: "/brand/getBrands",                           // ? (yol tahmin)
+  approved: "/product/products",                        // CANLIDA 27.11: ?Approved=true&Page=1&Size=5 -> 200 success, data dizi (mağaza boş; sayfalama alanı henüz görülmedi)
+  categories: "/category/getCategoryTree",              // CANLIDA DOĞRULANDI 27.11 (resmi doküman; data dizi, 4.274 kategori, leaf alanı)
+  categoryAttrs: "/category/getCategoryWithAttributes", // resmi doküman: ?Id=<kategori guid>; attributes[].attributeValues
+  brands: "/brand/getBrands",                           // CANLIDA DOĞRULANDI 27.11 (resmi doküman: ?Page=1&Size=100&name=...; data[{id,name,...}])
 };
 
 const ok = (r: any) => !(r && typeof r === "object" && r.success === false);
@@ -56,8 +56,10 @@ export function pazaramaClient() {
     const text = await res.text();
     let j: any = {}; try { j = JSON.parse(text); } catch { /* düz metin */ }
     // Gizli bilgi loglanmaz: gövde kısaltılır, token değeri maskelenir
-    if (!res.ok || !j.access_token) throw new Error(`Pazarama token ${res.status}: ${text.replace(/"access_token"\s*:\s*"[^"]*"/g, '"access_token":"***"').slice(0, 300)}`);
-    token = String(j.access_token); exp = Date.now() + Number(j.expires_in ?? 3600) * 1000;
+    // Canlıda doğrulandı (27.11): zarf {success, data: {accessToken, expiresIn?}}; standart OAuth (access_token) da okunur
+    const tok = j.data?.accessToken ?? j.access_token;
+    if (!res.ok || !tok) throw new Error(`Pazarama token ${res.status}: ${text.replace(/"(access_token|accessToken)"\s*:\s*"[^"]*"/g, '"$1":"***"').slice(0, 300)}`);
+    token = String(tok); exp = Date.now() + Number(j.data?.expiresIn ?? j.expires_in ?? 3600) * 1000;
     return token;
   }
   /** Tek istek; 401'de token yenilenip bir kez, 429/5xx'te artan beklemeyle (Retry-After'a uyarak) en çok 4 deneme */
