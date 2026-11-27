@@ -10,7 +10,7 @@
 // Limitler: iki fiyat/stok güncellemesi arası 10 sn, iki ürün açma arası 10 sn, ürün açma en çok 500, stok/fiyat en çok 3000 kod.
 // Canlı yazma varsayılan kapalı: panelde marketplace_settings (enabled/auto_*) açılana kadar sync yazmaz. Kurulum: docs/PAZARAMA_KURULUM.md
 import { env, sleep, chunk, san } from "../core/util.ts";
-import { defaultFor, matchOptions, inferAttribute, inferCustom } from "../core/attr-infer.ts";
+import { defaultFor, matchOptions } from "../core/attr-infer.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
 import { tyHardBlock } from "../core/ty-safe.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
@@ -230,7 +230,8 @@ export function createPazarama(): Marketplace {
         let bid: string | null;
         try { bid = await brandId(brandName); } catch (e: any) { no(`marka sorgusu başarısız (geçici): ${String(e.message).slice(0, 160)}`); continue; }
         if (!bid) { no(`marka Pazarama'da bulunamadı: ${brandName}`); continue; }
-        // Zorunlu özellikler: panel değeri > ürün kaydı > başlık/açıklamadan çıkarım; doldurulamazsa gönderme
+        // Özellikler (K 27.11): panel değeri > ürün kaydı (tedarikçi verisi ya da görselden iki modelin uzlaştığı "<ad>@pazarama",
+        // worker/vision-attrs.ts). Başlıktan TAHMİN YOK (pilotta "Çok Renkli" uydurulmuştu); zorunlu özellik doğrulanmamışsa ürün gönderilmez.
         const attrs: any[] = [];
         try {
           const given = new Map<string, string>((Array.isArray(p.cat.attributes) ? p.cat.attributes : []).filter((a: any) => a?.name != null).map((a: any) => [lo(String(a.name)), String(a.value)]));
@@ -239,12 +240,8 @@ export function createPazarama(): Marketplace {
             const def = given.get(lo(a.name)) ?? defaultFor(p.defaults ?? {}, a.name, a.id);
             if (!a.required && !def) continue;
             const hit = matchOptions(def).map((o) => a.values.find((v: any) => lo(v.value) === lo(o))).find(Boolean);
-            const inf = hit ? undefined : a.values.length
-              ? inferAttribute(a.name, a.values.map((v: any, i: number) => ({ id: i, name: v.value })), p.name, p.detail ?? "", p.xmlCategory ?? "")?.name
-              : inferCustom(a.name, p.name, p.detail ?? "", p.xmlCategory ?? "");
-            const val = hit ?? (inf ? a.values.find((v: any) => lo(v.value) === lo(String(inf))) : undefined);
-            if (val) attrs.push({ attributeId: a.id, attributeValueId: val.id });
-            else if (!a.values.length && inf) attrs.push({ attributeId: a.id, attributeValue: String(inf) });
+            if (hit) attrs.push({ attributeId: a.id, attributeValueId: hit.id });
+            else if (!a.values.length && def) attrs.push({ attributeId: a.id, attributeValue: String(def) }); // serbest metin: yalnızca kayıttaki değer
             else if (a.required) missing.push(a.name);
           }
           if (missing.length) { no(`zorunlu özellik doldurulamadı: ${missing.join(", ")}`); continue; }
