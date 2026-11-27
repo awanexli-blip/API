@@ -40,7 +40,7 @@ export const arg = (v: string | undefined, fallback: string, allowed: readonly s
   return x;
 };
 export const MODES = ["preview", "update", "create", "auto"] as const;
-export const MARKETPLACES = ["trendyol", "hepsiburada", "amazon"] as const;
+export const MARKETPLACES = ["trendyol", "hepsiburada", "amazon", "pazarama"] as const;
 export const SUPPLIER_ARG = /^(all|nightly|[a-z0-9-]{2,30})$/;
 
 // Müşteri verisi maskeleme (günlük ve hata mesajlarında açık veri olmaz; Faz 6)
