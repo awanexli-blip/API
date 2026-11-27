@@ -2,7 +2,7 @@
 // 26.11 balaklava (Bezos, 3916684710449): tedarikçi stoğu 18:06'da bitti, HB'ye 0 ancak 19:07'de gitti (HB turu 2-3 saat), arada sipariş geldi.
 // Bu iş ana senkrondan bağımsız, ağır iş kilidi OLMADAN birkaç dakikada bir çalışır: son çalışmadan beri değişen varyantlardan
 // stoğu en az stokun altına düşen ya da pasife düşen ürünlerin YAYINDAKİ, stoklu görünen ilanlarına 0 gönderir.
-// Yalnızca sıfırlama: stok artırma ve fiyat ana senkronda kalır (yanlışlıkla satış açmaz).
+// Stok artırma yalnızca koruyucunun kendi sıfırladığı ilanlarda, stok geri gelince (K 27.11; migration 103). Fiyat her zaman ana senkronda.
 //
 //   node --experimental-strip-types worker/stock-guard.ts            # kuru çalışma (gönderim yok, aday sayısı)
 //   node --experimental-strip-types worker/stock-guard.ts --apply    # pazaryerine 0 gönderir
@@ -86,6 +86,33 @@ async function run() {
       if (w.error) res.stateError = w.error.message.slice(0, 200);
     }
     if (keys.length > MAX) res.backlog = keys.length - MAX;
+
+    // Geri açma (K 27.11 onay, migration 103): yalnızca KORUYUCUNUN sıfırladığı ilanlar, tedarikçide stok geri gelince (XML geçici
+    // bozulup düzelince). Yalnızca stok gider, fiyat ana senkronda. Kopya kaybedenleri (aynı tedarikçi kodu, en ucuz dışındakiler) açılmaz.
+    const rs = await readAll<{ listing_key: string; qty: number }>((a, b) => db.rpc("stock_guard_restock_candidates", { p_mp: id, p_min_stock: minStock }).order("listing_key").range(a, b));
+    if (rs.error) res.restockError = rs.error.message.slice(0, 200);
+    else if (rs.data.length) {
+      const dl = await readAll<{ listing_key: string }>((a, b) => db.rpc("dup_listing_losers", { p_mp: id, p_min_stock: minStock }).order("listing_key").range(a, b));
+      if (dl.error) res.restockError = `kopya ilanlar okunamadı, geri açma ertelendi: ${dl.error.message.slice(0, 150)}`;
+      else {
+        const losers = new Set(dl.data.map((x) => x.listing_key));
+        const up = rs.data.filter((x) => x.qty > 0 && !losers.has(x.listing_key)).slice(0, MAX);
+        res.restockCandidates = rs.data.length; res.restock = up.length; res.restockSample = up.slice(0, 3).map((x) => x.listing_key);
+        if (apply && up.length) {
+          const mp = getMarketplace(id);
+          const r = await mp.pushInventory(up.map((x) => ({ id: x.listing_key, price: null, quantity: x.qty })));
+          res.restocked = r.ok; res.restockFailedBatches = r.failed;
+          if (r.errors?.length) res.restockErrors = r.errors;
+          if (!r.failed) {
+            for (let i = 0; i < up.length; i += 1000) {
+              const part = up.slice(i, i + 1000);
+              const m = await db.rpc("stock_guard_restocked", { p_mp: id, p_keys: part.map((x) => x.listing_key), p_qtys: part.map((x) => x.qty) });
+              if (m.error) { res.restockMarkError = m.error.message.slice(0, 200); break; }
+            }
+          }
+        }
+      }
+    }
     out[id] = res;
     if (apply && failed) await warnOnce(`🚨 <b>Stok koruyucu</b> (${id}): ${todo.length} ilana stok 0 gönderilemedi, bir sonraki çalışmada yeniden denenecek.\n${String((res.errors as string[] | undefined)?.[0] ?? "").slice(0, 300)}`);
   }
