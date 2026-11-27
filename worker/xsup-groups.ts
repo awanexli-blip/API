@@ -16,14 +16,14 @@ async function members(): Promise<XMember[]> {
   for (let after: string | null = null; ; ) {
     let res: any;
     for (let t = 1; ; t++) {
-      res = await db.rpc("xsup_members", { p_after: after, p_limit: 3000 });
+      res = await db.rpc("xsup_members", { p_after: after, p_limit: 1000 });
       if (!res.error || t >= 3) break;
       await new Promise((r) => setTimeout(r, 3000 * t));
     }
     if (res.error) throw new Error(`xsup_members okunamadı: ${res.error.message}`);
     const rows = res.data as any[];
     for (const r of rows) out.push({ id: r.id, source: r.source, sku: r.sku, title: r.title, gtin: isGtin(r.gtin) ? r.gtin : null, ph: r.ph, dh: r.dh, img_url: r.img_url, live: r.live ?? [] });
-    if (rows.length < 3000) break;
+    if (rows.length < 1000) break;
     after = rows[rows.length - 1].id;
   }
   return out;
