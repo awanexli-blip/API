@@ -1,5 +1,5 @@
 // Trendyol güvenli liste (worker/core/ty-safe.ts). node --experimental-strip-types worker/test/ty-safe.test.ts
-import { isTyGtin, tyHardBlock, tySafeCheck, parseTySafe, placeholderBrand, brandKey } from "../core/ty-safe.ts";
+import { isTyGtin, tyHardBlock, tySafeCheck, parseTySafe, placeholderBrand, brandKey, gs1Assigned, gtinPrefix } from "../core/ty-safe.ts";
 
 let fails = 0;
 const check = (name: string, cond: boolean, info: unknown = "") => { console.log(`${cond ? "OK  " : "HATA"} ${name}${cond ? "" : "  " + JSON.stringify(info)}`); if (!cond) fails++; };
@@ -39,4 +39,16 @@ check("ayar: yoksa açık, strict, min stok 5, marka listesi açık", d.enabled 
 check("ayar: kapatılabilir", parseTySafe({ enabled: false }).enabled === false);
 
 console.log(fails ? `\n${fails} test başarısız` : "\nGüvenli liste testleri geçti");
+
+// 27.11 Bezos "NW NessiWorld": sağlama hanesi doğru ama rastgele barkod (GS1 dışı önek / firma kodu katalogda tek)
+const withCheck = (b12: string) => { const d = b12.split("").map(Number); const s = d.reverse().reduce((t, x, i) => t + x * (i % 2 === 0 ? 3 : 1), 0); return b12 + ((10 - (s % 10)) % 10); };
+check("GS1: 583 öneki hiçbir ülkeye ait değil", !gs1Assigned(withCheck("583619251782")) && !isTyGtin(withCheck("583619251782")));
+check("GS1: 196/161 önekleri geçersiz, 869/400/0 geçerli", !isTyGtin(withCheck("196707012345")) && !isTyGtin(withCheck("161000012345")) && isTyGtin(withCheck("869000012345")) && gs1Assigned("4006381333931") && gs1Assigned("012345678905"));
+check("GS1: firma kodu 7 hane, UPC başına 0", gtinPrefix("4006381333931") === "4006381" && gtinPrefix("012345678905") === "0012345");
+{
+  const b = { title: "Kupa", brand: "Sertec", category: "Mutfak", barcodes: ["4006381333931"], images: ["https://i/1.jpg"], stock: 10 };
+  check("rastgele barkod: firma kodu katalogda tek -> engel", tySafeCheck(b, { categorySource: "map", knownPrefixes: new Set(["8690000"]) }).some((r) => /firma kodu katalogda tek/.test(r)));
+  check("rastgele barkod: bilinen firma kodu geçer", !tySafeCheck(b, { categorySource: "map", knownPrefixes: new Set(["4006381"]) }).some((r) => /firma kodu/.test(r)));
+}
+
 if (fails) process.exit(1);

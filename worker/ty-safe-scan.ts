@@ -35,6 +35,10 @@ for (let last = "00000000-0000-0000-0000-000000000000"; ;) {
 }
 owners.clear();
 const dup = dupSet;
+// Rastgele üretilmiş barkod tespiti (migration 101)
+const pf = await readAll<{ prefix: string }>((a, b) => db.rpc("gtin_known_prefixes", { p_min: 3 }).order("prefix").range(a, b));
+if (pf.error) throw new Error(pf.error.message);
+const prefixes = new Set(pf.data.map((x) => x.prefix));
 
 type Agg = { n: number; stocked: number; ok: number; okIfBrand: number; reasons: Record<string, number> };
 const bySup: Record<string, Agg> = {};
@@ -54,7 +58,7 @@ for (let last = "00000000-0000-0000-0000-000000000000"; ;) {
   a.stocked++;
   const manual = /\d/.test(String(p.attributes?.["Trendyol kategori"] ?? ""));
   const base = { title: p.title, description: p.description, brand: p.brand, category: p.category, barcodes: vs.map((v: any) => v.barcode ?? ""), images: (p.product_images ?? []).map((i: any) => i.url), stock };
-  const c = { dupBarcodes: dup, extraPlaceholders: extra, categorySource: manual ? "manual" : mapped.has(p.category) ? "map" : "predicted", categoryMode: cfg.categoryMode, predictedHigh: false, minStock: cfg.minStock } as const;
+  const c = { dupBarcodes: dup, knownPrefixes: prefixes, extraPlaceholders: extra, categorySource: manual ? "manual" : mapped.has(p.category) ? "map" : "predicted", categoryMode: cfg.categoryMode, predictedHigh: false, minStock: cfg.minStock } as const;
   const why = tySafeCheck(base, { ...c, allowedBrands: cfg.brandAllowlist ? allowed : undefined });
   const whyNoBrandList = tySafeCheck(base, c); // marka onayı verilirse geçer mi
   if (!why.length) a.ok++;

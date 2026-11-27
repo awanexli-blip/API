@@ -242,7 +242,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
   // Boşsa tedarikçi ürünü gönderilmez (mağaza markasıyla açmak istenmiyor; XML markası başkasına kayıtlı olabilir)
   const supBrand = new Map<string, string>();
   // Trendyol güvenli liste (K 22.11, core/ty-safe.ts): app_state "ty_safe" yoksa AÇIK. Onaylı markalar app_state "ty_safe_brands" (dizi).
-  let tySafe: (TySafeCfg & { brands?: Set<string> }) | null = null;
+  let tySafe: (TySafeCfg & { brands?: Set<string>; prefixes?: Set<string> }) | null = null;
   if (ctx.marketplaceId === "trendyol") {
     const r = await ctx.db.from("app_state").select("key, value").in("key", ["ty_safe", "ty_safe_brands"]);
     if (r.error) throw new Error(`Güvenli liste ayarı okunamadı (gönderim durduruldu): ${r.error.message}`);
@@ -251,6 +251,10 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     if (cfg.enabled) {
       let list: any = get("ty_safe_brands"); if (typeof list === "string") { try { list = JSON.parse(list); } catch { list = []; } }
       tySafe = { ...cfg, brands: cfg.brandAllowlist ? new Set((Array.isArray(list) ? list : []).map((b: any) => brandKey(String(b)))) : undefined };
+      // Rastgele üretilmiş barkod tespiti (migration 101): okunamazsa gönderim durur (güvenli taraf)
+      const pr = await readAll<{ prefix: string }>((a, b) => ctx.db.rpc("gtin_known_prefixes", { p_min: 3 }).order("prefix").range(a, b));
+      if (pr.error) throw new Error(`Güvenli liste barkod önekleri okunamadı (gönderim durduruldu): ${pr.error.message}`);
+      tySafe.prefixes = new Set(pr.data.map((x) => x.prefix));
     }
   }
   const supDefaults = new Map<string, Record<string, string>>(); // tedarikçi varsayılan özellikleri (ör. Menşei)
@@ -437,7 +441,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
             const srcCat = manualCat ? "manual" : ctx.catMap.get(p.category)?.category_id ? "map" : categoryId ? "predicted" : "none";
             const dupB = await tyDupBarcodes(vlist.map((x: any) => keyFor(p.source, x)).filter(Boolean));
             const why = tySafeCheck({ title: p.title, description: p.description, brand: p.brand, category: p.category, mpCategory: catName, barcodes: [key], images: vImages, stock: Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0)) },
-              { dupBarcodes: dupB, allowedBrands: tySafe.brands, extraPlaceholders: [...supBrand.values()].flatMap((x) => x.split("|")), categorySource: srcCat, categoryMode: tySafe.categoryMode, predictedHigh: pick === pred && pred?.level === "yuksek", minStock: tySafe.minStock });
+              { dupBarcodes: dupB, knownPrefixes: tySafe.prefixes, allowedBrands: tySafe.brands, extraPlaceholders: [...supBrand.values()].flatMap((x) => x.split("|")), categorySource: srcCat, categoryMode: tySafe.categoryMode, predictedHigh: pick === pred && pred?.level === "yuksek", minStock: tySafe.minStock });
             if (why.length) { fail(key, p, v, `Güvenli liste (yeni mağaza): ${why.join(" · ")}`); continue; }
           }
           const risky = brandRisk?.(p.title, p.description ?? "");
