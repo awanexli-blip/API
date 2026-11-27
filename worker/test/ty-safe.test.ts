@@ -64,4 +64,6 @@ check("yer tutucu: NW NessiWorld / BEZOS / Akıllı Bayi", placeholderBrand("NW 
   check("korumalı oyuncak markası", tySafeCheck({ ...g, title: "Hasbro Nerf Tabanca Seti", verifiedNoBrand: true }, { categorySource: "map" }).some((r) => /lisans/.test(r)));
 }
 
+check("korumalı: araba markası ve başka marka blok (Porsche, LOZ)", tySafeCheck({ title: "1:14 Porsche GT3 RS Uzaktan Kumandalı Araba", brand: "Sunman", category: "Oyuncak", barcodes: ["4006381333931"], images: ["https://i/1.jpg"], stock: 10 }, { categorySource: "map" }).some((r) => /lisans/.test(r)) && tySafeCheck({ title: "LZ-8877 LOZ KESİŞ MODEL 380 PARÇA BLOCK OYUNCAK", brand: "Vagon", category: "Oyuncak", barcodes: ["4006381333931"], images: ["https://i/1.jpg"], stock: 10 }, { categorySource: "map" }).some((r) => /lisans/.test(r)));
+
 if (fails) process.exit(1);
