@@ -133,6 +133,34 @@ export function flattenVarDeger(xml: string): string {
   });
 }
 
+// Google Merchant RSS (Falez, K 28.11): <g:id>, <g:mpn>, <g:price>599.00 TRY</g:price>, çoklu <g:additional_image_link>, <g:product_detail> (bölüm/ad/değer).
+// Düz ürüne çevrilir: id, mpn, title, description, image (çok), price (sayı, KDV dahil), stock (availability in_stock -> sabit FALEZ_STOCK; yok -> 0), brand, type, color, desi,
+// attributes ("Materyal: Suntalam; Renk: Efes; ..." -> import.ts attrs). Stok alanı yok: gerçek stok bilinmez, in_stock için güvenli sabit.
+export const FALEZ_STOCK = 10;
+const unesc = (x: string) => x.replace(/&(amp|lt|gt|quot|#39|apos);/g, (_m, e) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'" } as Record<string, string>)[e]);
+const esc2 = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export function flattenGoogleFeed(xml: string): string {
+  if (!xml.includes("<g:id>")) return xml;
+  const tag = (blk: string, t: string) => blk.match(new RegExp(`<g:${t}>([\\s\\S]*?)</g:${t}>`))?.[1]?.replace(/^\s*<!\[CDATA\[|\]\]>\s*$/g, "").trim() ?? "";
+  const all = (blk: string, t: string) => [...blk.matchAll(new RegExp(`<g:${t}>([\\s\\S]*?)</g:${t}>`, "g"))].map((m) => m[1].trim()).filter(Boolean);
+  // ":" ";" "|" ve satır sonu özellik ayracıdır: değerden temizlenir
+  const clean = (x: string) => unesc(x).replace(/[:;|\r\n]+/g, ",").replace(/\s+/g, " ").trim();
+  return xml.replace(/<item>[\s\S]*?<\/item>/g, (blk) => {
+    const price = Number((tag(blk, "price").match(/[\d.,]+/)?.[0] ?? "").replace(/,/g, "")) || 0;
+    const det = new Map<string, string>();
+    for (const m of blk.matchAll(/<g:product_detail>([\s\S]*?)<\/g:product_detail>/g)) { const n = clean(tag(m[1], "attribute_name")), v = clean(tag(m[1], "attribute_value")); if (n && v && !det.has(n)) det.set(n, v); }
+    const color = clean(tag(blk, "color"));
+    const at: [string, string][] = [];
+    for (const k of ["Materyal", "Şekil", "Tema / Stil", "Parça Sayısı", "Menşei", "Garanti Süresi"]) if (det.get(k)) at.push([k, det.get(k)!]);
+    if (color) at.splice(1, 0, ["Renk", color]);
+    const imgs = [...all(blk, "image_link"), ...all(blk, "additional_image_link")];
+    const stock = /^in[_ ]?stock$/i.test(tag(blk, "availability")) ? FALEZ_STOCK : 0;
+    return `<item><id>${tag(blk, "id")}</id><mpn>${tag(blk, "mpn")}</mpn><title>${tag(blk, "title")}</title><description>${tag(blk, "description")}</description>${imgs.map((u) => `<image>${u}</image>`).join("")}`
+      + `<price>${price}</price><stock>${stock}</stock><brand>${tag(blk, "brand")}</brand><type>${tag(blk, "product_type")}</type><color>${esc2(color)}</color><desi>${det.get("Desi") ?? ""}</desi>`
+      + `<attributes>${esc2(at.map(([k, v]) => `${k}: ${v}`).join("; "))}</attributes></item>`;
+  });
+}
+
 // Varyant elemanındaki ad/değer çiftleri (name1=Renk, value1=Kırmızı; name2=Beden, value2=M) -> renk / beden
 function pairValues(el: any): { color?: string; size?: string } {
   const out: { color?: string; size?: string } = {};

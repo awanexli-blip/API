@@ -13,7 +13,7 @@ import { env, chunk, arg, SUPPLIER_ARG } from "./core/util.ts";
 import { safeFetch } from "./core/safe-fetch.ts";
 import { notifyOnce } from "./core/notify.ts";
 import { esc } from "./core/telegram.ts";
-import { feedSupplier, feedFilter, findItems, flattenVarDeger, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
+import { feedSupplier, feedFilter, findItems, flattenGoogleFeed, flattenVarDeger, itemsToGroups, supplierPayload, type Feed, type Supplier } from "../lib/supplier-xml.ts";
 import { fetchApiItems, loadSupplierSecrets } from "../lib/supplier-api.ts";
 // REST API XML yanıtı için worker'ın kendi ayrıştırıcısı (lib/ dosyası paket çözemez: Actions yalnızca worker/node_modules kurar)
 const apiXml = new XMLParser({ ignoreAttributes: true, trimValues: true, parseTagValue: false });
@@ -186,7 +186,7 @@ async function importSupplier(db: any, sup: any, dry: boolean, actor: string) {
           if (!ch) throw new Error(`${name}: büyük XML (${Math.round(res.body.length / 1048576)} MB) parça parça okunamadı (ürün yolu yok ya da aynı model birden çok öğede); tüm belge belleğe sığmaz`);
           console.log(`${sup.name} / ${name}: büyük XML (${Math.round(res.body.length / 1048576)} MB) parça parça ayrıştırıldı`);
           built = ch;
-        } else built = buildItems(parseXml(flattenVarDeger(res.text())), fs, seen, seenSku);
+        } else built = buildItems(parseXml(flattenVarDeger(flattenGoogleFeed(res.text()))), fs, seen, seenSku);
       }
       if (!built.total && !apiRaw) throw new Error(`${name}: ${feed.type === "api" ? "API yanıtında" : "XML'de"} ürün listesi bulunamadı (alan eşlemesini / ürün listesi yolunu kontrol et)`);
       // Satır numaraları link başına ayrı aralıkta (hata listesinde hangi linkten geldiği anlaşılsın)
