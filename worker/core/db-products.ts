@@ -125,10 +125,22 @@ export async function dbInventory(ctx: DbCtx): Promise<{ items: InventoryItem[];
   const excl = await loadExclusions(ctx.db, ctx.marketplaceId);
   // Anahtar sıralı sayfalama (OFFSET sırasız ve derin sayfada yavaştı: ilan atlanabilir/çift gelebilirdi)
   for (let last = ""; ; ) {
-    const { data, error } = await ctx.db.from("marketplace_listings")
-      .select("listing_key, product_id, price_day, price_day_base, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
-      .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
-    if (error || !data?.length) break; // tablo yoksa (migration 013 öncesi) sessizce geç
+    // Yük altında zaman aşımı: 3 deneme, artan bekleme. 27.11: hata sessizce "bitti" sayılıyordu, 6815/6859/7060 turlarında
+    // anahtar sırasında sonraki ilanlar (HS.., TCX..) hiç değerlendirilmedi ve özette hata yoktu.
+    let res: any;
+    for (let t = 1; ; t++) {
+      res = await ctx.db.from("marketplace_listings")
+        .select("listing_key, product_id, price_day, price_day_base, product_variants(stock, reserved, cost_price), products(source, status, cost_price, currency, vat_rate, category, brand, desi, title, attributes)")
+        .eq("marketplace", ctx.marketplaceId).not("variant_id", "is", null).gt("listing_key", last).order("listing_key").limit(1000);
+      if (!res.error || t >= 3 || res.error.code === "42P01") break;
+      await new Promise((r) => setTimeout(r, 3000 * t));
+    }
+    const { data, error } = res;
+    if (error && error.code !== "42P01") { // tablo yoksa (migration 013 öncesi) sessizce geç; başka hata özete (zero_unlinked da kapanır)
+      (stats as any).error = `ilan tablosu okunamadı (kesik tarama, son anahtar ${last}): ${String(error.message).slice(0, 150)}`;
+      break;
+    }
+    if (!data?.length) break;
     last = (data as any[])[data.length - 1].listing_key;
     for (const r of data as any[]) {
       const p = r.products, v = r.product_variants, key = r.listing_key as string;
