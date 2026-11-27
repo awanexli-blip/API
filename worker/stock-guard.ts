@@ -41,10 +41,14 @@ async function run() {
   const out: Record<string, unknown> = { apply };
   for (const id of mps) {
     const startedAt = new Date();
-    const set = await db.from("marketplace_settings").select("enabled, min_stock").eq("marketplace", id).maybeSingle();
+    // Trendyol ayarları ortak "settings" tablosunda (sync.ts loadSettings ile aynı kural); diğerleri marketplace_settings
+    const set = id === "trendyol"
+      ? await db.from("settings").select("enabled:auto_sync, min_stock").eq("id", 1).maybeSingle()
+      : await db.from("marketplace_settings").select("enabled, min_stock").eq("marketplace", id).maybeSingle();
     if (set.error) throw new Error(`${id} ayarları okunamadı: ${set.error.message}`);
-    if (!set.data?.enabled) { out[id] = { skipped: "pazaryeri kapalı" }; continue; }
-    const minStock = Math.max(1, Number(set.data.min_stock ?? 1) || 1);
+    // Sıfırlama güvenli yöndür: Trendyol'da otomatik senkron kapalı olsa da yayındaki ilan tükenince sıfırlanır
+    if (id !== "trendyol" && !set.data?.enabled) { out[id] = { skipped: "pazaryeri kapalı" }; continue; }
+    const minStock = Math.max(1, Number(set.data?.min_stock ?? 1) || 1);
 
     const stKey = `stock_guard:${id}`;
     const st = await db.from("app_state").select("value").eq("key", stKey).maybeSingle();

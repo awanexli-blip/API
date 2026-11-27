@@ -10,6 +10,7 @@ EnvironmentFile=/etc/trentakip/env
 EnvironmentFile=/etc/trentakip/keys.env
 WorkingDirectory=/opt/trentakip
 # Ağır iş kilidi YOK (bekleyip gecikmesin); kendi kilidi üst üste binmeyi önler. Sunucu veritabanı (VPS_*).
+Environment=STOCK_GUARD_MARKETPLACES=hepsiburada,trendyol,pazarama
 ExecStart=/usr/bin/flock -n /run/lock/trentakip-stockguard.lock /bin/sh -c "export SUPABASE_URL=$VPS_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY=$VPS_SERVICE_ROLE_KEY; exec /usr/bin/node --experimental-strip-types worker/stock-guard.ts --apply"
 TimeoutStartSec=10min
 # Çekişmede en önce bu çalışsın (ağır işler 40, varsayılan 100)
