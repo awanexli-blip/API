@@ -44,7 +44,8 @@ export const brandKey = (s: string) => fold(s);
 /** Başkasının ürününe takılamayacak markalar: bizim mağaza markalarımız, tedarikçi adları ve "markasız" yer tutucuları. */
 export const PLACEHOLDER_BRANDS = [
   "eco lounge", "ecolounge", "genel markalar", "genel marka", "genel", "tcx", "hepsibayi", "colezium", "çerçici", "cercici", "bezos", "toptancım", "toptancim",
-  "bayilikxml", "bayilikxml.com", "markasız", "markasiz", "marka yok", "diğer", "diger", "other", "generic", "oem", "no brand", "nobrand", "noname", "no name", "belirtilmemiş", "yok", "-",
+  "bayilikxml", "bayilikxml.com", "nw nessiworld", "nessiworld", "akıllı bayi", "akilli bayi", // 27.11: NessiWorld/BEZOS Bezos'ta başka firmaların ürünlerine takılı (Tigger peluş vb.)
+  "markasız", "markasiz", "marka yok", "diğer", "diger", "other", "generic", "oem", "no brand", "nobrand", "noname", "no name", "belirtilmemiş", "yok", "-",
 ];
 export function placeholderBrand(brand: string | null | undefined, extra: string[] = []): boolean {
   const b = fold(brand ?? "");

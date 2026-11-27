@@ -51,4 +51,6 @@ check("GS1: firma kodu 7 hane, UPC başına 0", gtinPrefix("4006381333931") === 
   check("rastgele barkod: bilinen firma kodu geçer", !tySafeCheck(b, { categorySource: "map", knownPrefixes: new Set(["4006381"]) }).some((r) => /firma kodu/.test(r)));
 }
 
+check("yer tutucu: NW NessiWorld / BEZOS / Akıllı Bayi", placeholderBrand("NW NessiWorld") && placeholderBrand("BEZOS") && placeholderBrand("Akıllı Bayi"));
+
 if (fails) process.exit(1);
