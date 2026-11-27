@@ -9,7 +9,7 @@ Sunucuda `/etc/trentakip/env` içine (GitHub/Vercel'e gerek yok, K 12.11 tam ta�
 
 - `PAZARAMA_CLIENT_ID` (panel: Hesabım > Hesap Bilgileri > Entegrasyon Bilgileri, "API Key")
 - `PAZARAMA_CLIENT_SECRET` ("API Secret"; yeni secret üretmek eskisini hemen geçersiz kılar)
-- isteğe bağlı: `PAZARAMA_ENV` (yalnızca `prod`; bilinen test ortamı yok), `PAZARAMA_BRAND_NAME` (varsayılan `Eco Lounge`), `PAZARAMA_API_URL`, `PAZARAMA_AUTH_URL` (yalnızca host değişirse)
+- isteğe bağlı: `PAZARAMA_ENV` (yalnızca `prod`; bilinen test ortamı yok), `PAZARAMA_BRAND_NAME` (yalnızca kendi tescilli markan; varsayılan yok, ürünün kendi markası kullanılır, boş/yer tutucu marka gönderilmez), `PAZARAMA_API_URL`, `PAZARAMA_AUTH_URL` (yalnızca host değişirse)
 
 Anahtarlar koda, commit'e, sohbete yazılmaz.
 

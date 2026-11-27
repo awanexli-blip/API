@@ -12,11 +12,14 @@
 import { env, sleep, chunk, san } from "../core/util.ts";
 import { defaultFor, matchOptions, inferAttribute, inferCustom } from "../core/attr-infer.ts";
 import { jpgUrl } from "../core/img-proxy.ts";
+import { placeholderBrand } from "../core/ty-safe.ts";
 import type { BatchCheck, BatchResult, Commission, InventoryItem, Listing, Marketplace, NewProduct } from "./types.ts";
 
 const SKU_PREFIXES = ["OS13-", "ÖS13-"];
 const NEW_PREFIX = "OS13-";
-const BRAND_NAME = process.env.PAZARAMA_BRAND_NAME || process.env.TRENDYOL_BRAND_NAME || "Eco Lounge";
+// Varsayılan mağaza markası YOK (27.11): Trendyol mağazası başkasının ürününü "Eco Lounge" ile açtığı için ("Hatalı Marka") kapandı.
+// Marka = ürünün kendi markası (ctx.brandName); boş / yer tutucu (mağaza, tedarikçi adı) ise ürün gönderilmez. Kendi tescilli markan için PAZARAMA_BRAND_NAME.
+const BRAND_NAME = process.env.PAZARAMA_BRAND_NAME || "";
 const API = (process.env.PAZARAMA_API_URL || "https://isortagimapi.pazarama.com").replace(/\/+$/, "");
 const AUTH = (process.env.PAZARAMA_AUTH_URL || "https://isortagimgiris.pazarama.com").replace(/\/+$/, "");
 const WAIT_MS = 10_000; // Pazarama: iki güncelleme/ürün açma isteği arası en az 10 sn
@@ -205,9 +208,11 @@ export function createPazarama(): Marketplace {
         if (!p.images.length) { no("görsel yok"); continue; }
         if (!p.cat?.category_id) { no("pazaryeri kategorisi yok"); continue; }
         if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
+        const brandName = String(ctx.brandName || BRAND_NAME || "").trim();
+        if (placeholderBrand(brandName)) { no(`marka "${brandName}" ürünün gerçek markası değil (boş / mağaza / tedarikçi adı): gönderilmez`); continue; }
         let bid: string | null;
-        try { bid = await brandId(ctx.brandName || BRAND_NAME); } catch (e: any) { no(`marka sorgusu başarısız (geçici): ${String(e.message).slice(0, 160)}`); continue; }
-        if (!bid) { no(`marka Pazarama'da bulunamadı: ${ctx.brandName || BRAND_NAME}`); continue; }
+        try { bid = await brandId(brandName); } catch (e: any) { no(`marka sorgusu başarısız (geçici): ${String(e.message).slice(0, 160)}`); continue; }
+        if (!bid) { no(`marka Pazarama'da bulunamadı: ${brandName}`); continue; }
         // Zorunlu özellikler: panel değeri > ürün kaydı > başlık/açıklamadan çıkarım; doldurulamazsa gönderme
         const attrs: any[] = [];
         try {
