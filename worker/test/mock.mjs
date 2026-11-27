@@ -207,7 +207,7 @@ globalThis.fetch = async (url, init = {}) => {
       ? [{ attribute: { id: 500, name: "Garanti Süresi" }, required: true, allowCustom: false }]
       : [{ attribute: { id: 47, name: "Renk" }, required: true, allowCustom: false }, { attribute: { id: 1192, name: "Menşei" }, required: true, allowCustom: false }, { attribute: { id: 999, name: "Opsiyonel" }, required: false }] });
     const av = p.match(/\/product\/categories\/(\d+)\/attributes\/(\d+)\/values$/);
-    if (av) return json({ totalPages: 1, content: av[2] === "47" ? [{ attributeValueId: 1, attributeValue: "Siyah" }, { attributeValueId: 2, attributeValue: "Çok Renkli" }] : av[2] === "1192" ? [{ attributeValueId: 3, attributeValue: "TR" }] : [] });
+    if (av) return json({ totalPages: 1, content: av[2] === "47" ? [{ attributeValueId: 1, attributeValue: "Siyah" }, { attributeValueId: 2, attributeValue: "Çok Renkli" }, { attributeValueId: 4, attributeValue: "Belirtilmemiş" }] : av[2] === "1192" ? [{ attributeValueId: 3, attributeValue: "TR" }] : [] });
     if (p.includes("/brands/by-name")) return json([{ id: 66, name: "Eco Lounge Home" }, { id: 77, name: "Eco Lounge" }, { id: 88, name: "Sertec" }]);
     if (p.includes("/batch-requests/")) {
       const id = p.split("/").pop();
