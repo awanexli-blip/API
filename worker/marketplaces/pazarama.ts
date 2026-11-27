@@ -176,18 +176,18 @@ export function createPazarama(): Marketplace {
     // Stok (en çok 3000 kod) ve fiyat ayrı uçlar, ikisi de kuyruklanır ve takip kimliği döner. Gövde anahtarları (stockList/priceList) varsayım.
     async pushInventory(list: InventoryItem[]): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
-      const tid = (r: any) => String(r?.data?.id ?? r?.data ?? r?.id ?? "");
+      const tid = (r: any) => { const x = String(r?.data?.batchRequestId ?? r?.data?.id ?? (typeof r?.data === "string" ? r.data : "") ?? r?.id ?? ""); return /^[0-]*$/.test(x) ? "" : x; }; // sıfır GUID = takip yok
       for (const batch of chunk(list, 3000)) {
         try {
           await paced();
           const r = await pz(EP.updateStock, { body: { stockList: batch.map((p) => ({ code: p.id, stockCount: Math.max(0, Math.floor(p.quantity)) })) } });
-          res.batchIds.push("stock:" + tid(r));
+          { const x = tid(r); if (x) res.batchIds.push("stock:" + x); }
           const priced = batch.filter((p) => p.price != null && p.price > 0);
           if (priced.length) {
             await paced();
             // listPrice = satış fiyatı (liste fiyatı ayrı tutulmuyor); %70+ indirim onay ister, burada indirim yok
             const r2 = await pz(EP.updatePrice, { body: { priceList: priced.map((p) => ({ code: p.id, listPrice: p.price, salePrice: p.price })) } });
-            res.batchIds.push("price:" + tid(r2));
+            { const x = tid(r2); if (x) res.batchIds.push("price:" + x); }
           }
           res.ok += batch.length;
         } catch (e: any) { res.failed++; console.error(e.message); if ((res.errors ??= []).length < 3) res.errors.push(String(e.message).slice(0, 300)); }
@@ -268,7 +268,9 @@ export function createPazarama(): Marketplace {
         try {
           await paced();
           const r = await pz(EP.create, { body: { products: batch } });
-          res.ok += batch.length; res.batchIds.push("product:" + String(r?.data?.batchRequestId ?? r?.data?.id ?? r?.data ?? ""));
+          res.ok += batch.length;
+          // Canlı 27.11: ürün açma cevabındaki takip kimliği sıfır GUID geldi (ürünler yine açıldı, "Onay Bekliyor"); sıfır/boş kimlik sorgulanmaz
+          { const bid0 = String(r?.data?.batchRequestId ?? r?.data?.id ?? (typeof r?.data === "string" ? r.data : "") ?? ""); if (bid0 && !/^[0-]+$/.test(bid0)) res.batchIds.push("product:" + bid0); }
         } catch (e: any) { res.failed++; console.error(e.message); if ((res.errors ??= []).length < 3) res.errors.push(String(e.message).slice(0, 300)); }
       }
       return res;
