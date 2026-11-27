@@ -32,7 +32,7 @@ globalThis.fetch = (async (url: any, init: any = {}) => {
     const slice = all.slice(cur, cur + 100);
     return json({ success: true, data: { products: slice, nextCursor: cur + 100 < all.length ? String(cur + 100) : null } });
   }
-  if (u.pathname === "/product/updateStock" || u.pathname === "/product/updatePrice") return json({ success: true, data: "res-" + log.length });
+  if (u.pathname === "/product/updateStock-v2" || u.pathname === "/product/updatePrice-v2") return json({ success: true, data: "res-" + log.length });
   if (u.pathname === "/product/getProductBatchResult") return json({ success: true, data: { status: 2, totalCount: 2, successfulCount: 1, failedCount: 1, failedProducts: [{ code: "OS13-BAD", failReasons: ["Zorunlu özellik eksik"] }] } });
   if (u.pathname === "/brand/getBrands") {
     const n = (u.searchParams.get("name") ?? "").toLowerCase();
@@ -56,13 +56,13 @@ check("loadListings: alanlar eşlendi", listings[5].id === "OS13-P5" && listings
 check("token önbelleğe alındı (tek istek)", tokenCalls === 1, tokenCalls);
 
 await mp.pushInventory([{ id: "OS13-P1", price: 199.9, quantity: 7 }, { id: "OS13-P2", price: null, quantity: 0 }]);
-const st = log.find((l) => l.path === "/product/updateStock")!, pr = log.find((l) => l.path === "/product/updatePrice")!;
-check("pushInventory: stok gövdesi", JSON.stringify(st.body) === JSON.stringify({ stockList: [{ code: "OS13-P1", stockCount: 7 }, { code: "OS13-P2", stockCount: 0 }] }), st.body);
-check("pushInventory: fiyat yalnızca fiyatlı ürüne", JSON.stringify(pr.body) === JSON.stringify({ priceList: [{ code: "OS13-P1", listPrice: 199.9, salePrice: 199.9 }] }), pr.body);
+const st = log.find((l) => l.path === "/product/updateStock-v2")!, pr = log.find((l) => l.path === "/product/updatePrice-v2")!;
+check("pushInventory: stok gövdesi", JSON.stringify(st.body) === JSON.stringify({ items: [{ code: "OS13-P1", stockCount: 7 }, { code: "OS13-P2", stockCount: 0 }] }), st.body);
+check("pushInventory: fiyat yalnızca fiyatlı ürüne", JSON.stringify(pr.body) === JSON.stringify({ items: [{ code: "OS13-P1", listPrice: 199.9, salePrice: 199.9 }] }), pr.body);
 
 log.length = 0;
 const z = await mp.zeroStock(["OS13-P3"]);
-check("zeroStock: stok 0, fiyat uçu çağrılmaz", z.ok === 1 && log.length === 1 && log[0].body.stockList[0].stockCount === 0, log);
+check("zeroStock: stok 0, fiyat uçu çağrılmaz", z.ok === 1 && log.length === 1 && log[0].body.items[0].stockCount === 0, log);
 
 const cb = await mp.checkBatches!(["product:B1"], { quick: true });
 check("checkBatches: başarısız ürün nedeniyle", cb.checked === 1 && cb.failedItems === 1 && cb.failed?.[0].id === "OS13-BAD" && /Zorunlu özellik/.test(cb.failed[0].reason), cb);

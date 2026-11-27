@@ -26,9 +26,9 @@ const WAIT_MS = 10_000; // Pazarama: iki güncelleme/ürün açma isteği arası
 // Uç yolları tek yerde: canlıda farklı çıkarsa yalnızca burası değişir. "?" = canlıda doğrulanmadı, yolun kendisi tahmin.
 export const EP = {
   token: "/connect/token",                              // AUTH host; CANLIDA DOĞRULANDI 27.11 (Basic + scope, cevap data.accessToken)
-  create: "/product/create",                            // kaynak: Odoo + PR 331
-  updateStock: "/product/updateStock",                  // kaynak: Odoo + PR 331
-  updatePrice: "/product/updatePrice",                  // kaynak: Odoo + PR 331
+  create: "/product/create",                            // CANLIDA DOĞRULANDI 27.11 (5 ürün açıldı, "Onay Bekliyor-İlk Onay"; takip kimliği sıfır GUID döndü)
+  updateStock: "/product/updateStock-v2",               // CANLIDA 27.11: {items:[{code,stockCount}]} -> 200 + takip kimliği (eski /product/updateStock 404)
+  updatePrice: "/product/updatePrice-v2",               // ? stok ucuyla aynı biçim varsayıldı ({items:[{code,listPrice,salePrice}]}); canlıda doğrulanmadı
   productBatch: "/product/getProductBatchResult",       // kaynak: Odoo (sorgu anahtarı ?)
   listingResult: "/product/getListingResult",           // ? (stok/fiyat sonucu; ad ikincil kaynaktan)
   approved: "/product/products",                        // CANLIDA 27.11: ?Approved=true&Page=1&Size=5 -> 200 success, data dizi (mağaza boş; sayfalama alanı henüz görülmedi)
@@ -173,20 +173,20 @@ export function createPazarama(): Marketplace {
       return panelRate != null ? { rate: panelRate, source: "panel" } : { rate: defaultRate, source: "varsayilan" };
     },
 
-    // Stok (en çok 3000 kod) ve fiyat ayrı uçlar, ikisi de kuyruklanır ve takip kimliği döner. Gövde anahtarları (stockList/priceList) varsayım.
+    // Stok (en çok 3000 kod) ve fiyat ayrı uçlar, ikisi de kuyruklanır ve takip kimliği döner. Stok gövdesi {items:[...]} canlıda doğrulandı (27.11), fiyat aynı biçim varsayıldı.
     async pushInventory(list: InventoryItem[]): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
       const tid = (r: any) => { const x = String(r?.data?.batchRequestId ?? r?.data?.id ?? (typeof r?.data === "string" ? r.data : "") ?? r?.id ?? ""); return /^[0-]*$/.test(x) ? "" : x; }; // sıfır GUID = takip yok
       for (const batch of chunk(list, 3000)) {
         try {
           await paced();
-          const r = await pz(EP.updateStock, { body: { stockList: batch.map((p) => ({ code: p.id, stockCount: Math.max(0, Math.floor(p.quantity)) })) } });
+          const r = await pz(EP.updateStock, { body: { items: batch.map((p) => ({ code: p.id, stockCount: Math.max(0, Math.floor(p.quantity)) })) } });
           { const x = tid(r); if (x) res.batchIds.push("stock:" + x); }
           const priced = batch.filter((p) => p.price != null && p.price > 0);
           if (priced.length) {
             await paced();
             // listPrice = satış fiyatı (liste fiyatı ayrı tutulmuyor); %70+ indirim onay ister, burada indirim yok
-            const r2 = await pz(EP.updatePrice, { body: { priceList: priced.map((p) => ({ code: p.id, listPrice: p.price, salePrice: p.price })) } });
+            const r2 = await pz(EP.updatePrice, { body: { items: priced.map((p) => ({ code: p.id, listPrice: p.price, salePrice: p.price })) } });
             { const x = tid(r2); if (x) res.batchIds.push("price:" + x); }
           }
           res.ok += batch.length;
