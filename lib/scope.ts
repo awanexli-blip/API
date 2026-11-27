@@ -1,6 +1,7 @@
 // Satış kısıtı (K, 16.11: "biz tüm ürünleri satabiliyoruz gıda hariç"; iç giyim ve kitap yasağı kalktı). Saf; worker kullanır, testli.
 // Yasak: yalnızca gıda/içecek (su, kola, makarna, çikolata, bebek maması ...).
-// Gıda DEĞİL: kahve makinesi, çay fincanı, mama kabı, gıda saklama kabı (alet/kap). Evcil hayvan maması yasak sayılmaz (insan gıdası değil).
+// Gıda DEĞİL: kahve makinesi, çay fincanı, mama kabı, mama sandalyesi, gıda saklama kabı (alet/kap).
+// K 28.11: EVCİL HAYVAN MAMASI DA GIDA SAYILIR (mama, yaş/kuru mama, konserve, ödül, kemik, yem, vitamin): satılmaz. Kategori + başlık (pet bağlamında).
 // Girdi: pazaryeri kategori adı ve/veya tedarikçi kategori yolu ("A > B > C"); kategori yoksa satılabilir (başlıktaki gıda kelimesi elemez).
 // Açma/kapama: app_state "scope_filter" = "on" (açık) / başka (kapalı). Açıkken yasak ilanın stoğu 0, yeni gönderim yapılmaz.
 
@@ -24,12 +25,29 @@ const fold = (x: string) => x.replace(/ı/g, "i").replace(/ç/g, "c").replace(/�
 const FOOD_EXACT_F = new Set([...FOOD_EXACT].map(fold));
 const FOOD_PART_F = new RegExp(fold(FOOD_PART.source).replace("^(", "^(gida ve icecek urunleri|gida ve icecek|gida urunleri ve icecekler|"), "u");
 
+// K 28.11: mama (evcil hayvan + bebek) ve 27.11 taramasında kaçan Bezos gıda başlıkları ("Bebek Mamalari", "Konserve Salca ve Hazir Yemek",
+// "Kuruyemiş Şekerleme"). Yol parçasında gıda sözcüğü + kap/sandalye/aksesuar gibi gıda dışı sözcük yoksa yasak.
+const MAMA_WORD = /(^|[\s&,(])(mama|mamalar|mamalari|mamasi|yas mama|kuru mama|konserve|konservesi|konserveler|odul|odulu|odulleri|kemik|kemikleri|yem|yemi|yemleri|vitamin|vitaminleri|hazir yemek|kuruyemis|seker|sekerleme|corba|kraker|biskuvi|macun|malt)($|[\s&,)])/u;
+const NOT_FOOD = /(kap|kabi|kaplari|kab|kase|sandalye|onluk|aksesuar|oyuncak|tasma|tarak|yatak|kafes|biberon|emzik|sise|kasik|catal|termos|saklama|dispenser|otomatik)/u;
+const PET = /(kedi|kopek|kus|balik|kemirgen|hamster|tavsan|papagan|muhabbet|kanarya|yavru|yetiskin|kisirlastirilmis|pet|evcil|akvaryum)/u;
+function petOrBabyFoodPart(f: string): boolean {
+  if (/(bebek mamalari|kavanoz mamalari|kasik mama|biberon mamalari|devam sutu)/u.test(f)) return true; // insan (bebek) gıdası
+  return MAMA_WORD.test(f) && !NOT_FOOD.test(f);
+}
+/** Başlık (pet bağlamı): "Tavuklu Yavru Kedi Maması 1,5 Kg", "Köpek Ödül Çubuğu" -> gıda; "Kedi Mama Kabı" -> değil */
+export function petFoodTitle(title: string | null | undefined): boolean {
+  const t = fold(String(title ?? "").toLocaleLowerCase("tr"));
+  if (!PET.test(t) || NOT_FOOD.test(t)) return false;
+  return /(mamasi|mama|konserve|odul|kemik(?!li oyuncak)|corba|kraker|biskuvi|macun|malt|yem|yemi|vitamin|pate|jole|sos icinde|pouch)/u.test(t);
+}
+
 function forbiddenCat(cat: string): string | null {
   for (const raw of cat.split(">")) {
     const s = raw.trim();
     if (!s) continue;
     if (FOOD_EXACT.has(s) || FOOD_EXACT_F.has(fold(s))) return `gıda (${s})`;
     if (FOOD_PART.test(s) || FOOD_PART_F.test(fold(s))) return `gıda (${s})`;
+    if (petOrBabyFoodPart(fold(s))) return `gıda/mama (${s})`;
   }
   return null;
 }
@@ -38,7 +56,10 @@ export function inScope(x: { cat?: string | null; title?: string | null }): Scop
   // Türkçe küçük harf: "İç Giyim" (i bayrağı İ/ı'yı katlamaz)
   const cat = String(x.cat ?? "").toLocaleLowerCase("tr");
   const f = cat.trim() ? forbiddenCat(cat) : null;
-  return f ? { ok: false, reason: `satılamaz: ${f}` } : { ok: true, group: "genel" };
+  if (f) return { ok: false, reason: `satılamaz: ${f}` };
+  // K 28.11: mama başlığı (kategori genel olsa da, ör. "Pet Shop" altında "Kedi Maması 1,5 Kg")
+  if (petFoodTitle(x.title)) return { ok: false, reason: "satılamaz: gıda/mama (başlık)" };
+  return { ok: true, group: "genel" };
 }
 
 // Tedarikçinin KDV oranı %1 / %0 (04.11): Türkiye'de %1 KDV neredeyse yalnızca temel gıda (çay, pirinç, yağ, helva...); %0 da şüpheli

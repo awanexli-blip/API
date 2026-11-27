@@ -72,6 +72,22 @@ test("+18 ürün bebek/çocuk/oyuncak kategorisinde satılmaz", () => {
 test("Colezium Gıda Market: gıda adımları yasak, aynı başlıktaki parfüm/temizlik ve pet ürünleri serbest", () => {
   for (const c of ["Gıda Market > Bitkisel Doğal Ürünler > Mutfak Baharatları > Baharat Çeşitleri", "Gıda Market > Bitkisel Doğal Ürünler > Pekmez Ekşi Sos Sirke", "Gıda Market > Tuz, Kaya Tuzu Ürünleri > Tuz Çeşitleri", "Gıda Market > Aktariye Ürünleri > Gıda Boyası"])
     assert.ok(!ok(c), c);
-  for (const c of ["Gıda Market > Esans Kolonya Parfüm > Parfümler > Erkek Parfüm", "Gıda Market > Süpermarket > Deterjan ve Temizlik Ürünleri > Fırça Çeşitleri", "Pet Shop > Kedi Mamaları & Aksesuar > Konserve Yaş Mamalar", "Gıda Market > Kozmetik Kişisel Bakım > Sabun Şampuan Jel"])
+  for (const c of ["Gıda Market > Esans Kolonya Parfüm > Parfümler > Erkek Parfüm", "Gıda Market > Süpermarket > Deterjan ve Temizlik Ürünleri > Fırça Çeşitleri", "Gıda Market > Kozmetik Kişisel Bakım > Sabun Şampuan Jel"])
     assert.ok(ok(c), c);
+});
+
+test("mama yasak (K 28.11): evcil hayvan + bebek maması, kategori ve başlık", () => {
+  assert.equal(inScope({ cat: "Pet Shop > Kedi Mamaları & Ödülleri" }).ok, false);
+  assert.equal(inScope({ cat: "Evcil > Kuru Mamalar" }).ok, false);
+  assert.equal(inScope({ cat: "Anne Bebek > Bebek Mamalari" }).ok, false);
+  assert.equal(inScope({ cat: "Market > Konserve Salca ve Hazir Yemek" }).ok, false);
+  assert.equal(inScope({ cat: "Pet Shop > Köpek Ödülleri" }).ok, false);
+  assert.equal(inScope({ cat: "Pet Shop", title: "Tavuklu Yavru Kedi Maması 1,5 Kg" }).ok, false);
+  assert.equal(inScope({ cat: "Pet Shop", title: "Dentastix Köpek Ödülü 180 Gr" }).ok, false);
+  // gıda değil: kap, sandalye, aksesuar, oyuncak
+  assert.equal(inScope({ cat: "Pet Shop > Köpek Mama ve Su Kapları" }).ok, true);
+  assert.equal(inScope({ cat: "Anne Bebek > Anakucağı, Mama Sandalyeleri ve Pusetler" }).ok, true);
+  assert.equal(inScope({ cat: "Pet Shop", title: "Paslanmaz Çelik Kedi Mama Kabı" }).ok, true);
+  assert.equal(inScope({ cat: "Pet Shop", title: "Peluş Civciv Kedi Oyuncağı" }).ok, true);
+  assert.equal(inScope({ cat: "Pet Shop", title: "Konfor Dokuma Köpek Boyun Tasması" }).ok, true);
 });
