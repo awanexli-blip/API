@@ -34,6 +34,13 @@ globalThis.fetch = (async (url: any, init: any = {}) => {
   }
   if (u.pathname === "/product/updateStock" || u.pathname === "/product/updatePrice") return json({ success: true, data: "res-" + log.length });
   if (u.pathname === "/product/getProductBatchResult") return json({ success: true, data: { status: 2, totalCount: 2, successfulCount: 1, failedCount: 1, failedProducts: [{ code: "OS13-BAD", failReasons: ["Zorunlu özellik eksik"] }] } });
+  if (u.pathname === "/brand/getBrands") {
+    const n = (u.searchParams.get("name") ?? "").toLowerCase();
+    return n === "tcx" ? json({ success: true, data: [{ id: "b-tcx", name: "TCX" }] }) : json({ success: false, messageCode: "CAT_60", message: "Listelenecek veri bulunamadı!", data: null }); // canlı biçim
+  }
+  if (u.pathname === "/category/getCategoryTree") return json({ success: true, data: [
+    { id: "p1", name: "Sofra & Mutfak", parentCategories: ["Ev, Yaşam "], leaf: false },
+    { id: "k1", name: "Yağ Sıçratmaz", parentCategories: ["Ev, Yaşam ", " Sofra & Mutfak ", " Yağ Sıçratmaz"], leaf: true }] });
   if (u.pathname === "/product/create") return json({ success: false, messageCode: "E1", message: "reddedildi" });
   return json({ success: false, message: "bilinmeyen uç " + u.pathname }, 404);
 }) as any;
@@ -63,6 +70,10 @@ check("checkBatches: başarısız ürün nedeniyle", cb.checked === 1 && cb.fail
 const c = mp.commission(null, "X", null, 0.18);
 check("commission: varsayılan / panel", c.rate === 0.18 && mp.commission(null, "X", 0.12, 0.18).source === "panel", c);
 check("findListing/newListingId: OS13- kuralı", mp.findListing({ productCode: "ABC-1" }, new Set(["ÖS13-ABC-1"])) === "ÖS13-ABC-1" && mp.newListingId({ productCode: "ÖZ-1" }) === "OS13-Z-1");
+
+check("brandExists: kayıtlı (büyük/küçük harf farkı yok) / kayıtsız (CAT_60 hata değil)", (await mp.brandExists!("Tcx")) === true && (await mp.brandExists!("Genel Markalar")) === false);
+const leaves = await mp.categoryLeaves!();
+check("categoryLeaves: yalnızca yaprak, yol temiz", leaves.length === 1 && leaves[0].id === "k1" && leaves[0].path.join(">") === "Ev, Yaşam>Sofra & Mutfak>Yağ Sıçratmaz", leaves);
 
 // Yanlış kimlik anlaşılır hatayla durur ve gizli bilgi sızmaz
 process.env.PAZARAMA_CLIENT_SECRET = "yanlis";

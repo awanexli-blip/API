@@ -281,6 +281,15 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     }
   }
 
+  // Pazarama: tedarikçinin "A|B|C" marka listesinden yalnızca Pazarama'da kayıtlı olanlar kalır (ör. "Genel Markalar" kayıtlı değil); hiçbiri yoksa ürün gönderilmez
+  if (ctx.mp.brandExists) {
+    for (const [src, spec] of [...supBrand]) {
+      if (spec === "*") continue;
+      const ok: string[] = [];
+      for (const b of spec.split("|").map((x) => x.trim()).filter(Boolean)) { try { if (await ctx.mp.brandExists(b)) ok.push(b); } catch (e: any) { console.error(`marka sorgusu (${b}):`, String(e?.message ?? e).slice(0, 160)); } }
+      if (ok.length) supBrand.set(src, ok.join("|")); else supBrand.delete(src);
+    }
+  }
   // Aynı barkod katalogda birden çok üründe (çoklama): yalnızca güvenli listede, gönderilecek barkodlar için sorulur
   const dupCache = new Map<string, boolean>();
   async function tyDupBarcodes(codes: string[]): Promise<Set<string>> {
@@ -304,7 +313,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
     const now = new Date().toISOString();
     const rows: any[] = [];
     const noStockKeys: string[] = []; // stoksuz olduğu için açılmayan ilanlar (panelde "kuyrukta" kalmasın)
-    const fail = (key: string, p: any, v: any, msg: string) => { out.errors++; rows.push({ marketplace: ctx.marketplaceId, listing_key: key || `?${v.id}`, variant_id: v.id, product_id: p.id, status: "error", title: p.title, last_error: msg.slice(0, 500), updated_at: now }); };
+    const fail = (key: string, p: any, v: any, msg: string) => { out.errors++; if (process.env.SEND_DRY === "1") console.error(`DENEME RET ${key} ${p.title?.slice(0, 40)}: ${msg}`); rows.push({ marketplace: ctx.marketplaceId, listing_key: key || `?${v.id}`, variant_id: v.id, product_id: p.id, status: "error", title: p.title, last_error: msg.slice(0, 500), updated_at: now }); };
     try {
       const ids: string[] = (job.payload?.product_ids ?? []).slice(0, 200);
       const { data: products0, error: pe } = await ctx.db.from("products").select("*, product_variants(*), product_images(url, position)").in("id", ids);
@@ -477,6 +486,7 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
           const avail = Math.max(0, Number(v.stock ?? 0) - Number(v.reserved ?? 0));
           const pr = priceFor(ctx, p, v, null, avail, manualName ?? maleCat?.name ?? mapName ?? (pick && pick !== pred && String(pick.categoryId) === String(categoryId) ? pick.categoryName : null));
           if (!pr.ok) { fail(key, p, v, `Fiyat hesaplanamadı: ${pr.reason}`); continue; }
+          if (process.env.SEND_DRY === "1") { const b = breakdown(pr.price, pr.cost, pr.pcfg, pr.comm); console.error(`DENEME FIYAT ${JSON.stringify({ key, source: p.source, cost: pr.cost, price: pr.price, commission: pr.comm, shipping: b.shipping, net: b.net, rate: Math.round(b.rate * 1000) / 1000 })}`); }
           const np: NewProduct = {
             ...(() => { const c = ctx.clean ? ctx.clean(title, p.description || p.title) : { title, description: p.description || p.title }; return { name: c.title, detail: c.description }; })(),
             id: key, brand: p.brand ?? "", productCode: p.sku, desi: Number(p.desi) || 1, images: vImages,
@@ -538,9 +548,10 @@ export async function processSendJobs(ctx: DbCtx, worker: string): Promise<SendR
       // Eski ilanlar: değişiklik yoksa bugünkü içerik iz olarak saklanır (sonraki değişiklik kesin bilinir)
       if (fpSupported) for (const b of baseline) { const row = rows.find((x) => x.listing_key === b.key); if (row && !row.content_sent) row.content_sent = b.fp; }
       if (fpSupported) for (const row of rows) if (!row.content_sent && sentFp.get(row.listing_key)) row.content_sent = sentFp.get(row.listing_key);
-      await upsertListings(ctx.db, rows);
+      const dryRun = process.env.SEND_DRY === "1"; // deneme: ilan tablosuna hiçbir şey yazılmaz (yalnızca iş kapanır, canlı gönderim yeni iş ister)
+      if (!dryRun) await upsertListings(ctx.db, rows);
       // Stoksuz atlananların panelden kalan "kuyrukta" satırı silinir (yalnızca queued; açılmış/hatalı ilana dokunulmaz)
-      for (let i = 0; i < noStockKeys.length; i += 200)
+      for (let i = 0; !dryRun && i < noStockKeys.length; i += 200)
         await ctx.db.from("marketplace_listings").delete().eq("marketplace", ctx.marketplaceId).eq("status", "queued").in("listing_key", noStockKeys.slice(i, i + 200));
       const result = { sent: sentInJob, errors: rows.filter((r) => r.status === "error").length, already: rows.filter((r) => r.status === "live" || r.status === "pending_approval").length,
         ...(noStockKeys.length ? { noStock: noStockKeys.length } : {}),

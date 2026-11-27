@@ -157,6 +157,8 @@ export interface Marketplace {
   /** Sipariş uçlarının teşhisi (hangi uç çalıştı, alan adları; kişisel veri yok) */
   orderDiag?: Record<string, unknown>;
   answerQuestion?(id: string, text: string): Promise<void>;
+  /** İsteğe bağlı: marka pazaryerinde kayıtlı mı (Pazarama; kuyruk çok markalı tedarikçi listesinden yalnızca kayıtlıyı seçer) */
+  brandExists?(name: string): Promise<boolean>;
   /** İsteğe bağlı: yaprak kategoriler (başlıktan kategori bulmak için, core/category-tree.ts) */
   categoryLeaves?(): Promise<{ id: string; name: string; path: string[] }[]>;
   /** İsteğe bağlı: eşleşme teşhisi, özete eklenir */

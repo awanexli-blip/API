@@ -79,6 +79,8 @@ export function pazaramaClient() {
           throw new Error(`Pazarama ${res.status} ${path}: ${text.slice(0, 600)}`);
         }
         let j: any = {}; try { j = text ? JSON.parse(text) : {}; } catch { j = { raw: text }; }
+        // Canlı 27.11: sonuç yoksa HTTP 200 + success=false + messageCode CAT_60 "Listelenecek veri bulunamadı" (ör. olmayan marka adı): hata değil, boş liste
+        if (!ok(j) && (j.messageCode === "CAT_60" || /Listelenecek veri bulunamad/i.test(String(j.message ?? "")))) return { ...j, success: true, data: [] };
         if (!ok(j)) throw new Error(`Pazarama 200 ${path}: ${[j.messageCode, j.message].filter(Boolean).join(" ").slice(0, 400) || "success=false"}`);
         return j;
       } catch (e: any) {
@@ -105,7 +107,7 @@ export function createPazarama(): Marketplace {
   async function brandId(name: string): Promise<string | null> {
     const k = lo(name);
     if (brandCache.has(k)) return brandCache.get(k)!;
-    const r = await pz(`${EP.brands}?Page=1&Size=100&Name=${encodeURIComponent(name)}`); // sorgu anahtarları canlıda doğrulanmadı
+    const r = await pz(`${EP.brands}?Page=1&Size=100&name=${encodeURIComponent(name)}`); // canlıda doğrulandı 27.11
     const hit = arr(r.data ?? r).find((b: any) => lo(String(b.name ?? b.displayName ?? "")) === k);
     const id = hit ? String(hit.id ?? hit.brandId) : null;
     brandCache.set(k, id);
@@ -134,7 +136,7 @@ export function createPazarama(): Marketplace {
       const out: Listing[] = [];
       let cursor = "";
       for (let guard = 0; guard < 2000; guard++) {
-        const r = await pz(`${EP.approved}?Approved=true&Size=100${cursor ? "&Cursor=" + encodeURIComponent(cursor) : ""}`);
+        const r = await pz(`${EP.approved}?Approved=true&Page=1&Size=100${cursor ? "&Cursor=" + encodeURIComponent(cursor) : ""}`);
         const list = arr(r.data ?? r);
         for (const l of list) {
           const code = String(l.code ?? l.productCode ?? "");
@@ -199,13 +201,23 @@ export function createPazarama(): Marketplace {
 
     requiresCategory: true,
 
+    // Marka Pazarama'da kayıtlı mı (gönderim kuyruğu, tedarikçinin "A|B|C" marka listesinden yalnızca kayıtlı olanı seçer)
+    async brandExists(name: string): Promise<boolean> { return !!(await brandId(name)); },
+
+    // Yaprak kategoriler (başlıktan kategori bulma, core/category-tree.ts): getCategoryTree, leaf=true; yol = parentCategories
+    async categoryLeaves() {
+      const r = await pz(EP.categories);
+      return arr(r.data ?? r).filter((c: any) => c.leaf === true && c.id)
+        .map((c: any) => ({ id: String(c.id), name: String(c.name ?? c.displayName ?? "").trim(), path: ((c.parentCategories ?? []) as string[]).map((x) => String(x).trim()).filter(Boolean) }));
+    },
+
     // Ürün açma (en çok 500, istekler arası 10 sn). Gövde: {products:[...]} varsayım (PR 331 dizi, sonraki PR nesne diyor: çelişkili).
     async createProducts(list: NewProduct[], ctx): Promise<BatchResult> {
       const res: BatchResult = { ok: 0, failed: 0, batchIds: [] };
       const payloads: any[] = [];
       const used = new Set<string>();
       for (const p of list) {
-        const no = (why: string) => { ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
+        const no = (why: string) => { if (process.env.SEND_DRY === "1") console.error(`DENEME ATLANDI ${p.id} ${p.name.slice(0, 40)}: ${why}`); ctx.skip(why); (res.failedItems ??= []).push({ id: p.id, reason: why.slice(0, 500) }); };
         if (!p.images.length) { no("görsel yok"); continue; }
         if (!p.cat?.category_id) { no("pazaryeri kategorisi yok"); continue; }
         if (used.has(p.id)) { no("aynı stok koduna dönüşen ürün kodu"); continue; }
@@ -250,6 +262,8 @@ export function createPazarama(): Marketplace {
       }
       // SEND_DRY=1: hiçbir şey gönderilmez, gidecek olanın özeti yazılır
       if (process.env.SEND_DRY === "1") {
+        // SEND_DRY_FILE: gidecek gövde JSON olarak dosyaya yazılır (gönderim öncesi inceleme; her çağrı dosyayı yeniler)
+        if (process.env.SEND_DRY_FILE) { const fs = await import("node:fs"); const f = process.env.SEND_DRY_FILE; let prev: any[] = []; try { prev = JSON.parse(fs.readFileSync(f, "utf8")).body.products; } catch { /* yeni dosya */ } fs.writeFileSync(f, JSON.stringify({ body: { products: [...prev, ...payloads] } }, null, 1), "utf8"); }
         for (const x of payloads) { console.log(`DENEME ${x.code} | ${x.name} | kategori ${x.categoryId} | ${x.salePrice} | stok ${x.stockCount} | KDV ${x.vatRate} | görsel ${x.images.length}`); (res.failedItems ??= []).push({ id: x.code, reason: "DENEME: gönderilmedi (SEND_DRY)" }); }
         return res;
       }

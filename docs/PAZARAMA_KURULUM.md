@@ -42,3 +42,11 @@ Tüm yollar `EP` sabitinde (tek yer); canlıda farklıysa yalnızca orası deği
 - Kargo tarifesi (desi) bilinmiyor: `shippingCost` yok, sabit kargo ayarı geçerli.
 - Pazarama kategori ağacı eşlemesi (`category_map`, marketplace=pazarama) henüz yok; `categoryLeaves` yazılmadı (`category/getCategoryTree` ile eklenebilir).
 - Sipariş/iade/soru: kapsam dışı (ayrı iş).
+
+## Pilot gönderim hazırlığı (27.11)
+
+- Canlı doğrulandı: marka sorgusu `name=` (küçük harf); sonuç yoksa HTTP 200 + `success:false` + `CAT_60 "Listelenecek veri bulunamadı"` (hata değil, boş liste sayılır). Kategori özellik biçimi: `attributes[{id,name,isRequired,isVariantable,attributeValues[{id,value}]}]`. Çoğu yaprakta tek zorunlu alan `Renk` (isVariantable).
+- Pazarama kategori kimlikleri GUID: `category_map.category_id` bigint (üstünde `store_catalog` görünümü var), bu yüzden eşleme ürün başına `attributes["Pazarama kategori"]` (+ `"Pazarama kategori adı"`) ile yapılır (elle seçim yolu). Eşleme yoksa `categoryLeaves` (getCategoryTree, 3.721 yaprak) başlıktan tahmin eder.
+- Tedarikçi marka listesi (`A|B|C`) Pazarama'da kayıtlı olanlara süzülür (`brandExists`): Eco Lounge ve TCX kayıtlı, "Genel Markalar" değil.
+- `SEND_DRY=1`: ilan tablosuna yazılmaz, reddedilenler (`DENEME RET/ATLANDI`) ve fiyat/net kâr (`DENEME FIYAT`) loga düşer; `SEND_DRY_FILE=<yol>` gidecek gövdeyi JSON yazar.
+- Canlı gönderim (yalnızca K onayıyla, `marketplace_settings.pazarama.enabled=true` gerekir): `SYNC_PART=listings SEND_ONLY=1 node --experimental-strip-types worker/sync.ts create pazarama` (runq/panel yalnızca trendyol|hepsiburada kabul eder).
