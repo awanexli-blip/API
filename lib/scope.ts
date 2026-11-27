@@ -27,8 +27,8 @@ const FOOD_PART_F = new RegExp(fold(FOOD_PART.source).replace("^(", "^(gida ve i
 
 // K 28.11: mama (evcil hayvan + bebek) ve 27.11 taramasında kaçan Bezos gıda başlıkları ("Bebek Mamalari", "Konserve Salca ve Hazir Yemek",
 // "Kuruyemiş Şekerleme"). Yol parçasında gıda sözcüğü + kap/sandalye/aksesuar gibi gıda dışı sözcük yoksa yasak.
-const MAMA_WORD = /(^|[\s&,(])(mama|mamalar|mamalari|mamasi|yas mama|kuru mama|konserve|konservesi|konserveler|odul|odulu|odulleri|kemik|kemikleri|yem|yemi|yemleri|vitamin|vitaminleri|hazir yemek|kuruyemis|seker|sekerleme|corba|kraker|biskuvi|macun|malt)($|[\s&,)])/u;
-const NOT_FOOD = /(kap|kabi|kaplari|kab|kase|sandalye|onluk|aksesuar|oyuncak|tasma|tarak|yatak|kafes|biberon|emzik|sise|kasik|catal|termos|saklama|dispenser|otomatik)/u;
+const MAMA_WORD = /(^|[\s&,(])(mama|mamalar|mamalari|mamasi|yas mama|kuru mama|konserve|konservesi|konserveler|odul|odulu|odulleri|kemik|kemikleri|yem|yemi|yemleri|vitamin|vitaminleri|hazir yemek|kuruyemis|seker|sekerleme|corba|kraker|biskuvi|malt)($|[\s&,)])/u;
+const NOT_FOOD = /(pense|masa|ilac|zehir|kapan|tuzak|kap|kabi|kaplari|kab|kase|sandalye|onluk|aksesuar|oyuncak|tasma|tarak|yatak|kafes|biberon|emzik|sise|kasik|catal|termos|saklama|dispenser|otomatik)/u;
 const PET = /(kedi|kopek|kus|balik|kemirgen|hamster|tavsan|papagan|muhabbet|kanarya|yavru|yetiskin|kisirlastirilmis|pet|evcil|akvaryum)/u;
 function petOrBabyFoodPart(f: string): boolean {
   if (/(bebek mamalari|kavanoz mamalari|kasik mama|biberon mamalari|devam sutu)/u.test(f)) return true; // insan (bebek) gıdası
