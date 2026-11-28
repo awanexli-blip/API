@@ -102,23 +102,23 @@ begin
   return query
   with m as (
     select g.group_key gk, l.listing_key lk, p.id pid, p.source src, coalesce(v.cost_price, p.cost_price) cost,
-      greatest(v.stock - v.reserved, 0) stock
+      greatest(v.stock - v.reserved, 0) stock, count(*) over (partition by g.group_key) n
     from public.product_xgroups g
     join public.products p on p.id = g.product_id and p.status = 'active' and p.currency = 'TRY'
     join public.product_variants v on v.product_id = p.id
     join public.marketplace_listings l on l.product_id = p.id and l.variant_id = v.id and l.marketplace = p_mp and l.status = 'live'
-  ), grp as (select m.gk from m group by m.gk having count(*) > 1),
-  mm as (select m.* from m where m.gk in (select grp.gk from grp)),
+  ), mm as materialized (select m.* from m where m.n > 1),
   w as (
     select mm.* from mm
     where mm.cost > 0 and mm.stock >= greatest(p_min_stock, coalesce((smin->>mm.src)::int, 1), 1)
       and not (mm.src = any (ex_s)) and not (mm.pid::text = any (ex_p))
       and mm.lk not in (select d.listing_key from public.dup_code_losers(p_mp, p_min_stock) d)
   )
-  select distinct on (l.lk) l.lk, l.gk, w.lk, l.cost, w.cost
-  from mm l join w on w.gk = l.gk and w.lk <> l.lk and w.cost * (1 + gain) < l.cost
-  where l.cost > 0
-  order by l.lk, w.cost, w.lk;
+  -- Gruptaki en ucuz uygun kazanan; kaybeden her ilan için tek eşleşme (CTE'ler indeksiz: grup başına tek satıra indirgenir)
+  , bw as (select distinct on (w.gk) w.gk, w.lk, w.cost from w order by w.gk, w.cost, w.lk)
+  select l.lk, l.gk, bw.lk, l.cost, bw.cost
+  from mm l join bw on bw.gk = l.gk and bw.lk <> l.lk and bw.cost * (1 + gain) < l.cost
+  where l.cost > 0;
 end $$;
 revoke execute on function public.xsup_losers(text, int, numeric, boolean) from public, anon, authenticated;
 revoke execute on function public.xsup_members(uuid, int) from public, anon, authenticated;
@@ -146,10 +146,10 @@ begin
   ), ok as (
     select m.* from m where m.cost > 0 and m.stock >= greatest(p_min_stock, coalesce((smin->>m.src)::int, 1), 1)
       and not (m.src = any (ex_s)) and not (m.pid::text = any (ex_p))
-  ), best as (select distinct on (ok.gk) ok.* from ok order by ok.gk, ok.cost, ok.sku)
+  ), best as (select distinct on (ok.gk) ok.* from ok order by ok.gk, ok.cost, ok.sku),
+  ref as (select distinct on (ok.gk) ok.gk, ok.live_key, ok.cost from ok where ok.live_key is not null order by ok.gk, ok.cost)
   select b.pid, b.gk, b.src, b.sku, b.cost, o.live_key, o.cost
-  from best b
-  join lateral (select ok.live_key, ok.cost from ok where ok.gk = b.gk and ok.live_key is not null order by ok.cost limit 1) o on true
+  from best b join ref o on o.gk = b.gk
   where not b.has_any and b.live_key is null and b.cost * (1 + gain) < o.cost;
 end $$;
 revoke execute on function public.xsup_send_candidates(text, int, numeric, boolean) from public, anon, authenticated;

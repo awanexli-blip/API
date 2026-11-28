@@ -24,10 +24,12 @@ SSH = ["ssh", "-i", a.key.replace("~", __import__("os").path.expanduser("~")), a
 
 
 def psql(sql, stdin=None):
-    r = subprocess.run(SSH[:4] + [SSH[4] + " -At"], input=(stdin or sql).encode(), capture_output=True)
-    if r.returncode:
-        sys.exit("psql hata: " + r.stderr.decode()[:500])
-    return r.stdout.decode()
+    for deneme in range(5):  # ssh bağlantısı yük altında kopabilir: yeniden dene (güncelleme tekrarlanabilir)
+        r = subprocess.run(SSH[:4] + [SSH[4] + " -At"], input=(stdin or sql).encode(), capture_output=True)
+        if not r.returncode:
+            return r.stdout.decode()
+        time.sleep(10 * (deneme + 1))
+    sys.exit("psql hata: " + r.stderr.decode()[:500])
 
 
 lim = f" limit {a.limit}" if a.limit else ""
@@ -41,7 +43,7 @@ S.headers["User-Agent"] = "Mozilla/5.0 (xsup-hash)"
 def work(r):
     pid, url = r
     try:
-        res = S.get(url, timeout=25)
+        res = S.get(url, timeout=(10, 20))
     except Exception:
         return pid, None, "transient"
     if res.status_code in (404, 410, 403):

@@ -5,15 +5,17 @@ select method, count(distinct group_key) groups, count(*) members from product_x
 select split_part(p.source, ':', 2) supplier, count(*) members from product_xgroups g join products p on p.id = g.product_id group by 1 order by 2 desc;
 
 \echo '== Sıfırlanacak canlı ilanlar (kaybedenler) ve ortalama maliyet/fiyat düşüşü, kazanç eşiğine göre'
-select mp, gain_pct, count(*) losers,
-  count(*) filter (where ls.stock > 0) losers_with_stock,
-  round(avg(100 * (l.loser_cost - l.winner_cost) / l.loser_cost), 1) avg_drop_pct,
-  round(avg(l.loser_cost - l.winner_cost), 1) avg_drop_try,
-  round(sum(l.loser_cost - l.winner_cost)) total_try
-from (values ('hepsiburada'), ('pazarama')) m(mp),
-     (values (0::numeric), (3), (5), (10)) g(gain_pct),
-     lateral public.xsup_losers(m.mp, 3, g.gain_pct, true) l
-join marketplace_listings ls on ls.marketplace = m.mp and ls.listing_key = l.listing_key
+select m.mp, g.gain_pct, count(*) losers,
+  count(*) filter (where x.stock > 0) losers_with_stock,
+  round(avg(100 * (x.loser_cost - x.winner_cost) / x.loser_cost), 1) avg_drop_pct,
+  round(avg(x.loser_cost - x.winner_cost), 1) avg_drop_try,
+  round(sum(x.loser_cost - x.winner_cost)) total_try
+from (values ('hepsiburada'), ('pazarama')) m(mp)
+cross join (values (0::numeric), (3), (5), (10)) g(gain_pct)
+cross join lateral (
+  select l.loser_cost, l.winner_cost, ls.stock
+  from public.xsup_losers(m.mp, 3, g.gain_pct, true) l
+  join marketplace_listings ls on ls.marketplace = m.mp and ls.listing_key = l.listing_key) x
 group by 1, 2 order by 1, 2;
 
 \echo '== Kazanan tedarikçi dağılımı (HB, eşik 3)'
